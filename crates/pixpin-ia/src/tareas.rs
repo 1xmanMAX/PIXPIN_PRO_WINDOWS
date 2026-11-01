@@ -533,7 +533,7 @@ pub fn resolver(a: &AccionApp, f: &dyn FuenteTareas) -> Result<Pasos, String> {
             .map(VistaLista::nombre)
             .unwrap_or_else(|| "Inbox".to_string());
         if let Some(t) = texto_de(r, "lista_nueva") {
-            let mut nueva = json!({"pixpin": 1, "accion": "lista_nueva", "titulo": t});
+            let mut nueva = json!({"pindesk": 1, "accion": "lista_nueva", "titulo": t});
             if let Some(p) = base.get("proyecto") {
                 nueva["proyecto"] = p.clone();
             }
@@ -879,7 +879,7 @@ pub(crate) mod pruebas {
         let p = pasos("marcar_tarea", r#"{"tarea":"revisar el encofrado"}"#).unwrap();
         assert_eq!(
             p.pedidos[0],
-            json!({"pixpin":1,"accion":"marcar_tarea","hecha":true,"codigo":"obra","proyecto":"casa","indice":0})
+            json!({"pindesk":1,"accion":"marcar_tarea","hecha":true,"codigo":"obra","proyecto":"casa","indice":0})
         );
         assert_eq!(p.hecho, "«revisar encofrado» marcada como hecha.");
         let p = pasos("marcar_tarea", r#"{"tarea":"pedir cemento","hecha":false}"#).unwrap();
@@ -927,7 +927,7 @@ pub(crate) mod pruebas {
         assert_eq!(p.pedidos.len(), 3);
         assert_eq!(
             p.pedidos[0],
-            json!({"pixpin":1,"accion":"lista_nueva","titulo":"Acta 14-oct","proyecto":"casa"})
+            json!({"pindesk":1,"accion":"lista_nueva","titulo":"Acta 14-oct","proyecto":"casa"})
         );
         assert_eq!(
             p.pedidos[1]["texto"],

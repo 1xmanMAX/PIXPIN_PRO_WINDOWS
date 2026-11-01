@@ -132,10 +132,10 @@ fn una_receta_rota_o_con_un_paso_desconocido_no_entra() {
     let muchos: Vec<Value> = (0..11).map(|i| json!(format!("paso {i}"))).collect();
     assert!(mal(json!({"nombre":"x","disparador":"a_mano","pasos":muchos})).contains("como mucho"));
     // Lo mismo antes de mandar el pedido (para que el modelo lo arregle).
-    let pedido = json!({"pixpin":1,"accion":"automatizacion","operacion":"crear",
+    let pedido = json!({"pindesk":1,"accion":"automatizacion","operacion":"crear",
                         "receta":{"nombre":"x","disparador":{"tipo":"a_mano"},"pasos":"[{\"herramienta\":\"volar\"}]"}});
     assert!(revisar_pedido(&pedido).unwrap_err().contains("volar"));
-    assert!(revisar_pedido(&json!({"pixpin":1,"accion":"capturar"})).is_ok());
+    assert!(revisar_pedido(&json!({"pindesk":1,"accion":"capturar"})).is_ok());
 }
 
 #[test]
@@ -180,11 +180,11 @@ fn un_bucle_de_disparadores_se_rechaza_al_crearla_y_se_bloquea_al_correr() {
     });
     let mandar = encargo::envolver(dentro, Some("pr-obra".into()), Some(Tipo::AlCapturar));
     assert_eq!(
-        mandar(r#"{"pixpin":1,"accion":"capturar","modo":"zona"}"#),
+        mandar(r#"{"pindesk":1,"accion":"capturar","modo":"zona"}"#),
         3
     );
     assert_eq!(
-        mandar(r#"{"pixpin":1,"accion":"automatizacion","operacion":"borrar","id":"a"}"#),
+        mandar(r#"{"pindesk":1,"accion":"automatizacion","operacion":"borrar","id":"a"}"#),
         3
     );
     assert!(
@@ -193,15 +193,15 @@ fn un_bucle_de_disparadores_se_rechaza_al_crearla_y_se_bloquea_al_correr() {
     );
     // Lo demas sale, con el chat del encargo si no dice otro.
     assert_eq!(
-        mandar(r#"{"pixpin":1,"accion":"anadir_tarea","texto":"pan"}"#),
+        mandar(r#"{"pindesk":1,"accion":"anadir_tarea","texto":"pan"}"#),
         1
     );
     assert_eq!(
-        mandar(r#"{"pixpin":1,"accion":"anadir_tarea","texto":"pan","codigo":"m1"}"#),
+        mandar(r#"{"pindesk":1,"accion":"anadir_tarea","texto":"pan","codigo":"m1"}"#),
         1
     );
     assert_eq!(
-        mandar(r#"{"pixpin":1,"accion":"sincronizar","aparato":"todos"}"#),
+        mandar(r#"{"pindesk":1,"accion":"sincronizar","aparato":"todos"}"#),
         1
     );
     let v: Vec<Value> = salidos
@@ -543,7 +543,7 @@ fn el_pedido_automatizacion_crea_apaga_y_borra() {
     );
     let pedir = |op: &str| {
         crate::pedidos::atender(
-            &json!({"pixpin":1,"accion":"automatizacion","operacion":op,"id":a.id}).to_string(),
+            &json!({"pindesk":1,"accion":"automatizacion","operacion":op,"id":a.id}).to_string(),
             &cx,
         )
         .aviso
@@ -558,7 +558,7 @@ fn el_pedido_automatizacion_crea_apaga_y_borra() {
         "la segunda vez ya no esta"
     );
     // Caso negativo: una receta rota no se guarda y se dice por que.
-    let rota = json!({"pixpin":1,"accion":"automatizacion","operacion":"crear",
+    let rota = json!({"pindesk":1,"accion":"automatizacion","operacion":"crear",
                       "receta":{"nombre":"x","disparador":{"tipo":"al_capturar"},"pasos":"[{\"herramienta\":\"capturar_pantalla\"}]"}});
     let h = crate::pedidos::atender(&rota.to_string(), &cx);
     assert!(h.aviso.unwrap().contains("bucle"));
@@ -569,7 +569,7 @@ fn el_pedido_automatizacion_crea_apaga_y_borra() {
 #[test]
 fn el_pedido_asistente_se_lee_y_lo_que_falta_se_dice() {
     use crate::pedidos::{Pedido, leer as leer_pedido};
-    let p = leer_pedido(r#"{"pixpin":1,"accion":"asistente","texto":"hola [img 01]","imagenes":["C:\\a\\x.png"],"proyecto":"pr-1"}"#).unwrap();
+    let p = leer_pedido(r#"{"pindesk":1,"accion":"asistente","texto":"hola [img 01]","imagenes":["C:\\a\\x.png"],"proyecto":"pr-1"}"#).unwrap();
     assert_eq!(
         p,
         Pedido::Asistente {
@@ -581,27 +581,27 @@ fn el_pedido_asistente_se_lee_y_lo_que_falta_se_dice() {
         }
     );
     assert!(
-        leer_pedido(r#"{"pixpin":1,"accion":"asistente"}"#).is_ok(),
+        leer_pedido(r#"{"pindesk":1,"accion":"asistente"}"#).is_ok(),
         "sin nada: abrir el chat"
     );
-    assert!(leer_pedido(r#"{"pixpin":1,"accion":"automatizacion","operacion":"volar"}"#).is_err());
+    assert!(leer_pedido(r#"{"pindesk":1,"accion":"automatizacion","operacion":"volar"}"#).is_err());
     let raiz = raiz_de_prueba("pedido-asistente");
     let u = pixpin_store::Ubicacion::Instalado { raiz: raiz.clone() };
     let t = pixpin_store::Catalogo::nuevo(pixpin_store::Idioma::Espanol);
     let cx = contexto_de(&u, &t);
     // Un chat que no existe o una imagen que no esta: no se lanza nada.
     let h = crate::pedidos::atender(
-        r#"{"pixpin":1,"accion":"asistente","texto":"hola","proyecto":"pr-no"}"#,
+        r#"{"pindesk":1,"accion":"asistente","texto":"hola","proyecto":"pr-no"}"#,
         &cx,
     );
     assert!(h.aviso.unwrap().contains("ya no está"));
     let h = crate::pedidos::atender(
-        r#"{"pixpin":1,"accion":"asistente","texto":"hola","imagenes":["C:\\no\\esta.png"]}"#,
+        r#"{"pindesk":1,"accion":"asistente","texto":"hola","imagenes":["C:\\no\\esta.png"]}"#,
         &cx,
     );
     assert!(h.aviso.is_some());
     let h = crate::pedidos::atender(
-        r#"{"pixpin":1,"accion":"asistente","automatizacion":"no-esta"}"#,
+        r#"{"pindesk":1,"accion":"asistente","automatizacion":"no-esta"}"#,
         &cx,
     );
     assert!(h.aviso.unwrap().contains("No hay ninguna"));
@@ -968,7 +968,7 @@ fn encargo_del_pedido(json: &str) -> encargo::Encargo {
     super::cola::Registro::nuevo("prueba".into(), &e, 1).encargo()
 }
 
-/// **El usuario, por la cola** (Flow, `pixpinmax --pedido`): «[img 01]
+/// **El usuario, por la cola** (Flow, `pindesk --pedido`): «[img 01]
 /// calca esto en el canvas» con una lamina. El modelo llama a
 /// `calcar_imagen` y el EJECUTOR la pasa como hoja (figuras exactas y
 /// texto), no la calca. Caso negativo: sin modelo con vision (el local),
@@ -979,7 +979,7 @@ fn calca_esto_con_una_lamina_por_la_cola_va_como_hoja() {
     for (con_vision, nombre) in [(true, "calca-lamina"), (false, "calca-lamina-local")] {
         let raiz = raiz_de_prueba(nombre);
         let ruta = png_de_lamina(&raiz);
-        let json = json!({"pixpin":1,"accion":"asistente","texto":"[img 01] calca esto en el canvas","imagenes":[ruta.to_string_lossy()]}).to_string();
+        let json = json!({"pindesk":1,"accion":"asistente","texto":"[img 01] calca esto en el canvas","imagenes":[ruta.to_string_lossy()]}).to_string();
         let e = encargo_del_pedido(&json);
         let ent = encargo::Entorno {
             ubicacion: pixpin_store::Ubicacion::Instalado { raiz: raiz.clone() },
@@ -1064,7 +1064,7 @@ fn pedido_calca_esto_con_claude() {
     std::fs::create_dir_all(&raiz).unwrap();
     let ruta = raiz.join("lamina-prueba.png");
     std::fs::copy(r"E:\pixpin-demo\lamina-prueba.png", &ruta).expect("la lamina de E:/pixpin-demo");
-    let json = json!({"pixpin":1,"accion":"asistente","texto":"[img 01] calca esto en el canvas","imagenes":[ruta.to_string_lossy()]}).to_string();
+    let json = json!({"pindesk":1,"accion":"asistente","texto":"[img 01] calca esto en el canvas","imagenes":[ruta.to_string_lossy()]}).to_string();
     let e = encargo_del_pedido(&json);
     let ent = encargo::Entorno {
         ubicacion: pixpin_store::Ubicacion::Instalado { raiz: raiz.clone() },

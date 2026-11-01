@@ -58,7 +58,7 @@ impl Paleta {
         let hwnd = unsafe {
             CreateWindowExW(
                 WS_EX_TOPMOST | WS_EX_NOREDIRECTIONBITMAP | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
-                w!("PixPinPaleta"),
+                w!("PinDeskPaleta"),
                 w!(""),
                 WS_POPUP,
                 rect.x,
@@ -168,7 +168,7 @@ fn registrar_clase() {
         let clase = WNDCLASSW {
             lpfnWndProc: Some(procedimiento_paleta),
             hInstance: GetModuleHandleW(None).expect("modulo propio").into(),
-            lpszClassName: w!("PixPinPaleta"),
+            lpszClassName: w!("PinDeskPaleta"),
             ..Default::default()
         };
         RegisterClassW(&clase);

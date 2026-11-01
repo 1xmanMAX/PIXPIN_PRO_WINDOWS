@@ -21,7 +21,7 @@
 //! que corre dejarian de agruparse, y la Jump List (`jump_list`) cuelga de esa
 //! identidad. La clave se escribe al arrancar (fuera del modo portable, como
 //! `asociaciones`), asi que `instalar.ps1` no tiene que tocar el `.lnk`. La
-//! id es [`AUMID`]; con el paquete MSIX (identidad `ForgePixPin.PixPinMax`)
+//! id es [`AUMID`]; con el paquete MSIX (identidad `PinDesk`)
 //! no hace falta: [`mostrar`] usa la del paquete ([`tiene_identidad`]).
 //!
 //! ## Los botones: un pedido por argumento
@@ -260,7 +260,7 @@ pub fn mostrar(t: &Toast) -> windows::core::Result<Mostrado> {
     let _com = crate::explorador::ComDelHilo::iniciar();
     let doc = XmlDocument::new()?;
     doc.LoadXml(&HSTRING::from(xml(t)))?;
-    // Con el paquete de identidad (MSIX, `ForgePixPin.PixPinMax`), Windows ya
+    // Con el paquete de identidad (MSIX, `PinDesk`), Windows ya
     // sabe quien es: sin id. Sin el, la id dada de alta en [`registrar`].
     let notificador = if tiene_identidad() {
         ToastNotificationManager::CreateToastNotifier()?

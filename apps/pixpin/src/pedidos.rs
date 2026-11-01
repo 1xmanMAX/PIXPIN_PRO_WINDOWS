@@ -328,7 +328,7 @@ pub enum Pedido {
     Ocr {
         ruta: PathBuf,
         /// Mas imagenes detras de `ruta` (15-oct, «Copiar texto (OCR)» del
-        /// Explorador con varias elegidas, `pixpinmax copiar-texto`): el
+        /// Explorador con varias elegidas, `pindesk copiar-texto`): el
         /// texto de todas, en orden, en un solo portapapeles.
         #[serde(default)]
         rutas: Vec<PathBuf>,
@@ -525,13 +525,14 @@ fn progreso_de(
             serde_json::Value::String(t) => t.clone(),
             serde_json::Value::Number(n) => n.to_string(),
             serde_json::Value::Null => continue,
-            _ if k == "pixpin" => continue,
+            _ if pixpin_shell::mensajero::es_campo_de_version(k) => continue,
             _ => return Err(format!("lectura-veloz: {k} no es un texto ni un numero")),
         };
         texto.insert(k.clone(), t);
     }
-    // `pixpin` es la version del protocolo de pedidos, no un campo suyo.
-    texto.remove("pixpin");
+    // `pindesk` (o el `pixpin` de antes) es la version del protocolo de
+    // pedidos, no un campo suyo.
+    texto.retain(|k, _| !pixpin_shell::mensajero::es_campo_de_version(k));
     pixpin_docs::lectura_veloz::Progreso::de_campos(&texto)
 }
 
@@ -2537,135 +2538,135 @@ mod pruebas {
     const EJEMPLOS: [(&str, &str); 39] = [
         (
             "pines",
-            r#"{"pixpin":1,"accion":"pines","operacion":"ocultar_mostrar"}"#,
+            r#"{"pindesk":1,"accion":"pines","operacion":"ocultar_mostrar"}"#,
         ),
         (
             "timeline",
-            r#"{"pixpin":1,"accion":"timeline","texto":"Llego el camion"}"#,
+            r#"{"pindesk":1,"accion":"timeline","texto":"Llego el camion"}"#,
         ),
         (
             "leer_en_voz",
-            r#"{"pixpin":1,"accion":"leer_en_voz","texto":"Hola.\nAdios.","titulo":"Wikipedia"}"#,
+            r#"{"pindesk":1,"accion":"leer_en_voz","texto":"Hola.\nAdios.","titulo":"Wikipedia"}"#,
         ),
         (
             "ocr",
-            r#"{"pixpin":1,"accion":"ocr","ruta":"C:\\a\\foto.png"}"#,
+            r#"{"pindesk":1,"accion":"ocr","ruta":"C:\\a\\foto.png"}"#,
         ),
         (
             "herramienta",
-            r#"{"pixpin":1,"accion":"herramienta","nombre":"anadir_tarea","args":{"texto":"pan"},"respuesta":"C:\\t\\pixpin-mcp\\1.json"}"#,
+            r#"{"pindesk":1,"accion":"herramienta","nombre":"anadir_tarea","args":{"texto":"pan"},"respuesta":"C:\\t\\pindesk-mcp\\1.json"}"#,
         ),
         (
             "asistente",
-            r#"{"pixpin":1,"accion":"asistente","texto":"apunta comprar yeso","proyecto":"pr-1"}"#,
+            r#"{"pindesk":1,"accion":"asistente","texto":"apunta comprar yeso","proyecto":"pr-1"}"#,
         ),
         (
             "automatizacion",
-            r#"{"pixpin":1,"accion":"automatizacion","operacion":"crear","receta":{"nombre":"Resumen","disparador":{"tipo":"a_la_hora","hora":"08:00"},"pasos":"[\"Resume mis tareas pendientes\"]"}}"#,
+            r#"{"pindesk":1,"accion":"automatizacion","operacion":"crear","receta":{"nombre":"Resumen","disparador":{"tipo":"a_la_hora","hora":"08:00"},"pasos":"[\"Resume mis tareas pendientes\"]"}}"#,
         ),
         (
             "tabla_nueva",
-            r#"{"pixpin":1,"accion":"tabla_nueva","nombre":"Costos","filas":[["Calle","Costo"],["Jr. Antisuyo","1 250,50"]],"cabecera":true}"#,
+            r#"{"pindesk":1,"accion":"tabla_nueva","nombre":"Costos","filas":[["Calle","Costo"],["Jr. Antisuyo","1 250,50"]],"cabecera":true}"#,
         ),
         (
             "sincronizar",
-            r#"{"pixpin":1,"accion":"sincronizar","aparato":"todos"}"#,
+            r#"{"pindesk":1,"accion":"sincronizar","aparato":"todos"}"#,
         ),
         (
             "enviar_al_movil",
-            r#"{"pixpin":1,"accion":"enviar_al_movil","aparato":"tel","imagenes":["C:\\a\\x.png"]}"#,
+            r#"{"pindesk":1,"accion":"enviar_al_movil","aparato":"tel","imagenes":["C:\\a\\x.png"]}"#,
         ),
         (
             "abrir",
-            r#"{"pixpin":1,"accion":"abrir","que":{"tipo":"proyecto"}}"#,
+            r#"{"pindesk":1,"accion":"abrir","que":{"tipo":"proyecto"}}"#,
         ),
-        ("chat", r#"{"pixpin":1,"accion":"chat","texto":"hola"}"#),
-        ("nota_nueva", r#"{"pixpin":1,"accion":"nota_nueva"}"#),
-        ("lienzo_nuevo", r#"{"pixpin":1,"accion":"lienzo_nuevo"}"#),
+        ("chat", r#"{"pindesk":1,"accion":"chat","texto":"hola"}"#),
+        ("nota_nueva", r#"{"pindesk":1,"accion":"nota_nueva"}"#),
+        ("lienzo_nuevo", r#"{"pindesk":1,"accion":"lienzo_nuevo"}"#),
         (
             "grabar",
-            r#"{"pixpin":1,"accion":"grabar","nombre":"reunion"}"#,
+            r#"{"pindesk":1,"accion":"grabar","nombre":"reunion"}"#,
         ),
         (
             "lista_nueva",
-            r#"{"pixpin":1,"accion":"lista_nueva","titulo":"Compra"}"#,
+            r#"{"pindesk":1,"accion":"lista_nueva","titulo":"Compra"}"#,
         ),
         (
             "anadir_tarea",
-            r#"{"pixpin":1,"accion":"anadir_tarea","texto":"pan"}"#,
+            r#"{"pindesk":1,"accion":"anadir_tarea","texto":"pan"}"#,
         ),
         (
             "marcar_tarea",
-            r#"{"pixpin":1,"accion":"marcar_tarea","codigo":"1","indice":0,"hecha":true}"#,
+            r#"{"pindesk":1,"accion":"marcar_tarea","codigo":"1","indice":0,"hecha":true}"#,
         ),
         (
             "ventana_principal",
-            r#"{"pixpin":1,"accion":"ventana_principal"}"#,
+            r#"{"pindesk":1,"accion":"ventana_principal"}"#,
         ),
-        ("pinear", r#"{"pixpin":1,"accion":"pinear","codigo":"1"}"#),
+        ("pinear", r#"{"pindesk":1,"accion":"pinear","codigo":"1"}"#),
         (
             "iconos",
-            r#"{"pixpin":1,"accion":"iconos","extensiones":["pdf","docx"]}"#,
+            r#"{"pindesk":1,"accion":"iconos","extensiones":["pdf","docx"]}"#,
         ),
-        ("soltar", r#"{"pixpin":1,"accion":"soltar"}"#),
+        ("soltar", r#"{"pindesk":1,"accion":"soltar"}"#),
         (
             "reproducir",
-            r#"{"pixpin":1,"accion":"reproducir","ruta":"C:\\a\\voz.m4a"}"#,
+            r#"{"pindesk":1,"accion":"reproducir","ruta":"C:\\a\\voz.m4a"}"#,
         ),
         (
             "leccion_nueva",
-            r#"{"pixpin":1,"accion":"leccion_nueva","texto":"Revisar la escala [img 01]","imagenes":["C:\\a\\escala.png"]}"#,
+            r#"{"pindesk":1,"accion":"leccion_nueva","texto":"Revisar la escala [img 01]","imagenes":["C:\\a\\escala.png"]}"#,
         ),
-        ("lecciones", r#"{"pixpin":1,"accion":"lecciones"}"#),
+        ("lecciones", r#"{"pindesk":1,"accion":"lecciones"}"#),
         (
             "mover_tarea",
-            r#"{"pixpin":1,"accion":"mover_tarea","codigo":"1","indice":0,"a_codigo":"2"}"#,
+            r#"{"pindesk":1,"accion":"mover_tarea","codigo":"1","indice":0,"a_codigo":"2"}"#,
         ),
         (
             "ventana",
-            r#"{"pixpin":1,"accion":"ventana","cual":"tareas"}"#,
+            r#"{"pindesk":1,"accion":"ventana","cual":"tareas"}"#,
         ),
-        ("capturar", r#"{"pixpin":1,"accion":"capturar"}"#),
-        ("pinear_ultima", r#"{"pixpin":1,"accion":"pinear_ultima"}"#),
+        ("capturar", r#"{"pindesk":1,"accion":"capturar"}"#),
+        ("pinear_ultima", r#"{"pindesk":1,"accion":"pinear_ultima"}"#),
         (
             "conservar_captura",
-            r#"{"pixpin":1,"accion":"conservar_captura","ruta":"C:\\c\\captura-0001.png"}"#,
+            r#"{"pindesk":1,"accion":"conservar_captura","ruta":"C:\\c\\captura-0001.png"}"#,
         ),
         (
             "borrar_captura",
-            r#"{"pixpin":1,"accion":"borrar_captura","ruta":"C:\\c\\captura-0001.png"}"#,
+            r#"{"pindesk":1,"accion":"borrar_captura","ruta":"C:\\c\\captura-0001.png"}"#,
         ),
         (
             "copiar_imagen",
-            r#"{"pixpin":1,"accion":"copiar_imagen","ruta":"C:\\a\\foto.jpg"}"#,
+            r#"{"pindesk":1,"accion":"copiar_imagen","ruta":"C:\\a\\foto.jpg"}"#,
         ),
         (
             "quitar_tarea",
-            r#"{"pixpin":1,"accion":"quitar_tarea","codigo":"1","indice":0}"#,
+            r#"{"pindesk":1,"accion":"quitar_tarea","codigo":"1","indice":0}"#,
         ),
         (
             "corregir_tarea",
-            r#"{"pixpin":1,"accion":"corregir_tarea","codigo":"1","indice":0,"texto":"pan integral"}"#,
+            r#"{"pindesk":1,"accion":"corregir_tarea","codigo":"1","indice":0,"texto":"pan integral"}"#,
         ),
         (
             "borrar_lista",
-            r#"{"pixpin":1,"accion":"borrar_lista","codigo":"1"}"#,
+            r#"{"pindesk":1,"accion":"borrar_lista","codigo":"1"}"#,
         ),
         (
             "posponer",
-            r#"{"pixpin":1,"accion":"posponer","mensaje":"m1","indice":2,"minutos":10}"#,
+            r#"{"pindesk":1,"accion":"posponer","mensaje":"m1","indice":2,"minutos":10}"#,
         ),
         (
             "al_lienzo",
-            r#"{"pixpin":1,"accion":"al_lienzo","lienzo":"Plano","texto":"la puerta"}"#,
+            r#"{"pindesk":1,"accion":"al_lienzo","lienzo":"Plano","texto":"la puerta"}"#,
         ),
         (
             "carpeta_paginas",
-            r#"{"pixpin":1,"accion":"carpeta_paginas","hacer":"pagina","nombre":"Diario"}"#,
+            r#"{"pindesk":1,"accion":"carpeta_paginas","hacer":"pagina","nombre":"Diario"}"#,
         ),
         (
             "lectura_veloz",
-            r#"{"pixpin":1,"accion":"lectura_veloz","doc":"uid-1","ruta":"C:\\Libros\\Tesis.pdf","tipo":"pdf","pagina":4,"frac":"0.25","fraccion":0.3,"t":1761562800000}"#,
+            r#"{"pindesk":1,"accion":"lectura_veloz","doc":"uid-1","ruta":"C:\\Libros\\Tesis.pdf","tipo":"pdf","pagina":4,"frac":"0.25","fraccion":0.3,"t":1761562800000}"#,
         ),
     ];
 
@@ -2692,8 +2693,8 @@ mod pruebas {
         assert_eq!(progreso_de(&campos).unwrap(), p);
         // Caso negativo: una ruta de red o un objeto donde va un numero.
         for malo in [
-            r#"{"pixpin":1,"accion":"lectura_veloz","doc":"a","ruta":"\\\\srv\\x.pdf","tipo":"pdf","pagina":1}"#,
-            r#"{"pixpin":1,"accion":"lectura_veloz","doc":"a","ruta":"C:\\x.pdf","tipo":"pdf","pagina":{"n":1}}"#,
+            r#"{"pindesk":1,"accion":"lectura_veloz","doc":"a","ruta":"\\\\srv\\x.pdf","tipo":"pdf","pagina":1}"#,
+            r#"{"pindesk":1,"accion":"lectura_veloz","doc":"a","ruta":"C:\\x.pdf","tipo":"pdf","pagina":{"n":1}}"#,
         ] {
             let Ok(Pedido::LecturaVeloz { campos }) = leer(malo) else {
                 panic!("{malo}");
@@ -2738,8 +2739,8 @@ mod pruebas {
 
     #[test]
     fn sin_proyecto_o_con_null_es_mensajes_guardados() {
-        let a = leer(r#"{"pixpin":1,"accion":"chat","texto":"x","proyecto":null}"#).unwrap();
-        let b = leer(r#"{"pixpin":1,"accion":"chat","texto":"x"}"#).unwrap();
+        let a = leer(r#"{"pindesk":1,"accion":"chat","texto":"x","proyecto":null}"#).unwrap();
+        let b = leer(r#"{"pindesk":1,"accion":"chat","texto":"x"}"#).unwrap();
         assert_eq!(a, b);
         assert_eq!(
             a,
@@ -2755,7 +2756,7 @@ mod pruebas {
     #[test]
     fn abrir_lee_cada_tipo_y_los_campos_de_mas_se_ignoran() {
         let p = leer(
-            r#"{"pixpin":1,"accion":"abrir","extra":true,
+            r#"{"pindesk":1,"accion":"abrir","extra":true,
                 "que":{"tipo":"hoja","proyecto":"pr-1","referencia":"dib-2","otro":1}}"#,
         )
         .unwrap();
@@ -2769,7 +2770,7 @@ mod pruebas {
             }
         );
         let f = leer(
-            r#"{"pixpin":1,"accion":"abrir","que":{"tipo":"fichero","ruta":"C:\\a b\\ñ.pdf"}}"#,
+            r#"{"pindesk":1,"accion":"abrir","que":{"tipo":"fichero","ruta":"C:\\a b\\ñ.pdf"}}"#,
         )
         .unwrap();
         assert_eq!(
@@ -2784,7 +2785,7 @@ mod pruebas {
             }
         );
         // Con su pagina (la cita del asistente).
-        let f = leer(r#"{"pixpin":1,"accion":"abrir","que":{"tipo":"fichero","ruta":"C:\\t.pdf","pagina":12}}"#)
+        let f = leer(r#"{"pindesk":1,"accion":"abrir","que":{"tipo":"fichero","ruta":"C:\\t.pdf","pagina":12}}"#)
             .unwrap();
         assert_eq!(
             f,
@@ -2799,7 +2800,7 @@ mod pruebas {
         );
         // Llevando a un texto (PDF) o a un sitio del plano (el asistente).
         let f = leer(
-            r#"{"pixpin":1,"accion":"abrir","que":{"tipo":"fichero","ruta":"C:\\p.dwg","buscar":"JR. ANTISUYO","zona":[10.5,-3,80]}}"#,
+            r#"{"pindesk":1,"accion":"abrir","que":{"tipo":"fichero","ruta":"C:\\p.dwg","buscar":"JR. ANTISUYO","zona":[10.5,-3,80]}}"#,
         )
         .unwrap();
         assert_eq!(
@@ -2814,7 +2815,7 @@ mod pruebas {
             }
         );
         // Caso negativo: una zona sin sus tres numeros no se inventa.
-        assert!(leer(r#"{"pixpin":1,"accion":"abrir","que":{"tipo":"fichero","ruta":"C:\\p.dwg","zona":[1,2]}}"#).is_err());
+        assert!(leer(r#"{"pindesk":1,"accion":"abrir","que":{"tipo":"fichero","ruta":"C:\\p.dwg","zona":[1,2]}}"#).is_err());
         // Y el pedido que arma el asistente se lee igual.
         let p = pixpin_ia::documentos::Abrir::Fichero {
             ruta: PathBuf::from(r"C:\t.pdf"),
@@ -2848,12 +2849,12 @@ mod pruebas {
         // Casos negativos: cada uno pasa el vistazo de la ventana (version y
         // accion buenas) pero no se puede hacer.
         for json in [
-            r#"{"pixpin":1,"accion":"chat"}"#,
-            r#"{"pixpin":1,"accion":"grabar"}"#,
-            r#"{"pixpin":1,"accion":"marcar_tarea","codigo":"1","indice":-1,"hecha":true}"#,
-            r#"{"pixpin":1,"accion":"marcar_tarea","codigo":"1","indice":0}"#,
-            r#"{"pixpin":1,"accion":"abrir","que":{"tipo":"universo"}}"#,
-            r#"{"pixpin":1,"accion":"abrir","que":{"tipo":"mensaje","proyecto":"p"}}"#,
+            r#"{"pindesk":1,"accion":"chat"}"#,
+            r#"{"pindesk":1,"accion":"grabar"}"#,
+            r#"{"pindesk":1,"accion":"marcar_tarea","codigo":"1","indice":-1,"hecha":true}"#,
+            r#"{"pindesk":1,"accion":"marcar_tarea","codigo":"1","indice":0}"#,
+            r#"{"pindesk":1,"accion":"abrir","que":{"tipo":"universo"}}"#,
+            r#"{"pindesk":1,"accion":"abrir","que":{"tipo":"mensaje","proyecto":"p"}}"#,
         ] {
             assert!(matches!(leer(json), Err(Fallo::Roto(_))), "{json}");
         }
@@ -2904,7 +2905,7 @@ mod pruebas {
     #[test]
     fn un_chat_con_archivos_los_adjunta_como_al_soltarlos() {
         let p = leer(
-            r#"{"pixpin":1,"accion":"chat","texto":"plano [archivo 01]","archivos":["C:\\a\\plano.pdf"]}"#,
+            r#"{"pindesk":1,"accion":"chat","texto":"plano [archivo 01]","archivos":["C:\\a\\plano.pdf"]}"#,
         )
         .unwrap();
         assert!(matches!(
@@ -2963,7 +2964,7 @@ mod pruebas {
     #[test]
     fn una_leccion_con_imagenes_las_lee_ya_y_quita_sus_fichas_del_texto() {
         let p = leer(
-            r#"{"pixpin":1,"accion":"leccion_nueva","texto":"Mirar el plano [img 01] antes","imagenes":["C:\\a\\uno.png"]}"#,
+            r#"{"pindesk":1,"accion":"leccion_nueva","texto":"Mirar el plano [img 01] antes","imagenes":["C:\\a\\uno.png"]}"#,
         )
         .unwrap();
         assert_eq!(
@@ -2976,7 +2977,7 @@ mod pruebas {
         );
         // Sin `imagenes` sigue valiendo, como antes.
         assert!(matches!(
-            leer(r#"{"pixpin":1,"accion":"leccion_nueva"}"#),
+            leer(r#"{"pindesk":1,"accion":"leccion_nueva"}"#),
             Ok(Pedido::LeccionNueva { imagenes, .. }) if imagenes.is_empty()
         ));
         assert_eq!(
@@ -3205,7 +3206,7 @@ mod pruebas {
         );
         // El pedido que la crea se lee.
         assert!(matches!(
-            leer(r#"{"pixpin":1,"accion":"tabla_nueva","nombre":"x","proyecto":"no-esta"}"#)
+            leer(r#"{"pindesk":1,"accion":"tabla_nueva","nombre":"x","proyecto":"no-esta"}"#)
                 .map(|p| matches!(p, Pedido::TablaNueva { .. })),
             Ok(true)
         ));
@@ -3215,7 +3216,7 @@ mod pruebas {
     #[test]
     fn quitar_tarea_y_borrar_lista_se_leen() {
         assert_eq!(
-            leer(r#"{"pixpin":1,"accion":"quitar_tarea","proyecto":"p","codigo":"1","indice":2}"#)
+            leer(r#"{"pindesk":1,"accion":"quitar_tarea","proyecto":"p","codigo":"1","indice":2}"#)
                 .unwrap(),
             Pedido::QuitarTarea {
                 proyecto: Some("p".into()),
@@ -3224,7 +3225,7 @@ mod pruebas {
             }
         );
         assert_eq!(
-            leer(r#"{"pixpin":1,"accion":"borrar_lista","proyecto":null,"codigo":"9"}"#).unwrap(),
+            leer(r#"{"pindesk":1,"accion":"borrar_lista","proyecto":null,"codigo":"9"}"#).unwrap(),
             Pedido::BorrarLista {
                 proyecto: None,
                 codigo: "9".into()
@@ -3232,10 +3233,10 @@ mod pruebas {
         );
         // Casos negativos: sin lo que tocan, o con un numero imposible.
         for json in [
-            r#"{"pixpin":1,"accion":"quitar_tarea","codigo":"1"}"#,
-            r#"{"pixpin":1,"accion":"quitar_tarea","indice":0}"#,
-            r#"{"pixpin":1,"accion":"quitar_tarea","codigo":"1","indice":-1}"#,
-            r#"{"pixpin":1,"accion":"borrar_lista"}"#,
+            r#"{"pindesk":1,"accion":"quitar_tarea","codigo":"1"}"#,
+            r#"{"pindesk":1,"accion":"quitar_tarea","indice":0}"#,
+            r#"{"pindesk":1,"accion":"quitar_tarea","codigo":"1","indice":-1}"#,
+            r#"{"pindesk":1,"accion":"borrar_lista"}"#,
         ] {
             assert!(matches!(leer(json), Err(Fallo::Roto(_))), "{json}");
         }
@@ -3369,7 +3370,7 @@ mod pruebas {
     #[test]
     fn pinear_e_iconos_se_leen() {
         assert_eq!(
-            leer(r#"{"pixpin":1,"accion":"pinear","ruta":"C:\\a.png"}"#).unwrap(),
+            leer(r#"{"pindesk":1,"accion":"pinear","ruta":"C:\\a.png"}"#).unwrap(),
             Pedido::Pinear {
                 ruta: Some(PathBuf::from(r"C:\a.png")),
                 proyecto: None,
@@ -3377,14 +3378,14 @@ mod pruebas {
             }
         );
         assert_eq!(
-            leer(r#"{"pixpin":1,"accion":"iconos","extensiones":["pdf"]}"#).unwrap(),
+            leer(r#"{"pindesk":1,"accion":"iconos","extensiones":["pdf"]}"#).unwrap(),
             Pedido::Iconos {
                 extensiones: vec!["pdf".into()]
             }
         );
         // Caso negativo: «iconos» sin la lista no es un pedido.
         assert!(matches!(
-            leer(r#"{"pixpin":1,"accion":"iconos"}"#),
+            leer(r#"{"pindesk":1,"accion":"iconos"}"#),
             Err(Fallo::Roto(_))
         ));
     }
@@ -3422,11 +3423,11 @@ mod pruebas {
     #[test]
     fn anadir_tarea_con_imagenes_las_copia_al_chat_de_la_lista() {
         // El campo se lee; sin el, la lista vacia (los pedidos de antes).
-        let p = leer(r#"{"pixpin":1,"accion":"anadir_tarea","texto":"yeso [img 01]","imagenes":["C:\\a\\x.png"]}"#).unwrap();
+        let p = leer(r#"{"pindesk":1,"accion":"anadir_tarea","texto":"yeso [img 01]","imagenes":["C:\\a\\x.png"]}"#).unwrap();
         assert!(
             matches!(&p, Pedido::AnadirTarea { imagenes, .. } if imagenes == &[PathBuf::from("C:\\a\\x.png")])
         );
-        let p = leer(r#"{"pixpin":1,"accion":"anadir_tarea","texto":"pan"}"#).unwrap();
+        let p = leer(r#"{"pindesk":1,"accion":"anadir_tarea","texto":"pan"}"#).unwrap();
         assert!(matches!(&p, Pedido::AnadirTarea { imagenes, .. } if imagenes.is_empty()));
 
         let (raiz, f) = almacen_de_prueba("tarea-imagenes");
@@ -3598,23 +3599,23 @@ mod pruebas {
     #[test]
     fn ventana_capturar_y_los_de_capturas_se_leen() {
         assert_eq!(
-            leer(r#"{"pixpin":1,"accion":"ventana","cual":"galeria"}"#).unwrap(),
+            leer(r#"{"pindesk":1,"accion":"ventana","cual":"galeria"}"#).unwrap(),
             Pedido::Ventana {
                 cual: Cual::Galeria
             }
         );
         assert_eq!(
-            leer(r#"{"pixpin":1,"accion":"capturar","modo":"zona"}"#).unwrap(),
+            leer(r#"{"pindesk":1,"accion":"capturar","modo":"zona"}"#).unwrap(),
             Pedido::Capturar {
                 modo: Some(ModoCaptura::Zona)
             }
         );
         assert_eq!(
-            leer(r#"{"pixpin":1,"accion":"capturar"}"#).unwrap(),
+            leer(r#"{"pindesk":1,"accion":"capturar"}"#).unwrap(),
             Pedido::Capturar { modo: None }
         );
         assert_eq!(
-            leer(r#"{"pixpin":1,"accion":"mover_tarea","proyecto":"p","codigo":"1","indice":2,"a_codigo":"9"}"#)
+            leer(r#"{"pindesk":1,"accion":"mover_tarea","proyecto":"p","codigo":"1","indice":2,"a_codigo":"9"}"#)
                 .unwrap(),
             Pedido::MoverTarea {
                 proyecto: Some("p".into()),
@@ -3627,13 +3628,13 @@ mod pruebas {
         // Casos negativos: una ventana o un modo que no existen, y los que
         // les falta lo que tocan.
         for json in [
-            r#"{"pixpin":1,"accion":"ventana","cual":"universo"}"#,
-            r#"{"pixpin":1,"accion":"ventana"}"#,
-            r#"{"pixpin":1,"accion":"capturar","modo":"pantalla"}"#,
-            r#"{"pixpin":1,"accion":"mover_tarea","codigo":"1","indice":0}"#,
-            r#"{"pixpin":1,"accion":"conservar_captura"}"#,
-            r#"{"pixpin":1,"accion":"borrar_captura"}"#,
-            r#"{"pixpin":1,"accion":"copiar_imagen"}"#,
+            r#"{"pindesk":1,"accion":"ventana","cual":"universo"}"#,
+            r#"{"pindesk":1,"accion":"ventana"}"#,
+            r#"{"pindesk":1,"accion":"capturar","modo":"pantalla"}"#,
+            r#"{"pindesk":1,"accion":"mover_tarea","codigo":"1","indice":0}"#,
+            r#"{"pindesk":1,"accion":"conservar_captura"}"#,
+            r#"{"pindesk":1,"accion":"borrar_captura"}"#,
+            r#"{"pindesk":1,"accion":"copiar_imagen"}"#,
         ] {
             assert!(matches!(leer(json), Err(Fallo::Roto(_))), "{json}");
         }
@@ -3758,7 +3759,7 @@ mod pruebas {
     fn enviar_al_movil_se_lee_con_sus_imagenes_y_archivos() {
         assert_eq!(
             leer(
-                r#"{"pixpin":1,"accion":"enviar_al_movil","aparato":"tel","imagenes":["C:\\a\\x.png"],"archivos":["C:\\a\\y.pdf"],"texto":"[img 01]"}"#
+                r#"{"pindesk":1,"accion":"enviar_al_movil","aparato":"tel","imagenes":["C:\\a\\x.png"],"archivos":["C:\\a\\y.pdf"],"texto":"[img 01]"}"#
             )
             .unwrap(),
             Pedido::EnviarAlMovil {
@@ -3768,14 +3769,14 @@ mod pruebas {
             }
         );
         assert_eq!(
-            leer(r#"{"pixpin":1,"accion":"ventana","cual":"sincronizar"}"#).unwrap(),
+            leer(r#"{"pindesk":1,"accion":"ventana","cual":"sincronizar"}"#).unwrap(),
             Pedido::Ventana {
                 cual: Cual::Sincronizar
             }
         );
         // Caso negativo: sin aparato no se sabe a quien mandarlo.
         assert!(matches!(
-            leer(r#"{"pixpin":1,"accion":"enviar_al_movil","imagenes":["C:\\a\\x.png"]}"#),
+            leer(r#"{"pindesk":1,"accion":"enviar_al_movil","imagenes":["C:\\a\\x.png"]}"#),
             Err(Fallo::Roto(_))
         ));
     }
@@ -3813,7 +3814,7 @@ mod pruebas {
             ("gif", ModoCaptura::Gif),
         ] {
             let p = leer(&format!(
-                r#"{{"pixpin":1,"accion":"capturar","modo":"{modo}"}}"#
+                r#"{{"pindesk":1,"accion":"capturar","modo":"{modo}"}}"#
             ))
             .unwrap();
             assert_eq!(p, Pedido::Capturar { modo: Some(debe) }, "{modo}");
@@ -3827,29 +3828,29 @@ mod pruebas {
             pixpin_store::comandos::Comando::CopiarTexto
         );
         assert_eq!(
-            leer(r#"{"pixpin":1,"accion":"ventana","cual":"ajustes"}"#).unwrap(),
+            leer(r#"{"pindesk":1,"accion":"ventana","cual":"ajustes"}"#).unwrap(),
             Pedido::Ventana {
                 cual: Cual::Ajustes
             }
         );
         assert_eq!(
-            leer(r#"{"pixpin":1,"accion":"ventana_principal","proyecto":"pr-1"}"#).unwrap(),
+            leer(r#"{"pindesk":1,"accion":"ventana_principal","proyecto":"pr-1"}"#).unwrap(),
             Pedido::VentanaPrincipal {
                 proyecto: Some("pr-1".into())
             }
         );
         assert_eq!(
-            leer(r#"{"pixpin":1,"accion":"ventana_principal"}"#).unwrap(),
+            leer(r#"{"pindesk":1,"accion":"ventana_principal"}"#).unwrap(),
             Pedido::VentanaPrincipal { proyecto: None }
         );
         assert_eq!(
-            leer(r#"{"pixpin":1,"accion":"pines","operacion":"cerrar"}"#).unwrap(),
+            leer(r#"{"pindesk":1,"accion":"pines","operacion":"cerrar"}"#).unwrap(),
             Pedido::Pines {
                 operacion: OperacionPines::Cerrar
             }
         );
         assert_eq!(
-            leer(r#"{"pixpin":1,"accion":"leer_en_voz","parar":true}"#).unwrap(),
+            leer(r#"{"pindesk":1,"accion":"leer_en_voz","parar":true}"#).unwrap(),
             Pedido::LeerEnVoz {
                 texto: None,
                 ruta: None,
@@ -3858,24 +3859,24 @@ mod pruebas {
             }
         );
         assert_eq!(
-            leer(r#"{"pixpin":1,"accion":"timeline"}"#).unwrap(),
+            leer(r#"{"pindesk":1,"accion":"timeline"}"#).unwrap(),
             Pedido::Timeline { texto: None }
         );
         // Casos negativos: un modo, una ventana o una operacion que no existen.
         assert!(matches!(
-            leer(r#"{"pixpin":1,"accion":"capturar","modo":"pantalla_entera"}"#),
+            leer(r#"{"pindesk":1,"accion":"capturar","modo":"pantalla_entera"}"#),
             Err(Fallo::Roto(_))
         ));
         assert!(matches!(
-            leer(r#"{"pixpin":1,"accion":"ventana","cual":"cocina"}"#),
+            leer(r#"{"pindesk":1,"accion":"ventana","cual":"cocina"}"#),
             Err(Fallo::Roto(_))
         ));
         assert!(matches!(
-            leer(r#"{"pixpin":1,"accion":"pines","operacion":"borrar_todo"}"#),
+            leer(r#"{"pindesk":1,"accion":"pines","operacion":"borrar_todo"}"#),
             Err(Fallo::Roto(_))
         ));
         assert!(matches!(
-            leer(r#"{"pixpin":1,"accion":"pines"}"#),
+            leer(r#"{"pindesk":1,"accion":"pines"}"#),
             Err(Fallo::Roto(_))
         ));
     }
@@ -3900,7 +3901,7 @@ mod pruebas {
             textos: &textos,
         };
         let h = atender(
-            r#"{"pixpin":1,"accion":"timeline","texto":"Llegó el camión de cemento. Eran 40 bolsas."}"#,
+            r#"{"pindesk":1,"accion":"timeline","texto":"Llegó el camión de cemento. Eran 40 bolsas."}"#,
             &cx,
         );
         assert_eq!(
@@ -3916,9 +3917,12 @@ mod pruebas {
             momentos[0]
         );
         COMANDOS_EN_PRUEBAS.lock().unwrap().clear();
-        atender(r#"{"pixpin":1,"accion":"capturar","modo":"gif"}"#, &cx);
-        atender(r#"{"pixpin":1,"accion":"pines","operacion":"cerrar"}"#, &cx);
-        atender(r#"{"pixpin":1,"accion":"ventana","cual":"ajustes"}"#, &cx);
+        atender(r#"{"pindesk":1,"accion":"capturar","modo":"gif"}"#, &cx);
+        atender(
+            r#"{"pindesk":1,"accion":"pines","operacion":"cerrar"}"#,
+            &cx,
+        );
+        atender(r#"{"pindesk":1,"accion":"ventana","cual":"ajustes"}"#, &cx);
         {
             use pixpin_store::comandos::Comando;
             let c = COMANDOS_EN_PRUEBAS.lock().unwrap().clone();
@@ -3932,16 +3936,16 @@ mod pruebas {
         }
         // Negativos: un chat que no esta, leer un fichero que no esta.
         let h = atender(
-            r#"{"pixpin":1,"accion":"ventana_principal","proyecto":"no-esta"}"#,
+            r#"{"pindesk":1,"accion":"ventana_principal","proyecto":"no-esta"}"#,
             &cx,
         );
         assert!(h.aviso.is_some());
         let h = atender(
-            r#"{"pixpin":1,"accion":"leer_en_voz","ruta":"C:\no\esta.pdf"}"#,
+            r#"{"pindesk":1,"accion":"leer_en_voz","ruta":"C:\no\esta.pdf"}"#,
             &cx,
         );
         assert!(h.aviso.is_some());
-        let h = atender(r#"{"pixpin":1,"accion":"leer_en_voz"}"#, &cx);
+        let h = atender(r#"{"pindesk":1,"accion":"leer_en_voz"}"#, &cx);
         assert!(h.aviso.is_some(), "sin texto ni ruta no hay nada que leer");
         let _ = ficha;
         let _ = std::fs::remove_dir_all(&raiz);
@@ -3969,7 +3973,7 @@ mod pruebas {
             textos: &textos,
         };
         COMANDOS_EN_PRUEBAS.lock().unwrap().clear();
-        atender(r#"{"pixpin":1,"accion":"ventana","cual":"clase"}"#, &cx);
+        atender(r#"{"pindesk":1,"accion":"ventana","cual":"clase"}"#, &cx);
         assert!(
             COMANDOS_EN_PRUEBAS
                 .lock()
@@ -3978,7 +3982,7 @@ mod pruebas {
         );
 
         assert_eq!(
-            leer(r#"{"pixpin":1,"accion":"carpeta_paginas","hacer":"abrir","carpeta":"7"}"#)
+            leer(r#"{"pindesk":1,"accion":"carpeta_paginas","hacer":"abrir","carpeta":"7"}"#)
                 .unwrap(),
             Pedido::CarpetaPaginas {
                 hacer: HacerCarpeta::Abrir,
@@ -3988,7 +3992,7 @@ mod pruebas {
             }
         );
         assert!(matches!(
-            leer(r#"{"pixpin":1,"accion":"carpeta_paginas","hacer":"borrar"}"#),
+            leer(r#"{"pindesk":1,"accion":"carpeta_paginas","hacer":"borrar"}"#),
             Err(Fallo::Roto(_))
         ));
 
@@ -4013,7 +4017,7 @@ mod pruebas {
 
         // Negativo: una carpeta que no esta se avisa y no se crea ninguna.
         let h = atender(
-            r#"{"pixpin":1,"accion":"carpeta_paginas","hacer":"pagina","nombre":"No existe"}"#,
+            r#"{"pindesk":1,"accion":"carpeta_paginas","hacer":"pagina","nombre":"No existe"}"#,
             &cx,
         );
         assert!(h.aviso.is_some());
@@ -4048,7 +4052,7 @@ mod pruebas {
             textos: &textos,
         };
         let h = atender(
-            r##"{"pixpin":1,"accion":"anadir_tarea","texto":"#casa llamar al banco muy urgente"}"##,
+            r##"{"pindesk":1,"accion":"anadir_tarea","texto":"#casa llamar al banco muy urgente"}"##,
             &cx,
         );
         assert!(
@@ -4066,7 +4070,7 @@ mod pruebas {
         assert_eq!(textos_de, ["llamar al banco ⏫ #casa"]);
         // Normal: sin marca.
         atender(
-            r#"{"pixpin":1,"accion":"anadir_tarea","texto":"comprar pan"}"#,
+            r#"{"pindesk":1,"accion":"anadir_tarea","texto":"comprar pan"}"#,
             &cx,
         );
         let (listas, _) = crate::tareas::reunir(&raiz);
@@ -4092,7 +4096,7 @@ mod pruebas {
     #[test]
     fn leer_en_voz_y_ocr_se_leen_y_lo_que_falta_es_roto() {
         assert_eq!(
-            leer(r#"{"pixpin":1,"accion":"leer_en_voz","texto":"hola"}"#).unwrap(),
+            leer(r#"{"pindesk":1,"accion":"leer_en_voz","texto":"hola"}"#).unwrap(),
             Pedido::LeerEnVoz {
                 texto: Some("hola".into()),
                 ruta: None,
@@ -4101,7 +4105,7 @@ mod pruebas {
             }
         );
         assert_eq!(
-            leer(r#"{"pixpin":1,"accion":"ocr","ruta":"C:\\a\\b.png"}"#).unwrap(),
+            leer(r#"{"pindesk":1,"accion":"ocr","ruta":"C:\\a\\b.png"}"#).unwrap(),
             Pedido::Ocr {
                 ruta: PathBuf::from(r"C:\a\b.png"),
                 rutas: Vec::new()
@@ -4109,7 +4113,7 @@ mod pruebas {
         );
         // Varias (el menu del Explorador): la primera y las demas.
         assert_eq!(
-            leer(r#"{"pixpin":1,"accion":"ocr","ruta":"C:\\a\\b.png","rutas":["C:\\a\\c.png"]}"#)
+            leer(r#"{"pindesk":1,"accion":"ocr","ruta":"C:\\a\\b.png","rutas":["C:\\a\\c.png"]}"#)
                 .unwrap(),
             Pedido::Ocr {
                 ruta: PathBuf::from(r"C:\a\b.png"),
@@ -4118,7 +4122,7 @@ mod pruebas {
         );
         // Caso negativo: un OCR sin ruta no es un pedido que se pueda hacer.
         assert!(matches!(
-            leer(r#"{"pixpin":1,"accion":"ocr"}"#),
+            leer(r#"{"pindesk":1,"accion":"ocr"}"#),
             Err(Fallo::Roto(_))
         ));
     }
@@ -4188,7 +4192,7 @@ mod pruebas {
             (raiz.join("no-esta.png"), "pedido-sin-imagen"),
             (texto, "pedido-no-es-imagen"),
         ] {
-            let json = serde_json::json!({"pixpin":1,"accion":"ocr","ruta":ruta}).to_string();
+            let json = serde_json::json!({"pindesk":1,"accion":"ocr","ruta":ruta}).to_string();
             let hecho = atender(&json, &cx);
             let esperado = Fallo::aviso(
                 &if clave == "pedido-sin-imagen" {
@@ -4201,7 +4205,7 @@ mod pruebas {
             assert_eq!(hecho.aviso.as_deref(), Some(esperado.as_str()), "{clave}");
         }
         // Y leer sin texto se dice sin arrancar la voz.
-        let hecho = atender(r#"{"pixpin":1,"accion":"leer_en_voz","texto":"  "}"#, &cx);
+        let hecho = atender(r#"{"pindesk":1,"accion":"leer_en_voz","texto":"  "}"#, &cx);
         assert_eq!(hecho.aviso, Some(t.t("pedido-nada-que-leer")));
         let _ = std::fs::remove_dir_all(&raiz);
     }

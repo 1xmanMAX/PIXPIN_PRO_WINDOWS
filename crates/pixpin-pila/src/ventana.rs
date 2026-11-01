@@ -604,7 +604,7 @@ impl IconoPila {
         let hwnd = unsafe {
             CreateWindowExW(
                 WS_EX_TOPMOST | WS_EX_NOREDIRECTIONBITMAP | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
-                w!("PixPinPila"),
+                w!("PinDeskPila"),
                 w!(""),
                 WS_POPUP,
                 sitio.x,
@@ -744,7 +744,7 @@ fn registrar_clase() {
         let clase = WNDCLASSW {
             lpfnWndProc: Some(procedimiento_pila),
             hInstance: GetModuleHandleW(None).expect("modulo propio").into(),
-            lpszClassName: w!("PixPinPila"),
+            lpszClassName: w!("PinDeskPila"),
             ..Default::default()
         };
         RegisterClassW(&clase);

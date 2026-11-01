@@ -4463,7 +4463,7 @@ mod pruebas {
     fn cx(t: &Catalogo) -> Contexto<'_> {
         Contexto {
             t,
-            carpeta: r"C:\Users\Max\AppData\Roaming\PixPinMax\capturas".into(),
+            carpeta: r"C:\Users\Max\AppData\Roaming\PinDesk\capturas".into(),
             automatizaciones: Vec::new(),
             escala: pixpin_ui::chat::ESCALA_POR_DEFECTO,
         }

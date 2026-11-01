@@ -151,7 +151,7 @@ fn registrar() {
         let clase = WNDCLASSW {
             lpfnWndProc: Some(procedimiento_guia),
             hInstance: GetModuleHandleW(None).expect("modulo propio").into(),
-            lpszClassName: w!("PixPinGuia"),
+            lpszClassName: w!("PinDeskGuia"),
             // El azul de acento (#0A84FF) en BGR.
             hbrBackground: CreateSolidBrush(COLORREF(0x00FF_840A)),
             ..Default::default()
@@ -170,7 +170,7 @@ fn linea(i: usize) -> Option<HWND> {
     let h = unsafe {
         CreateWindowExW(
             WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE | WS_EX_LAYERED | WS_EX_TRANSPARENT,
-            w!("PixPinGuia"),
+            w!("PinDeskGuia"),
             w!(""),
             WS_POPUP,
             0,

@@ -5,7 +5,7 @@
 //!
 //! Cada boton es un **pedido** (`docs/protocolo-pedidos.md`), el mismo que
 //! mandaria Flow: Windows lo devuelve a PixPin por el protocolo
-//! `pixpinmax:` (ver `pixpin_shell::notificacion`). Aqui solo se arma el
+//! `pindesk:` (ver `pixpin_shell::notificacion`). Aqui solo se arma el
 //! toast: es puro y se prueba sin Windows; quien avisa lo saca con
 //! `notificacion::mostrar_o` y cae a su aviso de siempre si no sale.
 
@@ -19,7 +19,7 @@ use serde_json::{Value, json};
 pub const POSPONER_MIN: u32 = 10;
 
 fn abrir_mensaje(proyecto: &str, codigo: &str) -> Value {
-    json!({ "pixpin": 1, "accion": "abrir", "que": { "tipo": "mensaje", "proyecto": proyecto, "codigo": codigo } })
+    json!({ "pindesk": 1, "accion": "abrir", "que": { "tipo": "mensaje", "proyecto": proyecto, "codigo": codigo } })
 }
 
 /// **La de un recordatorio que sono.** `proyecto`: la carpeta del chat;
@@ -37,18 +37,18 @@ pub fn de_recordatorio(
         Some((lista, indice)) => {
             botones.push(Boton::nuevo(
                 t.t("notif-hecha"),
-                json!({ "pixpin": 1, "accion": "marcar_tarea", "proyecto": proyecto, "codigo": lista, "indice": indice, "hecha": true }),
+                json!({ "pindesk": 1, "accion": "marcar_tarea", "proyecto": proyecto, "codigo": lista, "indice": indice, "hecha": true }),
             ));
             botones.push(Boton::nuevo(
                 t.t("notif-mas-10"),
-                json!({ "pixpin": 1, "accion": "posponer", "proyecto": proyecto, "mensaje": lista, "indice": indice, "minutos": POSPONER_MIN }),
+                json!({ "pindesk": 1, "accion": "posponer", "proyecto": proyecto, "mensaje": lista, "indice": indice, "minutos": POSPONER_MIN }),
             ));
             abrir_mensaje(proyecto, lista)
         }
         None => {
             botones.push(Boton::nuevo(
                 t.t("notif-mas-10"),
-                json!({ "pixpin": 1, "accion": "posponer", "proyecto": proyecto, "mensaje": id, "minutos": POSPONER_MIN }),
+                json!({ "pindesk": 1, "accion": "posponer", "proyecto": proyecto, "mensaje": id, "minutos": POSPONER_MIN }),
             ));
             abrir_mensaje(proyecto, id)
         }
@@ -72,7 +72,7 @@ pub fn proyecto_de(carpeta: &Path) -> Option<String> {
 /// imagen, «Conservar» y «Abrir» (como pin). Varias: cuantas y la galeria.
 /// `se_van`: la ruta y cuando se va (ms locales).
 pub fn de_capturas(t: &Catalogo, se_van: &[(PathBuf, i64)], ahora_local: i64) -> Option<Toast> {
-    let galeria = json!({ "pixpin": 1, "accion": "ventana", "cual": "galeria" });
+    let galeria = json!({ "pindesk": 1, "accion": "ventana", "cual": "galeria" });
     match se_van {
         [] => None,
         [(ruta, cuando)] => {
@@ -89,11 +89,11 @@ pub fn de_capturas(t: &Catalogo, se_van: &[(PathBuf, i64)], ahora_local: i64) ->
                 botones: vec![
                     Boton::nuevo(
                         t.t("notif-conservar"),
-                        json!({ "pixpin": 1, "accion": "conservar_captura", "ruta": ruta }),
+                        json!({ "pindesk": 1, "accion": "conservar_captura", "ruta": ruta }),
                     ),
                     Boton::nuevo(
                         t.t("notif-abrir"),
-                        json!({ "pixpin": 1, "accion": "pinear", "ruta": ruta }),
+                        json!({ "pindesk": 1, "accion": "pinear", "ruta": ruta }),
                     ),
                 ],
             })

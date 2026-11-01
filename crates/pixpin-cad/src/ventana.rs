@@ -374,9 +374,9 @@ fn registrar() -> windows::core::Result<windows::Win32::Foundation::HINSTANCE> {
         let inst: windows::Win32::Foundation::HINSTANCE = GetModuleHandleW(None)?.into();
         let icono = LoadIconW(Some(inst), PCWSTR(1 as _)).unwrap_or_default();
         let procs: [(PCWSTR, bool, WNDPROC); 3] = [
-            (w!("PixPinPlanoCad"), true, Some(procedimiento_plano)),
-            (w!("PixPinModelo3d"), true, Some(procedimiento_plano)),
-            (w!("PixPinPlanoBarra"), false, Some(procedimiento_barra)),
+            (w!("PinDeskPlanoCad"), true, Some(procedimiento_plano)),
+            (w!("PinDeskModelo3d"), true, Some(procedimiento_plano)),
+            (w!("PinDeskPlanoBarra"), false, Some(procedimiento_barra)),
         ];
         for (clase, dobles, proc_) in procs {
             let c = WNDCLASSEXW {
@@ -477,7 +477,7 @@ pub(crate) fn crear_barra(dueno: HWND, w: i32, h: i32) -> windows::core::Result<
     unsafe {
         let hwnd = CreateWindowExW(
             WS_EX_TOOLWINDOW | WS_EX_TOPMOST | WS_EX_NOACTIVATE,
-            w!("PixPinPlanoBarra"),
+            w!("PinDeskPlanoBarra"),
             w!(""),
             WS_POPUP,
             0,
@@ -2282,7 +2282,7 @@ pub fn ver(
     let mut globo_puesto: Option<usize> = None;
     let mut anotador: Option<Box<dyn crate::anotado::Anotador>> = None;
     let mut anotando = false;
-    let (hwnd, mut w, mut h) = crear_ventana(w!("PixPinPlanoCad"), &format!("{titulo} — PinDesk"))
+    let (hwnd, mut w, mut h) = crear_ventana(w!("PinDeskPlanoCad"), &format!("{titulo} — PinDesk"))
         .map_err(|e| e.to_string())?;
     let mut gpu = match Gpu::nueva(hwnd, w, h) {
         Ok(g) => g,

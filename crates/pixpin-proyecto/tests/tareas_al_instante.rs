@@ -1,7 +1,7 @@
 //! **Tareas al instante** (10-oct-2026), medido de verdad.
 //!
 //! Dos PixPin de PC con su carpeta de datos cada uno (`DiscoPc`, como
-//! `%APPDATA%\PixPinMax`) y un movil de mentira (`DiscoAndroid`), en el mismo
+//! `%APPDATA%\PinDesk`) y un movil de mentira (`DiscoAndroid`), en el mismo
 //! grupo y hablandose por un socket de esta maquina con el protocolo y el
 //! cifrado de verdad. Se tacha una tarea en un PC y se mide cuanto tarda en
 //! estar escrita en el otro con la vuelta recortada a su chat
@@ -52,8 +52,8 @@ fn montar(etiqueta: &str) -> Tres {
     ));
     let _ = std::fs::remove_dir_all(&dir);
     let t = Tres {
-        pc: DiscoPc::nuevo(&dir.join("pc-1/PixPinMax")),
-        otro_pc: DiscoPc::nuevo(&dir.join("pc-2/PixPinMax")),
+        pc: DiscoPc::nuevo(&dir.join("pc-1/PinDesk")),
+        otro_pc: DiscoPc::nuevo(&dir.join("pc-2/PinDesk")),
         movil: DiscoAndroid::nuevo(dir.join("movil/files"), "movil"),
         dir,
         reloj: Reloj::nuevo(),

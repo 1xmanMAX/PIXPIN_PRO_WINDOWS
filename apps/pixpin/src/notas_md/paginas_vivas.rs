@@ -359,7 +359,7 @@ pub fn pintar(raiz: &Path, h: &HojaDeProyecto, t: &Catalogo) -> Result<ImagenRgb
         }
     }
     let carpeta = std::env::temp_dir()
-        .join("PixPin")
+        .join("PinDesk")
         .join("vivas")
         .join(format!(
             "{}-{}",

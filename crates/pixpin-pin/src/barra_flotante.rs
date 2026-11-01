@@ -113,7 +113,7 @@ fn registrar_clase() {
         let clase = WNDCLASSW {
             lpfnWndProc: Some(procedimiento),
             hInstance: GetModuleHandleW(None).expect("modulo propio").into(),
-            lpszClassName: w!("PixPinBarraPin"),
+            lpszClassName: w!("PinDeskBarraPin"),
             ..Default::default()
         };
         RegisterClassW(&clase);
@@ -197,7 +197,7 @@ pub(crate) fn mostrar(
             let h = unsafe {
                 CreateWindowExW(
                     WS_EX_TOPMOST | WS_EX_NOREDIRECTIONBITMAP | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
-                    w!("PixPinBarraPin"),
+                    w!("PinDeskBarraPin"),
                     w!(""),
                     WS_POPUP,
                     x,

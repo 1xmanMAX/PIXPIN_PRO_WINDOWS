@@ -34,7 +34,10 @@ use crate::automatizaciones::encargo::Entorno;
 
 /// La carpeta de las respuestas, dentro de `%TEMP%` (la misma que
 /// `pixpin_mcp::escribir::CARPETA`).
-pub const CARPETA: &str = "pixpin-mcp";
+pub const CARPETA: &str = "pindesk-mcp";
+/// La de antes de PinDesk (un `pindesk-mcp.exe` viejo que aun corre en un
+/// cliente MCP abierto): se sigue aceptando.
+pub const CARPETA_VIEJA: &str = "pixpin-mcp";
 
 /// Lo que trae el pedido.
 #[derive(Debug, Clone, Default)]
@@ -48,17 +51,18 @@ pub struct Encargo {
     pub origen: Option<String>,
 }
 
-/// Si PixPin puede escribir la respuesta ahi: dentro de `%TEMP%\pixpin-mcp\`
-/// (sin subcarpetas ni `..`), un `.json` que aun no existe.
+/// Si PinDesk puede escribir la respuesta ahi: dentro de
+/// `%TEMP%\pindesk-mcp\` (o el `pixpin-mcp` de antes; sin subcarpetas ni
+/// `..`), un `.json` que aun no existe.
 pub fn respuesta_valida(r: &Path, temp: &Path) -> bool {
-    let carpeta = temp.join(CARPETA);
     let misma = |a: &Path, b: &Path| {
         a.to_string_lossy()
             .trim_end_matches(['\\', '/'])
             .eq_ignore_ascii_case(b.to_string_lossy().trim_end_matches(['\\', '/']))
     };
     r.is_absolute()
-        && r.parent().is_some_and(|p| misma(p, &carpeta))
+        && r.parent()
+            .is_some_and(|p| misma(p, &temp.join(CARPETA)) || misma(p, &temp.join(CARPETA_VIEJA)))
         && r.extension()
             .is_some_and(|e| e.eq_ignore_ascii_case("json"))
         && r.file_name()
@@ -146,7 +150,7 @@ pub fn lanzar(
     let respuesta = e.respuesta.clone().filter(|r| {
         let bien = respuesta_valida(r, &temp);
         if !bien {
-            tracing::warn!(ruta = %r.display(), "herramienta: respuesta fuera de %TEMP%\\pixpin-mcp, no se escribe");
+            tracing::warn!(ruta = %r.display(), "herramienta: respuesta fuera de %TEMP%\\pindesk-mcp, no se escribe");
         }
         bien
     });
@@ -216,7 +220,12 @@ mod pruebas {
         ));
         assert!(!respuesta_valida(&carpeta.join("..").join("1.json"), &temp));
         assert!(!respuesta_valida(&carpeta.join("1.exe"), &temp));
-        assert!(!respuesta_valida(Path::new(r"pixpin-mcp\1.json"), &temp));
+        assert!(!respuesta_valida(Path::new(r"pindesk-mcp\1.json"), &temp));
+        // La carpeta de antes de PinDesk tambien vale.
+        assert!(respuesta_valida(
+            &temp.join(CARPETA_VIEJA).join("1.json"),
+            &temp
+        ));
         let ya = carpeta.join("ya.json");
         std::fs::write(&ya, "x").unwrap();
         assert!(!respuesta_valida(&ya, &temp));

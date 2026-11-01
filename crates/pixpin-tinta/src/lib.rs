@@ -77,7 +77,7 @@ pub enum Suavizado {
     Natural,
 }
 
-/// Lo que el usuario puede tocar desde `pixpinmax.toml`.
+/// Lo que el usuario puede tocar desde `pindesk.toml`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Ajustes {
     pub suavizado: Suavizado,

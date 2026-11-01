@@ -432,14 +432,14 @@ pub fn crear(dueno: HWND) -> windows::core::Result<HWND> {
             style: CS_DROPSHADOW,
             lpfnWndProc: Some(procedimiento),
             hInstance: instancia.into(),
-            lpszClassName: w!("PixPinNotaBarraFlotante"),
+            lpszClassName: w!("PinDeskNotaBarraFlotante"),
             hCursor: LoadCursorW(None, IDC_ARROW).unwrap_or_default(),
             ..Default::default()
         };
         RegisterClassW(&clase);
         let h = CreateWindowExW(
             WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
-            w!("PixPinNotaBarraFlotante"),
+            w!("PinDeskNotaBarraFlotante"),
             w!(""),
             WS_POPUP,
             0,

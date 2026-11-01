@@ -511,7 +511,7 @@ mod pruebas {
 
     impl Montaje {
         fn raiz(&self) -> PathBuf {
-            self.base.join("PixPinMax")
+            self.base.join("PinDesk")
         }
         fn usuario(&self) -> PathBuf {
             self.base.join("Documentos del usuario")

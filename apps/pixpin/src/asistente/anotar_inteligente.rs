@@ -987,7 +987,7 @@ pub fn hacer(args: &Value, cx: &Contexto, motor: Option<Arc<dyn Motor>>) -> Resu
         {
             que["pagina"] = json!(p + 1);
         }
-        let _ = (cx.mandar)(&json!({"pixpin": 1, "accion": "abrir", "que": que}).to_string());
+        let _ = (cx.mandar)(&json!({"pindesk": 1, "accion": "abrir", "que": que}).to_string());
         if matches!(formato, Some(Formato::Foto)) {
             crate::ventana_chat::refrescar();
         }

@@ -212,7 +212,7 @@ pub struct RespuestaWeb {
 
 /// Como se presenta PixPin a las paginas: como un navegador (algunas no
 /// contestan a lo que no lo parece) que dice quien es.
-const AGENTE_WEB: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) PixPinMax/1.0 (asistente; lee la pagina para el usuario)";
+const AGENTE_WEB: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) PinDesk/1.0 (asistente; lee la pagina para el usuario)";
 
 /// **Un GET a una pagina cualquiera de internet** (el asistente que lee la
 /// web, `crate::web`). Lo que la hace distinta de [`pedir`]:
@@ -348,7 +348,7 @@ fn abrir(
     unsafe {
         let local = !d.segura && modo == Modo::Api;
         let agente = HSTRING::from(match modo {
-            Modo::Api => "PixPin",
+            Modo::Api => "PinDesk",
             Modo::Web => AGENTE_WEB,
         });
         let mut sesion = Asa(WinHttpOpen(

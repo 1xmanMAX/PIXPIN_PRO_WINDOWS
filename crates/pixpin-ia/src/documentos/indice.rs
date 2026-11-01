@@ -130,9 +130,9 @@ impl Abrir {
                 if let Some(p) = pagina {
                     que["pagina"] = json!(p);
                 }
-                json!({"pixpin": 1, "accion": "abrir", "que": que})
+                json!({"pindesk": 1, "accion": "abrir", "que": que})
             }
-            Abrir::Mensaje { proyecto, codigo } => json!({"pixpin": 1, "accion": "abrir",
+            Abrir::Mensaje { proyecto, codigo } => json!({"pindesk": 1, "accion": "abrir",
                 "que": {"tipo": "mensaje", "proyecto": proyecto, "codigo": codigo}}),
         }
     }

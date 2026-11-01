@@ -40,8 +40,8 @@ fn montar(etiqueta: &str) -> Dos {
     let dir = std::env::temp_dir().join(format!("pixpin-dos-pc-{etiqueta}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     let d = Dos {
-        pc: DiscoPc::nuevo(&dir.join("pc-1/PixPinMax")),
-        otro: DiscoPc::nuevo(&dir.join("pc-2/PixPinMax")),
+        pc: DiscoPc::nuevo(&dir.join("pc-1/PinDesk")),
+        otro: DiscoPc::nuevo(&dir.join("pc-2/PinDesk")),
         dir,
         reloj: Reloj::nuevo(),
     };

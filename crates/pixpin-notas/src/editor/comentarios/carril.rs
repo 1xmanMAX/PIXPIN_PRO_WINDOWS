@@ -32,14 +32,14 @@ pub(super) fn crear(marco: HWND) -> Option<HWND> {
         let clase = WNDCLASSW {
             lpfnWndProc: Some(procedimiento),
             hInstance: instancia.into(),
-            lpszClassName: w!("PixPinTarjetasNota"),
+            lpszClassName: w!("PinDeskTarjetasNota"),
             hCursor: LoadCursorW(None, IDC_ARROW).unwrap_or_default(),
             ..Default::default()
         };
         RegisterClassW(&clase);
         CreateWindowExW(
             WINDOW_EX_STYLE::default(),
-            w!("PixPinTarjetasNota"),
+            w!("PinDeskTarjetasNota"),
             w!(""),
             // Sin pintar encima del cuadro de escribir, que va sobre ella.
             WS_CHILD | WS_CLIPSIBLINGS,

@@ -27,7 +27,7 @@ con los mismos numeros y las mismas features salvo lopdf (ver abajo). La
 edicion se queda en 2021 (la
 de Thesis) y no en la 2024 del workspace de PixPin.
 
-En PixPin solo lo enlaza su propio ejecutable, `pixpin-aligerar.exe`
+En PixPin solo lo enlaza su propio ejecutable, `pindesk-aligerar.exe`
 (`apps/pixpin-aligerar`), que `pixpinmax.exe` lanza como proceso desde
 `apps/pixpin/src/aligerar.rs`. Asi el programa principal no carga ~1,8 MB en
 cada arranque, y como el perfil release es `panic = "abort"`, un PDF que haga

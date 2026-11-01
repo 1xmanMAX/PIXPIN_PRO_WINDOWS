@@ -1,8 +1,10 @@
-//! **«Imprimir a PixPin»** (15-oct-2026): la impresora «PixPin» es el
+//! **«Imprimir a PinDesk»** (15-oct-2026): la impresora «PinDesk» es el
 //! controlador «Microsoft Print to PDF» que ya trae Windows con un puerto
-//! local que es **un fichero** (`<raiz>\cache\impresora\PixPin.pdf`). La crea
-//! y la quita `herramientas/impresora-pixpin.ps1` (pide administrador una
-//! vez). Aqui vive el lado de la app: ver que llego un PDF, esperar a que este
+//! local que es **un fichero** (`<raiz>\cache\impresora\PinDesk.pdf`). La
+//! crea y la quita `herramientas/impresora-pindesk.ps1` (pide administrador
+//! una vez). La de antes de PinDesk se llamaba «PixPin» y su puerto
+//! `PixPin.pdf`: se sigue recogiendo lo que deje ([`FICHEROS_DEL_PUERTO`])
+//! hasta que se vuelva a poner con el script, que la quita. Aqui vive el lado de la app: ver que llego un PDF, esperar a que este
 //! **terminado** y llevarlo a su sitio con un nombre propio.
 //!
 //! ## Por que un fichero fijo y no una carpeta
@@ -41,9 +43,21 @@ use std::time::{Duration, Instant};
 use crate::vigia_carpeta::VigiaCarpeta;
 
 /// El nombre del fichero que escribe el puerto de la impresora.
-pub const FICHERO_DEL_PUERTO: &str = "PixPin.pdf";
+pub const FICHERO_DEL_PUERTO: &str = "PinDesk.pdf";
+/// Los que se recogen: el de ahora y el de la impresora «PixPin» de antes.
+pub const FICHEROS_DEL_PUERTO: [&str; 2] = [FICHERO_DEL_PUERTO, "PixPin.pdf"];
 /// El nombre de la impresora en Windows.
-pub const NOMBRE_IMPRESORA: &str = "PixPin";
+pub const NOMBRE_IMPRESORA: &str = "PinDesk";
+
+/// El fichero del puerto que hay en `carpeta` (el de ahora o el de antes);
+/// si no hay ninguno, el de ahora.
+pub fn puerto_en(carpeta: &Path) -> PathBuf {
+    FICHEROS_DEL_PUERTO
+        .iter()
+        .map(|f| carpeta.join(f))
+        .find(|r| r.exists())
+        .unwrap_or_else(|| carpeta.join(FICHERO_DEL_PUERTO))
+}
 
 /// La carpeta que vigila la app (y donde escribe el puerto).
 pub fn carpeta(raiz: &Path) -> PathBuf {
@@ -148,7 +162,7 @@ pub fn nombre_libre(dir: &Path, ms_local: i64) -> PathBuf {
 /// Si el PDF del puerto esta terminado, lo mueve a `impresos` con su nombre
 /// y devuelve la ruta nueva. `None` si no hay nada o aun esta a medias.
 pub fn recoger(carpeta: &Path, impresos: &Path, ms_local: i64) -> Option<PathBuf> {
-    let puerto = carpeta.join(FICHERO_DEL_PUERTO);
+    let puerto = puerto_en(carpeta);
     if estado(&puerto) != Estado::Terminado {
         return None;
     }
@@ -169,7 +183,7 @@ pub fn recoger(carpeta: &Path, impresos: &Path, ms_local: i64) -> Option<PathBuf
 /// Aparta un fichero del puerto que nunca llego a estar entero, para que no
 /// tape la impresion siguiente. Devuelve donde quedo.
 pub fn descartar(carpeta: &Path, ms_local: i64) -> Option<PathBuf> {
-    let puerto = carpeta.join(FICHERO_DEL_PUERTO);
+    let puerto = puerto_en(carpeta);
     let dir = carpeta.join("descartados");
     std::fs::create_dir_all(&dir).ok()?;
     let destino = nombre_libre(&dir, ms_local);
@@ -191,7 +205,7 @@ pub fn vigilar(
 ) -> Option<std::thread::JoinHandle<()>> {
     let vigia = VigiaCarpeta::nueva(&carpeta)?;
     std::thread::Builder::new()
-        .name("impresora-pixpin".into())
+        .name("impresora-pindesk".into())
         .spawn(move || {
             // Lo que se imprimio con la app cerrada, primero.
             let mut desde: Option<Instant> = Some(Instant::now());
@@ -202,7 +216,7 @@ pub fn vigilar(
                     vigia.esperar(Duration::from_secs(300));
                     desde = Some(Instant::now());
                 }
-                let puerto = carpeta.join(FICHERO_DEL_PUERTO);
+                let puerto = puerto_en(&carpeta);
                 match estado(&puerto) {
                     Estado::NoEsta => desde = None,
                     Estado::Terminado => {

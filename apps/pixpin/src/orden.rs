@@ -139,7 +139,7 @@ fn ejecutar(l: Llamada) -> i32 {
     }
 }
 
-/// **Lo leido en Lectura Veloz, de fondo** (`pixpinmax://lectura-veloz?…`):
+/// **Lo leido en Lectura Veloz, de fondo** (`pindesk://lectura-veloz?…`):
 /// a la PixPin que corre, para que lo lleve tambien un lector abierto de ese
 /// documento, sin arrancarla si no corre y sin traer nada al frente (el
 /// pedido no abre ventanas, `pedidos::atender`). Si no corre, o no lo
@@ -400,25 +400,26 @@ mod pruebas {
     #[test]
     fn el_nombre_del_proyecto_se_cambia_por_su_id() {
         let mut p =
-            json!({"pixpin":1,"accion":"anadir_tarea","texto":"x","proyecto":"obra antisuyo"});
+            json!({"pindesk":1,"accion":"anadir_tarea","texto":"x","proyecto":"obra antisuyo"});
         poner_ids(&mut p, &proyectos());
         assert_eq!(p["proyecto"], json!("pr-1"));
         let mut p =
-            json!({"pixpin":1,"accion":"abrir","que":{"tipo":"proyecto","proyecto":"Tesis"}});
+            json!({"pindesk":1,"accion":"abrir","que":{"tipo":"proyecto","proyecto":"Tesis"}});
         poner_ids(&mut p, &proyectos());
         assert_eq!(p["que"]["proyecto"], json!("pr-2"));
-        let mut p = json!({"pixpin":1,"accion":"chat","texto":"x","proyecto":"Mensajes guardados"});
+        let mut p =
+            json!({"pindesk":1,"accion":"chat","texto":"x","proyecto":"Mensajes guardados"});
         poner_ids(&mut p, &proyectos());
         assert_eq!(p["proyecto"], Value::Null);
     }
 
     #[test]
     fn caso_negativo_un_proyecto_que_no_existe_se_deja_para_que_lo_diga_la_app() {
-        let mut p = json!({"pixpin":1,"accion":"chat","texto":"x","proyecto":"Cocina"});
+        let mut p = json!({"pindesk":1,"accion":"chat","texto":"x","proyecto":"Cocina"});
         poner_ids(&mut p, &proyectos());
         assert_eq!(p["proyecto"], json!("Cocina"));
         // Un id que ya existe no se toca aunque otro proyecto se llame asi.
-        let mut p = json!({"pixpin":1,"accion":"chat","texto":"x","proyecto":"pr-2"});
+        let mut p = json!({"pindesk":1,"accion":"chat","texto":"x","proyecto":"pr-2"});
         poner_ids(
             &mut p,
             &[("pr-2".into(), "x".into()), ("pr-9".into(), "pr-2".into())],
@@ -429,11 +430,11 @@ mod pruebas {
     #[test]
     fn un_enlace_firmado_no_pregunta_pero_una_ruta_de_red_sigue_sin_pasar() {
         assert_eq!(
-            firmado_aun_asi(&json!({"pixpin":1,"accion":"borrar_lista","codigo":"1"})),
+            firmado_aun_asi(&json!({"pindesk":1,"accion":"borrar_lista","codigo":"1"})),
             Seguridad::Directa
         );
         assert!(matches!(
-            firmado_aun_asi(&json!({"pixpin":1,"accion":"pinear","ruta":"\\\\srv\\x.png"})),
+            firmado_aun_asi(&json!({"pindesk":1,"accion":"pinear","ruta":"\\\\srv\\x.png"})),
             Seguridad::Prohibida(_)
         ));
     }
@@ -462,7 +463,7 @@ mod pruebas {
         }
         // Y cada motivo que da la seguridad es uno de esos.
         for a in pixpin_shell::mensajero::ACCIONES {
-            if let Seguridad::Confirmar(m) = orden::seguridad(&json!({"pixpin":1,"accion":a})) {
+            if let Seguridad::Confirmar(m) = orden::seguridad(&json!({"pindesk":1,"accion":a})) {
                 assert!(motivos.contains(&m.as_str()), "{a}: {m}");
             }
         }

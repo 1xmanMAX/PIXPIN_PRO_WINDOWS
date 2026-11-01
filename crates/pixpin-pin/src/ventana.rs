@@ -800,7 +800,7 @@ impl Pin {
         let hwnd = unsafe {
             CreateWindowExW(
                 WS_EX_TOPMOST | WS_EX_NOREDIRECTIONBITMAP | WS_EX_TOOLWINDOW,
-                w!("PixPinPin"),
+                w!("PinDeskPin"),
                 w!(""),
                 WS_POPUP,
                 ventana.x,
@@ -2007,7 +2007,7 @@ fn guias_para(hwnd: HWND, i: &PinInterno, rect: Rect) -> crate::guias::Ajuste {
         let mut clase = [0u16; 16];
         // SAFETY: lectura del nombre de clase a un bufer propio.
         let n = unsafe { GetClassNameW(h, &mut clase) };
-        let es_pin = String::from_utf16_lossy(&clase[..n.max(0) as usize]) == "PixPinPin";
+        let es_pin = String::from_utf16_lossy(&clase[..n.max(0) as usize]) == "PinDeskPin";
         // Solo los del MISMO hilo: su USERDATA es un `PinInterno` de verdad.
         // SAFETY: consultas puras sobre ventanas que existen ahora.
         let mismo_hilo =
@@ -2412,7 +2412,7 @@ fn registrar_clase() {
             style: CS_DBLCLKS,
             lpfnWndProc: Some(procedimiento_pin),
             hInstance: GetModuleHandleW(None).expect("modulo propio").into(),
-            lpszClassName: w!("PixPinPin"),
+            lpszClassName: w!("PinDeskPin"),
             ..Default::default()
         };
         RegisterClassW(&clase);

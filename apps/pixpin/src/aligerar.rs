@@ -21,8 +21,8 @@
 //!
 //! Lo que es de aqui:
 //!
-//! - **pdfsqueeze va en su propio ejecutable**, `pixpin-aligerar.exe`, al
-//!   lado de `pixpinmax.exe` (ver `apps/pixpin-aligerar`). Pesa ~1,8 MB que
+//! - **pdfsqueeze va en su propio ejecutable**, `pindesk-aligerar.exe`, al
+//!   lado de `pindesk.exe` (ver `apps/pixpin-aligerar`). Pesa ~1,8 MB que
 //!   el programa principal no carga en cada arranque, y como proceso aparte,
 //!   un PDF raro que haga entrar en panico a lopdf (el release es
 //!   `panic = "abort"`) mata al compresor y no a PixPin con lo que el usuario
@@ -63,10 +63,10 @@ use std::sync::{Arc, Condvar, Mutex, OnceLock};
 
 use pixpin_store::ajustes::{NivelPdf, Pdf};
 
-/// El ejecutable del compresor, junto a `pixpinmax.exe`. Tiene que llamarse
+/// El ejecutable del compresor, junto a `pindesk.exe`. Tiene que llamarse
 /// como `pixpin_aligerar::NOMBRE_EXE` (lo vigila una prueba); no se importa
 /// de alli para no enlazar pdfsqueeze en el programa principal.
-const NOMBRE_EXE: &str = "pixpin-aligerar.exe";
+const NOMBRE_EXE: &str = "pindesk-aligerar.exe";
 
 // ---------------------------------------------------------------------------
 // Los ajustes y el equipo
@@ -173,7 +173,7 @@ fn hilos() -> usize {
     hilos_para(CUIDADOSO.load(Ordering::Relaxed), nucleos)
 }
 
-/// Como se llama cada nivel para `pixpin-aligerar.exe`.
+/// Como se llama cada nivel para `pindesk-aligerar.exe`.
 fn nombre_de(n: NivelPdf) -> &'static str {
     match n {
         NivelPdf::SinPerdida => "sin-perdida",
@@ -885,9 +885,9 @@ fn apuntar(raiz: &Path, huellas: &[&str]) {
 }
 
 // ---------------------------------------------------------------------------
-// El compresor: `pixpin-aligerar.exe` (la aplicacion) o el hilo (las pruebas)
+// El compresor: `pindesk-aligerar.exe` (la aplicacion) o el hilo (las pruebas)
 
-/// Codigos de salida de `pixpin-aligerar.exe` (los de `pixpin_aligerar::codigo`;
+/// Codigos de salida de `pindesk-aligerar.exe` (los de `pixpin_aligerar::codigo`;
 /// una prueba vigila que coincidan).
 mod codigo {
     pub const MENOR: i32 = 0;
@@ -896,7 +896,7 @@ mod codigo {
     pub const CANCELADO: i32 = 13;
 }
 
-/// En las pruebas no hay `pixpin-aligerar.exe` al lado del ejecutable de
+/// En las pruebas no hay `pindesk-aligerar.exe` al lado del ejecutable de
 /// pruebas, y alli un panico no aborta: se comprime en el propio hilo con la
 /// misma funcion que usa el ejecutable.
 #[cfg(test)]
@@ -967,7 +967,7 @@ fn comprimir_en_el_hilo(
     }
 }
 
-/// `pixpin-aligerar.exe`, al lado del ejecutable que corre.
+/// `pindesk-aligerar.exe`, al lado del ejecutable que corre.
 fn ejecutable_del_compresor() -> Option<PathBuf> {
     let exe = std::env::current_exe().ok()?;
     Some(exe.parent()?.join(NOMBRE_EXE)).filter(|r| r.is_file())
@@ -1467,7 +1467,7 @@ mod pruebas {
     #[test]
     fn el_nombre_del_ejecutable_y_sus_codigos_son_los_del_compresor() {
         // Se copian y no se importan para no enlazar pdfsqueeze en
-        // pixpinmax.exe: esta prueba es la que evita que se separen.
+        // pindesk.exe: esta prueba es la que evita que se separen.
         assert_eq!(NOMBRE_EXE, pixpin_aligerar::NOMBRE_EXE);
         assert_eq!(codigo::MENOR, pixpin_aligerar::codigo::MENOR);
         assert_eq!(codigo::NO_MENOR, pixpin_aligerar::codigo::NO_MENOR);
@@ -1596,7 +1596,7 @@ mod pruebas {
 
     #[test]
     fn sin_el_compresor_al_lado_se_aligera_igual_con_el_plan_b() {
-        // Junto al ejecutable de pruebas no hay pixpin-aligerar.exe: es lo
+        // Junto al ejecutable de pruebas no hay pindesk-aligerar.exe: es lo
         // que pasa si la instalacion lo pierde.
         struct EnSuProceso;
         impl Drop for EnSuProceso {

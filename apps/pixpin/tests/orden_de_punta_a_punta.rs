@@ -147,16 +147,16 @@ fn un_verbo_llega_como_pedido_y_sale_con_cero() {
     assert_eq!(r.len(), 1);
     assert_eq!(
         valor(&r[0]),
-        serde_json::json!({"pixpin":1,"accion":"anadir_tarea","texto":"comprar yeso"})
+        serde_json::json!({"pindesk":1,"accion":"anadir_tarea","texto":"comprar yeso"})
     );
-    let (c, r, _) = a_la_prueba(&["--pedido", r#"{"pixpin":1,"accion":"capturar"}"#]);
+    let (c, r, _) = a_la_prueba(&["--pedido", r#"{"pindesk":1,"accion":"capturar"}"#]);
     assert_eq!((c, r.len()), (0, 1));
     // Un pedido por la entrada estandar (`--pedido-archivo -`).
     RECIBIDOS.lock().unwrap().clear();
     let (s, _) = orden(
         clase(),
         &["--pedido-archivo", "-"],
-        Some("\u{feff}{\"pixpin\":1,\"accion\":\"ventana_principal\"}\n"),
+        Some("\u{feff}{\"pindesk\":1,\"accion\":\"ventana_principal\"}\n"),
     );
     assert_eq!(
         s.status.code(),
@@ -187,7 +187,7 @@ fn los_enlaces_llegan_y_los_de_android_tambien() {
 #[ignore = "lanza pindesk.exe; ver la cabecera"]
 fn caso_negativo_codigos_de_salida_y_nada_llega() {
     let casos: [(&[&str], i32); 8] = [
-        (&["--pedido", r#"{"pixpin":2,"accion":"chat"}"#], 2),
+        (&["--pedido", r#"{"pindesk":2,"accion":"chat"}"#], 2),
         (&["--pedido", "no es json"], 3),
         (&["tarea", "x", "--proyeto", "P"], 3),
         (&["--url", "pixpin://borrar_todo"], 3),
@@ -202,7 +202,7 @@ fn caso_negativo_codigos_de_salida_y_nada_llega() {
         (
             &[
                 "--url",
-                "pixpin://pedido?json=%7B%22pixpin%22%3A1%2C%22accion%22%3A%22automatizacion%22%2C%22operacion%22%3A%22crear%22%7D",
+                "pixpin://pedido?json=%7B%22pindesk%22%3A1%2C%22accion%22%3A%22automatizacion%22%2C%22operacion%22%3A%22crear%22%7D",
             ],
             6,
         ),
@@ -210,7 +210,7 @@ fn caso_negativo_codigos_de_salida_y_nada_llega() {
         (
             &[
                 "--url",
-                "pixpin://pedido?json=%7B%22pixpin%22%3A1%2C%22accion%22%3A%22borrar_lista%22%2C%22codigo%22%3A%221%22%7D",
+                "pixpin://pedido?json=%7B%22pindesk%22%3A1%2C%22accion%22%3A%22borrar_lista%22%2C%22codigo%22%3A%221%22%7D",
             ],
             6,
         ),

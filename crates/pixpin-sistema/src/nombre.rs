@@ -200,10 +200,12 @@ pub fn migrar_al_arrancar(
         hechas.push((dir_exe.join(AJUSTES), m));
     } else if !dir_exe.join(AJUSTES).is_file() {
         let nueva = appdata.join(CARPETA_DATOS);
-        hechas.push((
-            nueva.clone(),
-            migrar_carpeta(&appdata.join(CARPETA_DATOS_VIEJA), &nueva),
-        ));
+        let vieja = appdata.join(CARPETA_DATOS_VIEJA);
+        let m = migrar_carpeta(&vieja, &nueva);
+        if matches!(m, Migracion::Movida | Migracion::Copiada) {
+            dejar_paso_a_la_impresora(&vieja, &nueva);
+        }
+        hechas.push((nueva.clone(), m));
         // Una carpeta ya migrada a mano puede traer aun el toml viejo.
         let _ = migrar_ajustes(&nueva);
     }
@@ -215,6 +217,27 @@ pub fn migrar_al_arrancar(
         ));
     }
     hechas
+}
+
+/// La impresora «PixPin» de antes escribe en
+/// `PixPinMax\cache\impresora\PixPin.pdf`, una ruta fija de Windows que no
+/// se puede cambiar sin administrador. Tras la mudanza esa carpeta pasa a ser
+/// una union a la nueva, para que lo impreso siga llegando a la app hasta
+/// que se ponga la impresora «PinDesk» (`impresora-pindesk.ps1`).
+fn dejar_paso_a_la_impresora(vieja: &Path, nueva: &Path) {
+    let de = vieja.join("cache").join("impresora");
+    let a = nueva.join("cache").join("impresora");
+    if !a.is_dir() {
+        return;
+    }
+    // Copiada: la vieja aun tiene su carpeta (es cache: se puede quitar).
+    if de.is_dir() && !crate::union::es_union(&de) && std::fs::remove_dir_all(&de).is_err() {
+        return;
+    }
+    if !de.exists() {
+        let _ = std::fs::create_dir_all(vieja.join("cache"));
+        let _ = crate::union::crear(&de, &a);
+    }
 }
 
 #[cfg(test)]
@@ -344,6 +367,7 @@ mod pruebas {
             fs::create_dir_all(d.join(CARPETA_DATOS_VIEJA)).unwrap();
         }
         fs::write(local.join(CARPETA_DATOS_VIEJA).join("enlaces.clave"), b"k").unwrap();
+        fs::create_dir_all(appdata.join(CARPETA_DATOS_VIEJA).join("cache/impresora")).unwrap();
         let hechas = migrar_al_arrancar(&appdata, Some(&local), &exe);
         assert_eq!(hechas.len(), 2);
         assert!(
@@ -351,6 +375,19 @@ mod pruebas {
             "{hechas:?}"
         );
         assert!(local.join(CARPETA_DATOS).join("enlaces.clave").is_file());
+        // La impresora de antes sigue escribiendo en la ruta vieja: lleva a
+        // la carpeta nueva.
+        let puerto_viejo = appdata
+            .join(CARPETA_DATOS_VIEJA)
+            .join("cache/impresora/PixPin.pdf");
+        fs::write(&puerto_viejo, b"%PDF-").unwrap();
+        assert!(
+            appdata
+                .join(CARPETA_DATOS)
+                .join("cache/impresora/PixPin.pdf")
+                .is_file()
+        );
+        assert_eq!(carpeta_de_datos(&appdata), appdata.join(CARPETA_DATOS));
 
         // Portable: solo se renombra el toml del exe; APPDATA no se toca.
         let base2 = temporal("arrancar-portable");

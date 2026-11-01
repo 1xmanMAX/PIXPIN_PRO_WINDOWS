@@ -110,7 +110,7 @@ impl Palabras {
         }
     }
 
-    /// Las de la tabla `[tareas]` de un `pixpinmax.toml` (lo que lee el
+    /// Las de la tabla `[tareas]` de un `pindesk.toml` (lo que lee el
     /// plugin de Flow, que no carga los ajustes de la app). Lo que no este
     /// escrito, de fabrica.
     pub fn de_toml(texto: &str) -> Palabras {

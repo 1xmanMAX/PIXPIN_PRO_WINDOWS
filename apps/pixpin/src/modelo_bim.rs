@@ -2,7 +2,7 @@
 //! sencillo como un pin, que se pueda ver facilmente cualquier modelo». Se
 //! lee con `pixpin-bim` y se ve en `pixpin_cad::ventana3d`; aqui, como se
 //! abre desde PixPin. Igual que los planos (`plano_cad`): el modelo se lee en
-//! otro proceso (`pixpinmax.exe --bim-convertir <modelo> <cache>`), asi un
+//! otro proceso (`pindesk.exe --bim-convertir <modelo> <cache>`), asi un
 //! fichero roto solo tumba a ese proceso, y lo leido queda en
 //! `<raiz>/cache/bim/`.
 

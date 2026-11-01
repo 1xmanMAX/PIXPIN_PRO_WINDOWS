@@ -371,7 +371,7 @@ mod pruebas {
         assert!(r.imagenes[0].is_file() && r.archivos[0].is_file());
 
         let v: serde_json::Value = serde_json::from_str(&r.pedido()).unwrap();
-        assert_eq!(v["pixpin"], 1);
+        assert_eq!(v["pindesk"], 1);
         assert_eq!(v["accion"], "chat");
         assert!(
             v.get("proyecto").is_none(),

@@ -4,7 +4,7 @@
 //! con solo saber su nombre, que sea igual que mandarle a un chat, y que se
 //! vayan apilando para que luego pueda organizarlos». Es el pedido `al_lienzo`
 //! (`pedidos.rs`): lo mandan Flow Launcher (`p lienzo <nombre> > texto`), la
-//! consola (`pixpinmax al-lienzo <nombre> …`) y cualquier script.
+//! consola (`pindesk al-lienzo <nombre> …`) y cualquier script.
 //!
 //! - **Se apilan**: cada cosa va debajo de la anterior que llego, en una
 //!   columna a la derecha de lo que ya habia ([`sitio_en_la_pila`]), y nunca

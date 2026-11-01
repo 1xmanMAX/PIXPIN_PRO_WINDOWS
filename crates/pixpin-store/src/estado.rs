@@ -1,7 +1,7 @@
 //! Lo que el programa recuerda solo, aparte de lo que tu escribes.
 //!
 //! Hay dos clases de cosas guardadas y no pueden vivir en el mismo fichero.
-//! `pixpinmax.toml` es TUYO: se edita con el bloc de notas y esta lleno de
+//! `pindesk.toml` es TUYO: se edita con el bloc de notas y esta lleno de
 //! comentarios que explican cada linea. `estado.toml` lo escribe el
 //! programa cada vez que eliges algo en pantalla, y por eso nadie deberia
 //! molestarse en comentarlo.
@@ -9,7 +9,7 @@
 //! Mezclarlos costaria los comentarios: guardar los ajustes serializa la
 //! estructura entera y reescribe el fichero, asi que la primera vez que
 //! cambiaras los fotogramas por segundo desde la barra de grabar, tu
-//! `pixpinmax.toml` volveria del reves sin una sola explicacion dentro.
+//! `pindesk.toml` volveria del reves sin una sola explicacion dentro.
 //!
 //! Lo de aqui SIEMPRE es opcional. Si el fichero no esta, esta roto o trae
 //! un valor que ya no significa nada, se ignora y manda lo que digan los

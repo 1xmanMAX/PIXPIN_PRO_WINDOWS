@@ -288,7 +288,7 @@ fn construir_texto(texto: &str) -> Vec<u8> {
 fn escribir_png_temporal(imagen: &ImagenRgba) -> Result<PathBuf, ErrorArrastre> {
     let bytes = pixpin_codec::codificar_png(imagen).map_err(ErrorArrastre::Imagen)?;
 
-    let carpeta = std::env::temp_dir().join("PixPin");
+    let carpeta = std::env::temp_dir().join("PinDesk");
     std::fs::create_dir_all(&carpeta).map_err(|fuente| ErrorArrastre::Temporal {
         ruta: carpeta.clone(),
         fuente,

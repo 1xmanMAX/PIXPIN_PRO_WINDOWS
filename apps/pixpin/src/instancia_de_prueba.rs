@@ -3,7 +3,7 @@
 //!
 //! ```text
 //! set PIXPIN_INSTANCIA=paginas
-//! pixpinmax.exe "C:\ruta\documento.docx" "C:\ruta\charla.pptx"
+//! pindesk.exe "C:\ruta\documento.docx" "C:\ruta\charla.pptx"
 //! ```
 //!
 //! Con `PIXPIN_INSTANCIA` puesta, esta copia **no** le pasa los ficheros a la

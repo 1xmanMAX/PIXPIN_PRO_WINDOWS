@@ -517,7 +517,7 @@ fn crear_ventana(titulo: &str, area: Option<Rect>) -> Result<HWND, ErrorWeb> {
             hIcon: icono,
             hIconSm: icono,
             hCursor: LoadCursorW(None, IDC_ARROW).unwrap_or_default(),
-            lpszClassName: w!("PixPinPagina"),
+            lpszClassName: w!("PinDeskPagina"),
             ..Default::default()
         };
         RegisterClassExW(&clase);
@@ -526,7 +526,7 @@ fn crear_ventana(titulo: &str, area: Option<Rect>) -> Result<HWND, ErrorWeb> {
         let titulo: Vec<u16> = titulo.encode_utf16().chain(std::iter::once(0)).collect();
         let hwnd = CreateWindowExW(
             WS_EX_APPWINDOW,
-            w!("PixPinPagina"),
+            w!("PinDeskPagina"),
             PCWSTR(titulo.as_ptr()),
             windows::Win32::UI::WindowsAndMessaging::WINDOW_STYLE(ESTILO),
             r.x,

@@ -3,7 +3,7 @@
 //! al lado del original para compararlas a ojo (15-oct-2026).
 //!
 //! Necesita GPU: `PIXPIN_BANCO_TEXTO=<carpeta> cargo test -p pixpin --bin
-//! pixpinmax muestra_resolucion_con_texto_rico -- --ignored --nocapture`.
+//! pindesk muestra_resolucion_con_texto_rico -- --ignored --nocapture`.
 //! El original se lee de `PIXPIN_LAMINA` (la lamina entera: se recorta la
 //! columna de la derecha).
 

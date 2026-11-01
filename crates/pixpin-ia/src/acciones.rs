@@ -1442,7 +1442,7 @@ pub fn herramientas() -> Vec<Herramienta> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct AccionApp {
     pub herramienta: &'static str,
-    /// `{"pixpin":1,"accion":...}` completo (sin lo que falta resolver).
+    /// `{"pindesk":1,"accion":...}` completo (sin lo que falta resolver).
     pub pedido: Value,
     pub confirmar: Option<String>,
     /// Lo que pide nombres de listas, tareas, chats o fechas: lo cambia por
@@ -1699,7 +1699,7 @@ pub fn validar(
     args: &Map<String, Value>,
 ) -> Result<AccionApp, ErrorHerramienta> {
     let mut pedido: Value = serde_json::from_str(a.fijos).unwrap_or_else(|_| json!({}));
-    pedido["pixpin"] = json!(1);
+    pedido["pindesk"] = json!(1);
     pedido["accion"] = json!(a.accion);
     let mut por_resolver = Map::new();
     for p in a.params {
@@ -1817,13 +1817,13 @@ mod pruebas {
         .unwrap();
         assert_eq!(
             a.pedido,
-            json!({"pixpin":1,"accion":"abrir","que":{"tipo":"fichero","ruta":"C:\\x\\plano.pdf"}})
+            json!({"pindesk":1,"accion":"abrir","que":{"tipo":"fichero","ruta":"C:\\x\\plano.pdf"}})
         );
         assert!(a.confirmar.is_none() && a.por_resolver.is_empty());
         let a = validar(por_nombre("capturar_pantalla").unwrap(), &Map::new()).unwrap();
         assert_eq!(
             a.pedido,
-            json!({"pixpin":1,"accion":"capturar","modo":"zona"})
+            json!({"pindesk":1,"accion":"capturar","modo":"zona"})
         );
         let a = validar(
             por_nombre("abrir_ventana").unwrap(),
@@ -1842,7 +1842,7 @@ mod pruebas {
         .unwrap();
         assert_eq!(
             a.pedido,
-            json!({"pixpin":1,"accion":"marcar_tarea","hecha":true})
+            json!({"pindesk":1,"accion":"marcar_tarea","hecha":true})
         );
         assert_eq!(
             a.por_resolver,
@@ -1964,17 +1964,17 @@ mod pruebas {
         .unwrap();
         assert_eq!(
             a.pedido,
-            json!({"pixpin":1,"accion":"capturar","modo":"scroll"})
+            json!({"pindesk":1,"accion":"capturar","modo":"scroll"})
         );
         let a = validar(por_nombre("grabar_pantalla").unwrap(), &Map::new()).unwrap();
         assert_eq!(
             a.pedido,
-            json!({"pixpin":1,"accion":"capturar","modo":"gif"})
+            json!({"pindesk":1,"accion":"capturar","modo":"gif"})
         );
         let a = validar(por_nombre("cerrar_pines").unwrap(), &Map::new()).unwrap();
         assert_eq!(
             a.pedido,
-            json!({"pixpin":1,"accion":"pines","operacion":"cerrar"})
+            json!({"pindesk":1,"accion":"pines","operacion":"cerrar"})
         );
         assert_eq!(
             a.confirmar.as_deref(),
@@ -1989,7 +1989,7 @@ mod pruebas {
         let a = validar(por_nombre("parar_lectura").unwrap(), &Map::new()).unwrap();
         assert_eq!(
             a.pedido,
-            json!({"pixpin":1,"accion":"leer_en_voz","parar":true})
+            json!({"pindesk":1,"accion":"leer_en_voz","parar":true})
         );
         let a = validar(
             por_nombre("apuntar_en_timeline").unwrap(),
@@ -1998,7 +1998,7 @@ mod pruebas {
         .unwrap();
         assert_eq!(
             a.pedido,
-            json!({"pixpin":1,"accion":"timeline","texto":"Llego el camion"})
+            json!({"pindesk":1,"accion":"timeline","texto":"Llego el camion"})
         );
         let a = validar(
             por_nombre("ir_a_pagina").unwrap(),

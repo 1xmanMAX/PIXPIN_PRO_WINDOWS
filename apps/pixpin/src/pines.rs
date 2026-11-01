@@ -2562,7 +2562,7 @@ impl Pines {
         // hojas, no una por hoja.
         let pdf = paquete.entrada("documento.pdf").and_then(|bytes| {
             let destino = std::env::temp_dir()
-                .join("PixPin")
+                .join("PinDesk")
                 .join(format!("{}.pdf", paquete.proyecto.id));
             std::fs::create_dir_all(destino.parent()?).ok()?;
             std::fs::write(&destino, bytes).ok()?;

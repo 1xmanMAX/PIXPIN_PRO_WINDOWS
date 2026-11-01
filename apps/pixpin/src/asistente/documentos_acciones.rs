@@ -981,7 +981,7 @@ fn tabla(args: &Value, cx: &Contexto) -> Result<String, String> {
         )?;
         mandar(
             cx,
-            json!({"pixpin": 1, "accion": "chat", "proyecto": proyecto_del_pedido(cx),
+            json!({"pindesk": 1, "accion": "chat", "proyecto": proyecto_del_pedido(cx),
                    "texto": format!("[archivo 01] {nombre}.xlsx"), "archivos": [ruta]}),
         )?;
         TablaHecha {
@@ -993,7 +993,7 @@ fn tabla(args: &Value, cx: &Contexto) -> Result<String, String> {
     } else {
         mandar(
             cx,
-            json!({"pixpin": 1, "accion": "tabla_nueva", "proyecto": proyecto_del_pedido(cx), "nombre": nombre,
+            json!({"pindesk": 1, "accion": "tabla_nueva", "proyecto": proyecto_del_pedido(cx), "nombre": nombre,
                    "filas": leida.filas, "cabecera": cabecera, "abrir": true}),
         )?;
         TablaHecha {
@@ -1919,7 +1919,7 @@ fn anotar(args: &Value, cx: &Contexto) -> Result<String, String> {
     if let Some(v) = hecho.vista {
         que["zona"] = json!(v);
     }
-    mandar(cx, json!({"pixpin": 1, "accion": "abrir", "que": que}))?;
+    mandar(cx, json!({"pindesk": 1, "accion": "abrir", "que": que}))?;
     Ok(format!(
         "hecho: {} en «{}»{}: marcado en {} sitio(s){} ({} figuras); ya esta abierto ahi y viaja al movil al sincronizar",
         texto_de(args, "tipo").unwrap_or("anotado"),
@@ -1976,7 +1976,7 @@ pub fn buscar_dentro(
             .collect();
         return Ok(Encontrado {
             texto: format!("en «{nombre}»: {}", lista.join("; ")),
-            pedido: json!({"pixpin": 1, "accion": "abrir", "que": {"tipo": "fichero", "ruta": ruta, "zona": vista}}),
+            pedido: json!({"pindesk": 1, "accion": "abrir", "que": {"tipo": "fichero", "ruta": ruta, "zona": vista}}),
             cuantos: h.len(),
         });
     }
@@ -1991,7 +1991,7 @@ pub fn buscar_dentro(
         .collect();
     Ok(Encontrado {
         texto: format!("en «{nombre}»: {}", lista.join("; ")),
-        pedido: json!({"pixpin": 1, "accion": "abrir", "que": {"tipo": "fichero", "ruta": ruta, "pagina": primero.pagina + 1, "buscar": consulta}}),
+        pedido: json!({"pindesk": 1, "accion": "abrir", "que": {"tipo": "fichero", "ruta": ruta, "pagina": primero.pagina + 1, "buscar": consulta}}),
         cuantos: s.len(),
     })
 }
@@ -2020,7 +2020,7 @@ fn abrir(args: &Value, cx: &Contexto) -> Result<String, String> {
     let c = elegir(cx, Some(d), Sirve::Cualquiera)?;
     mandar(
         cx,
-        json!({"pixpin": 1, "accion": "abrir", "que": {"tipo": "fichero", "ruta": c.ruta}}),
+        json!({"pindesk": 1, "accion": "abrir", "que": {"tipo": "fichero", "ruta": c.ruta}}),
     )?;
     Ok(format!(
         "abierto «{}» (del chat {})",
@@ -2092,7 +2092,7 @@ fn exportar(args: &Value, cx: &Contexto) -> Result<String, String> {
         .join(" ");
     mandar(
         cx,
-        json!({"pixpin": 1, "accion": "chat", "proyecto": proyecto_del_pedido(cx),
+        json!({"pindesk": 1, "accion": "chat", "proyecto": proyecto_del_pedido(cx),
                "texto": format!("{fichas} «{}» en {formato}", c.nombre), "archivos": hechos}),
     )?;
     let nombres: Vec<String> = hechos.iter().map(|r| pixpin_docs::nombre(r)).collect();

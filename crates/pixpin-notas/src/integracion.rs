@@ -234,7 +234,7 @@ pub fn rutas_de_hdrop(h: HDROP, soltar: bool) -> Vec<PathBuf> {
 /// temporal sobra).
 pub fn png_temporal(img: &pixpin_codec::ImagenRgba, nombre: &str) -> Option<PathBuf> {
     let carpeta = std::env::temp_dir()
-        .join("PixPin")
+        .join("PinDesk")
         .join("notas")
         .join(format!(
             "{}-{}",

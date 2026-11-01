@@ -3121,7 +3121,7 @@ fn montar(p: Pedido, op: Opciones) -> windows::core::Result<Estado> {
         let clase = WNDCLASSW {
             lpfnWndProc: Some(procedimiento),
             hInstance: instancia.into(),
-            lpszClassName: w!("PixPinNotaMd"),
+            lpszClassName: w!("PinDeskNotaMd"),
             hCursor: LoadCursorW(None, IDC_ARROW).unwrap_or_default(),
             ..Default::default()
         };
@@ -3164,7 +3164,7 @@ fn montar(p: Pedido, op: Opciones) -> windows::core::Result<Estado> {
         });
         let marco = CreateWindowExW(
             WINDOW_EX_STYLE::default(),
-            w!("PixPinNotaMd"),
+            w!("PinDeskNotaMd"),
             w!(""),
             WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN,
             CW_USEDEFAULT,

@@ -324,7 +324,7 @@ fn leer_en_voz_alta(args: &Value, cx: &Contexto) -> Result<String, String> {
     if let Some(t) = texto_de(args, "texto") {
         mandar(
             cx,
-            json!({"pixpin": 1, "accion": "leer_en_voz", "texto": t}),
+            json!({"pindesk": 1, "accion": "leer_en_voz", "texto": t}),
         )?;
         return Ok(format!(
             "Leyendo en voz alta ({} palabras).",
@@ -334,7 +334,7 @@ fn leer_en_voz_alta(args: &Value, cx: &Contexto) -> Result<String, String> {
     let e = elegir(cx, texto_de(args, "archivo"), Clase2::ConTexto)?;
     mandar(
         cx,
-        json!({"pixpin": 1, "accion": "leer_en_voz", "ruta": e.c.ruta, "titulo": pixpin_docs::sin_extension(&e.c.nombre)}),
+        json!({"pindesk": 1, "accion": "leer_en_voz", "ruta": e.c.ruta, "titulo": pixpin_docs::sin_extension(&e.c.nombre)}),
     )?;
     Ok(format!(
         "Leyendo en voz alta «{}». «Para de leer» la calla.",
@@ -387,7 +387,7 @@ fn comprimir_pdf(args: &Value, cx: &Contexto) -> Result<String, String> {
                 &e.c.proyecto
             };
             let mut pedido =
-                json!({"pixpin": 1, "accion": "chat", "texto": frase, "archivos": [salida]});
+                json!({"pindesk": 1, "accion": "chat", "texto": frase, "archivos": [salida]});
             if !proyecto.trim().is_empty() {
                 pedido["proyecto"] = json!(proyecto);
             }

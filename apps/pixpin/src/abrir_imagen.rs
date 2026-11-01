@@ -1,7 +1,7 @@
 //! **Cuanto tarda abrir una imagen como pin**, medido.
 //!
 //! PixPin es la aplicacion predeterminada de imagenes: un doble clic en el
-//! Explorador lanza `pixpinmax.exe <ruta>`, que pasa la ruta a la copia viva
+//! Explorador lanza `pindesk.exe <ruta>`, que pasa la ruta a la copia viva
 //! y se va (`main::arrancar`, antes de leer ni un ajuste). Lo que tarda de
 //! verdad es pinearla en la copia viva: el camino de antes y el de ahora
 //! (`pines::foto`) se miden aqui, por tramos, con fotos de verdad.
@@ -9,7 +9,7 @@
 #[cfg(test)]
 mod medir {
     //! Las mediciones de abrir imagenes (`cargo test -p pixpin --bin
-    //! pixpinmax medir_apertura -- --ignored --nocapture`). Abren pines de
+    //! pindesk medir_apertura -- --ignored --nocapture`). Abren pines de
     //! verdad un instante y los cierran.
     //!
     //! Las fotos: `PIXPIN_MEDIR_FOTOS` (rutas separadas por `;`). Solo se

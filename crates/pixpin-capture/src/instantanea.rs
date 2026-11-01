@@ -319,7 +319,7 @@ mod pruebas {
     use crate::monitores::enumerar_monitores;
 
     /// Pone el proceso de test en PerMonitorV2, como el manifiesto de
-    /// pixpinmax.exe.
+    /// pindesk.exe.
     ///
     /// Sin esto, Windows virtualiza las coordenadas del binario de test: la
     /// enumeracion diria 2000 px de ancho donde la GPU captura 3000 (150% de

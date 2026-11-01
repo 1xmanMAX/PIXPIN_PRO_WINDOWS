@@ -426,7 +426,7 @@ mod pruebas {
         assert_eq!(pedidos[3]["cual"], "sincronizar");
         assert_eq!(pedidos[4]["que"]["proyecto"], "tesis-2026");
         for p in &pedidos {
-            assert_eq!(p["pixpin"], 1);
+            assert_eq!(p["pindesk"], 1);
             // La ventana de mensajes lo acepta (version y accion conocidas).
             assert_eq!(crate::mensajero::validar_pedido(&p.to_string()), 1, "{p}");
         }

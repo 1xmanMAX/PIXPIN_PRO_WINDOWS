@@ -17,7 +17,7 @@
 //!   no viaja): es la chapa «Lectura veloz · N %» de la burbuja y el % junto
 //!   a la opcion.
 //! - **Desde alli** ([`apuntar`]): el verbo `lectura-veloz` (el enlace
-//!   `pixpinmax://lectura-veloz?…`, de fondo mientras se lee alli) mueve el
+//!   `pindesk://lectura-veloz?…`, de fondo mientras se lee alli) mueve el
 //!   marcador verde de ESE documento y nada mas: no abre ni trae nada al
 //!   frente. Si un lector de ese documento esta abierto, se lo lleva tambien
 //!   en memoria ([`tomar`], cada vuelta de su bucle): si no, al cerrarse

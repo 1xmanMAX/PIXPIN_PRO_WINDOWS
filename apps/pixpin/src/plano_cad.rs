@@ -3,7 +3,7 @@
 //! abra como un pin. El visor esta en `pixpin-cad`; aqui, como se abre desde
 //! PixPin.
 //!
-//! **El plano se lee en otro proceso** (`pixpinmax.exe --cad-convertir
+//! **El plano se lee en otro proceso** (`pindesk.exe --cad-convertir
 //! <plano> <cache>`): la libreria que lee los DWG se defiende de un fichero
 //! roto con `catch_unwind`, y el ejecutable va con `panic = "abort"`; asi un
 //! plano dañado solo tumba a ese proceso, no a PixPin. De paso, la memoria

@@ -167,7 +167,7 @@ fn bajar_a(
     // sesion), que es el que pide WinHTTP.
     unsafe {
         let mut sesion = Asa(WinHttpOpen(
-            w!("PixPin"),
+            w!("PinDesk"),
             WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,
             PCWSTR::null(),
             PCWSTR::null(),
@@ -176,7 +176,7 @@ fn bajar_a(
         if sesion.0.is_null() {
             // El proxy automatico es de Windows 8.1 en adelante.
             sesion = Asa(WinHttpOpen(
-                w!("PixPin"),
+                w!("PinDesk"),
                 WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
                 PCWSTR::null(),
                 PCWSTR::null(),

@@ -350,7 +350,7 @@ fn registrar_clase() {
         let clase = WNDCLASSW {
             lpfnWndProc: Some(procedimiento),
             hInstance: GetModuleHandleW(None).expect("modulo propio").into(),
-            lpszClassName: w!("PixPinPanelPines"),
+            lpszClassName: w!("PinDeskPanelPines"),
             hCursor: LoadCursorW(None, IDC_ARROW).unwrap_or_default(),
             ..Default::default()
         };
@@ -377,7 +377,7 @@ impl PanelAbiertos {
         let hwnd = unsafe {
             CreateWindowExW(
                 WS_EX_TOPMOST | WS_EX_NOREDIRECTIONBITMAP | WS_EX_TOOLWINDOW,
-                w!("PixPinPanelPines"),
+                w!("PinDeskPanelPines"),
                 &windows::core::HSTRING::from(textos.panel_titulo.as_str()),
                 WS_POPUP,
                 rect.x,
