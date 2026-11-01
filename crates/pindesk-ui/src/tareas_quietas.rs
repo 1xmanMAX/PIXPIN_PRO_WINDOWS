@@ -179,23 +179,19 @@ mod pruebas {
         v.iter().map(|x| x.to_string()).collect()
     }
 
-    fn id(x: &String) -> String {
-        x.clone()
-    }
-
     #[test]
     fn colocar_deja_lo_visto_quieto_y_lo_nuevo_en_su_hueco() {
         // Jev subio «c» arriba del todo: no se mueve mientras se mira.
         let mut v = s(&["c", "a", "b"]);
-        colocar(&mut v, &s(&["a", "b", "c"]), &id);
+        colocar(&mut v, &s(&["a", "b", "c"]), &String::clone);
         assert_eq!(v, s(&["a", "b", "c"]));
         // Lo nuevo entra donde lo pone el orden de siempre.
         let mut v = s(&["n", "b", "a"]);
-        colocar(&mut v, &s(&["a", "b"]), &id);
+        colocar(&mut v, &s(&["a", "b"]), &String::clone);
         assert_eq!(v, s(&["n", "a", "b"]));
         // Sin nada visto, el orden de siempre.
         let mut v = s(&["b", "a"]);
-        colocar(&mut v, &[], &id);
+        colocar(&mut v, &[], &String::clone);
         assert_eq!(v, s(&["b", "a"]));
     }
 
@@ -220,17 +216,17 @@ mod pruebas {
     fn lo_destachado_desde_hechas_se_queda_abajo_en_su_sitio() {
         let mut q = Quietas::default();
         let (mut arriba, mut plegadas) = (s(&["a"]), s(&["h1", "h2", "h3"]));
-        q.ordenar_tareas("L", &mut arriba, &mut plegadas, id);
+        q.ordenar_tareas("L", &mut arriba, &mut plegadas, String::clone);
         // Se destacha «h2»: el orden de siempre la sube arriba.
         q.marcar("L", "h2", false);
         let (mut arriba, mut plegadas) = (s(&["a", "h2"]), s(&["h1", "h3"]));
-        q.ordenar_tareas("L", &mut arriba, &mut plegadas, id);
+        q.ordenar_tareas("L", &mut arriba, &mut plegadas, String::clone);
         assert_eq!(arriba, s(&["a"]));
         assert_eq!(plegadas, s(&["h1", "h2", "h3"]), "en su sitio");
         // Al salir, arriba con lo pendiente.
         q.soltar();
         let (mut arriba, mut plegadas) = (s(&["a", "h2"]), s(&["h1", "h3"]));
-        q.ordenar_tareas("L", &mut arriba, &mut plegadas, id);
+        q.ordenar_tareas("L", &mut arriba, &mut plegadas, String::clone);
         assert_eq!((arriba, plegadas), (s(&["a", "h2"]), s(&["h1", "h3"])));
     }
 
@@ -239,14 +235,14 @@ mod pruebas {
         let mut q = Quietas::default();
         let mut p = Vec::new();
         let mut arriba = s(&["a", "b", "c"]);
-        q.ordenar_tareas("L", &mut arriba, &mut p, id);
+        q.ordenar_tareas("L", &mut arriba, &mut p, String::clone);
         // Jev contesta: «c» es urgente.
         let mut arriba = s(&["c", "a", "b"]);
-        q.ordenar_tareas("L", &mut arriba, &mut p, id);
+        q.ordenar_tareas("L", &mut arriba, &mut p, String::clone);
         assert_eq!(arriba, s(&["a", "b", "c"]), "no salta bajo el raton");
         q.soltar();
         let mut arriba = s(&["c", "a", "b"]);
-        q.ordenar_tareas("L", &mut arriba, &mut p, id);
+        q.ordenar_tareas("L", &mut arriba, &mut p, String::clone);
         assert_eq!(arriba, s(&["c", "a", "b"]), "al volver, ordenada");
     }
 
@@ -254,14 +250,14 @@ mod pruebas {
     fn una_lista_sin_pendientes_no_se_va_al_final_mientras_se_mira() {
         let mut q = Quietas::default();
         let mut v = s(&["Inbox", "Casa", "Clase"]);
-        q.ordenar_listas(&mut v, id);
+        q.ordenar_listas(&mut v, String::clone);
         // Tachada la ultima de «Casa», el orden de siempre la manda al final.
         let mut v = s(&["Inbox", "Clase", "Casa"]);
-        q.ordenar_listas(&mut v, id);
+        q.ordenar_listas(&mut v, String::clone);
         assert_eq!(v, s(&["Inbox", "Casa", "Clase"]));
         // Una lista nueva entra en su hueco.
         let mut v = s(&["Inbox", "Nueva", "Clase", "Casa"]);
-        q.ordenar_listas(&mut v, id);
+        q.ordenar_listas(&mut v, String::clone);
         assert_eq!(v, s(&["Inbox", "Nueva", "Casa", "Clase"]));
     }
 
