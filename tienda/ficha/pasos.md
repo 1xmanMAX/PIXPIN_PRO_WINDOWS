@@ -64,12 +64,9 @@ Antes de empezar:
     pantalla táctil, no.
   - **Graphics**: integrada vale.
 
-> **Nota sobre la versión mínima.** El encargo decía «Windows 10 1809+», pero
-> el README dice **21H2**, el paquete de identidad de `herramientas/` ya pide
-> **19041 (2004)** y la app usa cosas que no están en 1809 (que una ventana no
-> salga en las capturas, `WDA_EXCLUDEFROMCAPTURE`, es de la 2004). Lo honesto
-> es poner lo mismo que el `MinVersion` del `tienda/AppxManifest.xml` y, si
-> se puede elegir, 21H2.
+> **Versión mínima: Windows 10 2004 (19041)**, la misma que el `MinVersion`
+> de `tienda/AppxManifest.xml`. La app usa cosas de la 2004 (que una ventana
+> no salga en las capturas, `WDA_EXCLUDEFROMCAPTURE`).
 
 ## 3. Age ratings (Clasificación por edades)
 

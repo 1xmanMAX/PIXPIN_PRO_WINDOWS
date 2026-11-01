@@ -52,7 +52,7 @@
   </Properties>
 
   <Dependencies>
-    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.26100.0" />
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.19041.0" MaxVersionTested="10.0.26100.0" />
     <!-- vcruntime140.dll y compania (Rust con el CRT dinamico, y el
          onnxruntime.dll que va dentro). La Store lo instala sola. -->
     <PackageDependency
@@ -64,6 +64,18 @@
   <Resources>
     <Resource Language="es-es" />
     <Resource Language="en-us" />
+    <Resource Language="zh-cn" />
+    <Resource Language="ja-jp" />
+    <Resource Language="ko-kr" />
+    <Resource Language="hi-in" />
+    <Resource Language="ar-sa" />
+    <Resource Language="tr-tr" />
+    <Resource Language="pt-br" />
+    <Resource Language="it-it" />
+    <Resource Language="fr-fr" />
+    <Resource Language="de-de" />
+    <Resource Language="ru-ru" />
+    <Resource Language="id-id" />
   </Resources>
 
   <Capabilities>

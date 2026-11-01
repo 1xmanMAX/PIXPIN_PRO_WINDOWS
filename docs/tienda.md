@@ -116,10 +116,8 @@ Decision: **sin virtualizar**. El manifiesto declara
   en la Store, no escribe nada en el registro: lo escrito tambien se quedaria.
 - `unvirtualizedResources` es una capacidad restringida: en Partner Center
   hay que justificarla (texto abajo).
-- Solo vale en Windows 10 1903 (18362) o mas nuevo. En 1809 (17763, el minimo
-  declarado) se ignora y los datos se virtualizan: la app funciona, pero los
-  ayudantes no ven sus datos. Si da problemas, subir `MinVersion` a
-  `10.0.18362.0`.
+- Solo vale en Windows 10 1903 (18362) o mas nuevo; el `MinVersion` del
+  manifiesto es `10.0.19041.0` (2004), asi que siempre aplica.
 
 ## Subir a Partner Center, paso a paso
 
