@@ -504,8 +504,8 @@ fn bucle(recursos: &Recursos, pedido: &Pedido) -> Result<()> {
     } else {
         "leccion-ventana-nueva"
     });
-    let mut ventana =
-        VentanaOverlay::nueva_normal(marco, &titulo_ventana).context("no se pudo abrir la ficha")?;
+    let mut ventana = VentanaOverlay::nueva_normal(marco, &titulo_ventana)
+        .context("no se pudo abrir la ficha")?;
     let motor = recursos.motor();
     let superficie = Superficie::nueva(
         &motor,
@@ -521,7 +521,11 @@ fn bucle(recursos: &Recursos, pedido: &Pedido) -> Result<()> {
     let hwnd = ventana.handle().0 as isize;
     e.hwnd = hwnd;
     almacen::apuntar_ventana(hwnd);
-    if dictar_ya && let Some(a) = e.dictado.pulsar(&pedido.ubicacion, pedido.idioma, &e.textos) {
+    if dictar_ya
+        && let Some(a) = e
+            .dictado
+            .pulsar(&pedido.ubicacion, pedido.idioma, &e.textos)
+    {
         e.avisar(&a);
     }
 
@@ -632,7 +636,10 @@ fn bucle(recursos: &Recursos, pedido: &Pedido) -> Result<()> {
             break;
         }
 
-        match e.dictado.avanzar(&pedido.ubicacion, pedido.idioma, &e.textos) {
+        match e
+            .dictado
+            .avanzar(&pedido.ubicacion, pedido.idioma, &e.textos)
+        {
             Salida::Nada => {}
             Salida::Texto(dicho) => {
                 let t = e.titulo().trim().to_string();
@@ -817,7 +824,10 @@ fn hacer(e: &mut Estado, a: Accion, pedido: &Pedido) -> Fin {
             }
         }
         Accion::Dictar => {
-            if let Some(m) = e.dictado.pulsar(&pedido.ubicacion, pedido.idioma, &e.textos) {
+            if let Some(m) = e
+                .dictado
+                .pulsar(&pedido.ubicacion, pedido.idioma, &e.textos)
+            {
                 e.avisar(&m);
             }
         }
@@ -1337,27 +1347,9 @@ fn pintar_contenido(e: &mut Estado, p: &Pintor, x: f32, mut y: f32, ancho: f32, 
             .collect();
         y = ui::fila_de_fichas(p, &mut e.botones, x, y, ancho, &fichas, tam * 0.93, s) + hueco;
         let pista = e.textos.t("leccion-proxima");
-        y = campo_con_rotulo(
-            e,
-            p,
-            CampoId::Proxima,
-            &pista,
-            x,
-            y,
-            ancho,
-            s,
-        ) + hueco;
+        y = campo_con_rotulo(e, p, CampoId::Proxima, &pista, x, y, ancho, s) + hueco;
         let pista = e.textos.t("leccion-referencias");
-        y = campo_con_rotulo(
-            e,
-            p,
-            CampoId::Referencias,
-            &pista,
-            x,
-            y,
-            ancho,
-            s,
-        ) + hueco;
+        y = campo_con_rotulo(e, p, CampoId::Referencias, &pista, x, y, ancho, s) + hueco;
     }
 
     if e.existente.is_none() {

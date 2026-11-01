@@ -422,8 +422,7 @@ pub(super) fn al_preguntar(s: &Sesion, pregunta: &str) {
         let t = pixpin_store::Catalogo::nuevo(f.chat.idioma);
         let mut args = fluent_bundle::FluentArgs::new();
         args.set("pregunta", pregunta.trim());
-        f.mando
-            .cambiar_texto(t.t_args("ia-fondo-pregunta", &args));
+        f.mando.cambiar_texto(t.t_args("ia-fondo-pregunta", &args));
     }
 }
 

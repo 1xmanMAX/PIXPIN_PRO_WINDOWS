@@ -178,10 +178,9 @@ impl Adjuntos {
             Grabar::Nada => (Grabar::Nada, None),
             Grabar::Abriendo(rx) => match rx.try_recv() {
                 Ok(Ok(g)) => (Grabar::Grabando(g, Instant::now()), None),
-                Ok(Err(_)) | Err(TryRecvError::Disconnected) => (
-                    Grabar::Nada,
-                    Some(textos.t("leccion-audio-sin-microfono")),
-                ),
+                Ok(Err(_)) | Err(TryRecvError::Disconnected) => {
+                    (Grabar::Nada, Some(textos.t("leccion-audio-sin-microfono")))
+                }
                 Err(TryRecvError::Empty) => (Grabar::Abriendo(rx), None),
             },
             g @ Grabar::Grabando(..) => (g, None),
@@ -202,10 +201,9 @@ impl Adjuntos {
                 Ok(Err(pixpin_audio::ErrorAudio::DemasiadoCorta { .. })) => {
                     (Grabar::Nada, Some(textos.t("leccion-audio-corto")))
                 }
-                Ok(Err(_)) | Err(TryRecvError::Disconnected) => (
-                    Grabar::Nada,
-                    Some(textos.t("leccion-audio-no-guarda")),
-                ),
+                Ok(Err(_)) | Err(TryRecvError::Disconnected) => {
+                    (Grabar::Nada, Some(textos.t("leccion-audio-no-guarda")))
+                }
                 Err(TryRecvError::Empty) => (Grabar::Parando(rx), None),
             },
         };

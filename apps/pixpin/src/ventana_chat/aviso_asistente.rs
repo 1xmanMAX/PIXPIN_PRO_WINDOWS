@@ -783,7 +783,10 @@ mod pruebas {
             nota: "n".into(),
             texto: "¿Borro 3 tareas?".into(),
         };
-        let t = texto_de_la_pregunta(&p);
+        let t = texto_de_la_pregunta(
+            &pixpin_store::Catalogo::nuevo(pixpin_store::Idioma::Espanol),
+            &p,
+        );
         assert!(t.contains("Necesito tu permiso: ¿Borro 3 tareas?"));
         assert!(t.contains("no lo hago"));
     }
@@ -800,11 +803,14 @@ mod pruebas {
         let largo = format!("Tienes 31 tareas pendientes:\n{tareas}");
         let textos = pixpin_store::Catalogo::nuevo(pixpin_store::Idioma::Espanol);
         let rotulos = Rotulos::de(&textos);
-        let pregunta = texto_de_la_pregunta(&textos, &Pregunta {
-            proyecto: "p".into(),
-            nota: "n".into(),
-            texto: "¿Borro las 3 tareas hechas de «Obra Norte»? No se puede deshacer.".into(),
-        });
+        let pregunta = texto_de_la_pregunta(
+            &textos,
+            &Pregunta {
+                proyecto: "p".into(),
+                nota: "n".into(),
+                texto: "¿Borro las 3 tareas hechas de «Obra Norte»? No se puede deshacer.".into(),
+            },
+        );
         for (nombre, texto, pie, apagado) in [
             ("aviso-largo", largo.as_str(), Pie::Abrir, false),
             (
