@@ -3520,3 +3520,7 @@ figuras-ventana-mes = «{ $texto }»: escribe el mes como 2026-11
 # Los nombres de las teclas que se pintan en las chapitas
 tecla-intro = Intro
 tecla-supr = Supr
+# Lo que dicen las tarjetas del asistente al acabar sin texto, y el titulo de un croquis
+ia-fondo-hecho = ✅ Hecho.
+ia-hecho = Hecho.
+croquis-titulo = Croquis { $id }

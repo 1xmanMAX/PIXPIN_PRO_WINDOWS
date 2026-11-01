@@ -544,7 +544,11 @@ fn hacer_de_verdad(
     let motor = crate::asistente::rapido::motor_o_sin(motor, &e.texto)?;
     // Una pregunta de permiso: la tarjeta flotante, para contestarla (una
     // por encargo; al acabar ensena la respuesta).
-    let (a, t, titulo) = (app.clone(), tarjeta.clone(), titulo_de_la_tarjeta(r));
+    let (a, t, titulo) = (
+        app.clone(),
+        tarjeta.clone(),
+        titulo_de_la_tarjeta(&textos, r),
+    );
     let al_preguntar = move |_: &str| {
         let mut g = t.lock().unwrap_or_else(|e| e.into_inner());
         if g.is_none() {
@@ -577,10 +581,10 @@ fn hacer_de_verdad(
     })
 }
 
-fn titulo_de_la_tarjeta(r: &Registro) -> String {
+fn titulo_de_la_tarjeta(textos: &pixpin_store::Catalogo, r: &Registro) -> String {
     let t = encargo::sin_fichas(&r.texto);
     if t.is_empty() {
-        "🤖 Asistente".into()
+        textos.t("ia-fondo-titulo")
     } else {
         format!("🤖 {}", super::recortar(&t, 48))
     }

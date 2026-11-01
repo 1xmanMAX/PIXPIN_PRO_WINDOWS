@@ -582,7 +582,7 @@ pub struct DeLaApp {
 /// («pensando…») y la respuesta en el al acabar. Vuelve en el acto.
 pub fn lanzar(app: DeLaApp, e: Encargo) {
     let aviso = crate::ventana_chat::sin_ventana::avisar(crate::ventana_chat::sin_ventana::Aviso {
-        titulo: titulo_de(&e),
+        titulo: titulo_de(&pixpin_store::Catalogo::nuevo(app.idioma), &e),
         texto: crate::asistente::rapido::ESTADO_INICIAL.into(),
         abrir: None,
         acabado: false,
@@ -611,7 +611,7 @@ pub fn lanzar(app: DeLaApp, e: Encargo) {
             let (texto, abrir) = match r {
                 // Entera: el aviso la recorta a lo que cabe y se desplaza dentro.
                 Ok(r) => (
-                    respuesta_para_el_aviso(&r.texto),
+                    respuesta_para_el_aviso(&textos, &r.texto),
                     Some((r.proyecto, r.codigo)),
                 ),
                 Err(x) => (format!("⚠️ {x}"), None),
@@ -634,10 +634,10 @@ pub fn lanzar(app: DeLaApp, e: Encargo) {
     }
 }
 
-fn titulo_de(e: &Encargo) -> String {
+fn titulo_de(textos: &pixpin_store::Catalogo, e: &Encargo) -> String {
     let t = sin_fichas(&e.texto);
     if t.is_empty() {
-        "🤖 Asistente".into()
+        textos.t("ia-fondo-titulo")
     } else {
         format!("🤖 {}", super::recortar(&t, 48))
     }
@@ -646,10 +646,10 @@ fn titulo_de(e: &Encargo) -> String {
 /// La respuesta para el aviso flotante, entera («Hecho.» si no dijo nada):
 /// el aviso ensena lo que cabe y lo demas se desplaza (14-oct-2026; antes,
 /// cortada a 280 letras y 31 tareas no se veian).
-pub fn respuesta_para_el_aviso(texto: &str) -> String {
+pub fn respuesta_para_el_aviso(textos: &pixpin_store::Catalogo, texto: &str) -> String {
     let t = texto.trim();
     if t.is_empty() {
-        "Hecho.".into()
+        textos.t("ia-hecho")
     } else {
         t.to_string()
     }

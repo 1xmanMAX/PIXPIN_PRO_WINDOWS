@@ -270,10 +270,14 @@ pub(crate) fn texto_cortado(
 }
 
 /// Lo que dice la tarjeta flotante al acabar: el principio de la respuesta.
-fn resumen_para_la_tarjeta(texto: &str) -> String {
+fn resumen_para_la_tarjeta(textos: &pixpin_store::Catalogo, texto: &str) -> String {
     let t = sin_lo_vivo(texto);
     let t: String = t.chars().take(400).collect();
-    if t.is_empty() { "✅ Hecho.".into() } else { t }
+    if t.is_empty() {
+        textos.t("ia-fondo-hecho")
+    } else {
+        t
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -433,7 +437,7 @@ pub(super) fn al_acabar(s: &mut Sesion, texto: &str) {
     if let Some(f) = s.fuera.take() {
         let a = abrir_de(&f.chat, s);
         f.mando.poner(
-            resumen_para_la_tarjeta(texto),
+            resumen_para_la_tarjeta(&pixpin_store::Catalogo::nuevo(f.chat.idioma), texto),
             Some((a.idioma, a.ubicacion, a.opciones, a.proyecto, a.codigo)),
         );
     }

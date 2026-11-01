@@ -69,6 +69,7 @@ pub fn abrir_desde_chat(idioma: Idioma, raiz: &Path, ficha_id: &str, m: &Mensaje
         return false;
     };
     let titulo = titulo_de(
+        &pixpin_store::Catalogo::nuevo(idioma),
         Some(if m.texto.trim().is_empty() {
             m.nombre.as_str()
         } else {
@@ -86,12 +87,16 @@ pub fn abrir_desde_chat(idioma: Idioma, raiz: &Path, ficha_id: &str, m: &Mensaje
     true
 }
 
-fn titulo_de(texto: Option<&str>, id: &str) -> String {
+fn titulo_de(textos: &pixpin_store::Catalogo, texto: Option<&str>, id: &str) -> String {
     texto
         .map(str::trim)
         .filter(|t| !t.is_empty())
         .map(|t| t.lines().next().unwrap_or(t).to_string())
-        .unwrap_or_else(|| format!("Croquis {id}"))
+        .unwrap_or_else(|| {
+            let mut args = fluent_bundle::FluentArgs::new();
+            args.set("id", id);
+            textos.t_args("croquis-titulo", &args)
+        })
 }
 
 /// Abre el `.croquis.gz` de un proyecto. Sus fotos (`pixpin:files/…`) se
@@ -354,8 +359,9 @@ mod pruebas {
 
     #[test]
     fn el_titulo_es_el_texto_del_mensaje_o_el_codigo() {
-        assert_eq!(titulo_de(Some("Escalera\notra"), "cr"), "Escalera");
-        assert_eq!(titulo_de(Some("  "), "cr"), "Croquis cr");
-        assert_eq!(titulo_de(None, "cr"), "Croquis cr");
+        let es = pixpin_store::Catalogo::nuevo(Idioma::Espanol);
+        assert_eq!(titulo_de(&es, Some("Escalera\notra"), "cr"), "Escalera");
+        assert_eq!(titulo_de(&es, Some("  "), "cr"), "Croquis cr");
+        assert_eq!(titulo_de(&es, None, "cr"), "Croquis cr");
     }
 }
