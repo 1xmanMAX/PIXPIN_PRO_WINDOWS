@@ -16,7 +16,7 @@
   (y la app, compilada con la feature `tienda`, ya no lo escribe):
     HKCU\...\Run                         -> desktop:StartupTask (PinDeskInicio)
     asociaciones.rs / abrir_con.rs        -> uap3:FileTypeAssociation
-    notificacion.rs (AUMID + pixpinmax:)  -> la identidad del paquete + uap:Protocol
+    notificacion.rs (AUMID + pixpinmax:)  -> la identidad del paquete + uap3:Protocol
     paquete-identidad (Compartir, verbos) -> windows.shareTarget + uap2:SupportedVerbs
 -->
 <Package
@@ -122,19 +122,19 @@
           </uap3:AppExecutionAlias>
         </uap3:Extension>
 
-        <!-- Los enlaces de la app (botones de los avisos, `orden.rs`):
-             `pixpinmax:` siempre es nuestro; `pixpin:` es el de Android. Si
-             el PixPin original tambien lo tiene, Windows pregunta cual. -->
-        <uap:Extension Category="windows.protocol" Executable="pindesk.exe" EntryPoint="Windows.FullTrustApplication">
-          <uap:Protocol Name="pixpinmax" Parameters="--url &quot;%1&quot;">
+        <!-- Los enlaces de la app: `pindesk:` y, por los avisos y enlaces de
+             antes, `pixpinmax:`. `pixpin:` no se registra (es del PixPin
+             original). `Parameters` solo existe en uap3:Protocol. -->
+        <uap3:Extension Category="windows.protocol" Executable="pindesk.exe" EntryPoint="Windows.FullTrustApplication">
+          <uap3:Protocol Name="pindesk" Parameters="--url &quot;%1&quot;">
             <uap:DisplayName>PinDesk</uap:DisplayName>
-          </uap:Protocol>
-        </uap:Extension>
-        <uap:Extension Category="windows.protocol" Executable="pindesk.exe" EntryPoint="Windows.FullTrustApplication">
-          <uap:Protocol Name="pixpin" Parameters="--url &quot;%1&quot;">
+          </uap3:Protocol>
+        </uap3:Extension>
+        <uap3:Extension Category="windows.protocol" Executable="pindesk.exe" EntryPoint="Windows.FullTrustApplication">
+          <uap3:Protocol Name="pixpinmax" Parameters="--url &quot;%1&quot;">
             <uap:DisplayName>PinDesk</uap:DisplayName>
-          </uap:Protocol>
-        </uap:Extension>
+          </uap3:Protocol>
+        </uap3:Extension>
 
         <!-- Compartir: lo que mandan otras apps va al chat
              (crates/pixpin-shell/src/compartido.rs). -->
@@ -158,6 +158,7 @@
             <uap:DisplayName>Proyecto de PinDesk</uap:DisplayName>
             <uap:Logo>Assets\Square44x44Logo.png</uap:Logo>
             <uap:SupportedFileTypes>
+              <uap:FileType>.pindesk</uap:FileType>
               <uap:FileType>.pixpin</uap:FileType>
             </uap:SupportedFileTypes>
           </uap3:FileTypeAssociation>
