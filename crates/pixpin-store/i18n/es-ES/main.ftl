@@ -3524,3 +3524,5 @@ tecla-supr = Supr
 ia-fondo-hecho = ✅ Hecho.
 ia-hecho = Hecho.
 croquis-titulo = Croquis { $id }
+# El aviso de donde se abren los ajustes (ventana_chat/asistente.rs; ya estaba en apple/nucleo)
+chat-ajustes-bandeja = Los ajustes se abren desde el icono de PixPin en la bandeja
