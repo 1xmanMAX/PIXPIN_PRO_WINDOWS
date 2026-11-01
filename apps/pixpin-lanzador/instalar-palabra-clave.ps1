@@ -1,4 +1,4 @@
-# Pone la palabra clave del plugin de PixPin Max en los ajustes de Flow Launcher.
+# Pone la palabra clave del plugin de PixDesk en los ajustes de Flow Launcher.
 #
 # Flow guarda las palabras clave de cada plugin instalado en
 # %APPDATA%\FlowLauncher\Settings\Settings.json
@@ -48,7 +48,7 @@ try {
 }
 $plugin = $antes.PluginSettings.Plugins.$Id
 if ($null -eq $plugin) {
-    Write-Host 'El plugin de PixPin aun no esta en los ajustes de Flow: tomara las de plugin.json.'
+    Write-Host 'El plugin de PixDesk aun no esta en los ajustes de Flow: tomara las de plugin.json.'
     exit 0
 }
 $ya = @($plugin.ActionKeywords)
@@ -83,5 +83,5 @@ if (($quedan -join "`n") -cne ($Palabras -join "`n")) {
 
 Copy-Item -LiteralPath $Ajustes -Destination "$Ajustes.pixpin.bak" -Force
 [System.IO.File]::WriteAllText($Ajustes, $nuevo, $utf8)
-Write-Host "Palabra clave de PixPin Max en Flow: $($ya -join ', ') -> $($Palabras -join ', ')"
+Write-Host "Palabra clave de PixDesk en Flow: $($ya -join ', ') -> $($Palabras -join ', ')"
 exit 0

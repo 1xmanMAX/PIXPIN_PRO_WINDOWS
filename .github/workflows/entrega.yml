@@ -1,4 +1,4 @@
-# La entrega para instalar: compila PixPin Max en Windows (release) y deja un
+# La entrega para instalar: compila PixDesk en Windows (release) y deja un
 # ZIP con los ejecutables y un «Instalar.cmd», como artefacto del trabajo y,
 # si se pide, como version publicada en Releases. A mano (Actions → Entrega →
 # Run workflow) o con una etiqueta `v*`.
@@ -29,30 +29,55 @@ jobs:
       - name: Empaquetar
         shell: pwsh
         run: |
-          $dir = "PixPinMax"
+          $dir = "PixDesk"
           New-Item -ItemType Directory $dir | Out-Null
-          foreach ($exe in 'pixpinmax','pixpin-aligerar','pixpin-lanzador','pixpin-puente','pixpin-mcp') {
+          foreach ($exe in 'pixdesk','pixpin-aligerar','pixpin-lanzador','pixpin-puente','pixpin-mcp') {
             Copy-Item "target\release\$exe.exe" $dir
           }
-          # Instalar.cmd: copia todo a %LOCALAPPDATA%\Programs\PixPinMax (el
+          # Instalar.cmd: copia todo a %LOCALAPPDATA%\Programs\PixDesk (el
           # mismo sitio fijo que herramientas\instalar.ps1, para que el
           # arranque con Windows apunte siempre a la ultima) y la abre.
+          #
+          # Y migra la instalacion de cuando se llamaba PixPin Max
+          # (Programs\PixPinMax\pixpinmax.exe; docs/nombre-pixdesk.md):
+          # cierra los dos nombres, pasa la entrada de arranque «PixPinMax» a
+          # «PixDesk» (la app tambien lo hace al abrirse), quita los .exe
+          # viejos (salvo si hay un pixpinmax.toml: es una copia portable con
+          # datos) y cambia el acceso del menu Inicio «PixPin Max» por
+          # «PixDesk». Los datos de %APPDATA%\PixPinMax no se tocan.
           @'
           @echo off
-          set "DEST=%LOCALAPPDATA%\Programs\PixPinMax"
+          setlocal
+          set "DEST=%LOCALAPPDATA%\Programs\PixDesk"
+          set "VIEJO=%LOCALAPPDATA%\Programs\PixPinMax"
+          set "RUN=HKCU\Software\Microsoft\Windows\CurrentVersion\Run"
+          set "INICIO=%APPDATA%\Microsoft\Windows\Start Menu\Programs"
+          taskkill /im pixdesk.exe /f >nul 2>&1
           taskkill /im pixpinmax.exe /f >nul 2>&1
           if not exist "%DEST%" mkdir "%DEST%"
           copy /y "%~dp0*.exe" "%DEST%\" >nul
-          start "" "%DEST%\pixpinmax.exe"
-          echo PixPin Max instalado en %DEST%
+          reg query "%RUN%" /v PixPinMax >nul 2>&1
+          if not errorlevel 1 (
+            reg add "%RUN%" /v PixDesk /t REG_SZ /d "\"%DEST%\pixdesk.exe\"" /f >nul
+            reg delete "%RUN%" /v PixPinMax /f >nul
+          )
+          if exist "%VIEJO%\pixpinmax.toml" goto acceso
+          for %%e in (pixpinmax pixpin-aligerar pixpin-lanzador pixpin-puente pixpin-mcp) do (
+            if exist "%VIEJO%\%%e.exe" del /f /q "%VIEJO%\%%e.exe" >nul 2>&1
+          )
+          :acceso
+          if exist "%INICIO%\PixPin Max.lnk" del /f /q "%INICIO%\PixPin Max.lnk" >nul 2>&1
+          powershell -NoProfile -ExecutionPolicy Bypass -Command "$s = (New-Object -ComObject WScript.Shell).CreateShortcut($env:INICIO + '\PixDesk.lnk'); $s.TargetPath = $env:DEST + '\pixdesk.exe'; $s.WorkingDirectory = $env:DEST; $s.IconLocation = $env:DEST + '\pixdesk.exe,0'; $s.Description = 'PixDesk: capturas, pines, chat y lienzo'; $s.Save()" >nul 2>&1
+          start "" "%DEST%\pixdesk.exe"
+          echo PixDesk instalado en %DEST%
           '@ | Set-Content -Encoding ascii "$dir\Instalar.cmd"
           $sha = "${{ github.sha }}".Substring(0, 7)
-          $zip = "PixPinMax-windows-x64-$sha.zip"
+          $zip = "PixDesk-windows-x64-$sha.zip"
           Compress-Archive -Path "$dir\*" -DestinationPath $zip
           "ZIP=$zip" | Out-File -Append $env:GITHUB_ENV
       - uses: actions/upload-artifact@v4
         with:
-          name: PixPinMax-windows-x64
+          name: PixDesk-windows-x64
           path: ${{ env.ZIP }}
       - name: Publicar en Releases
         if: startsWith(github.ref, 'refs/tags/v') || inputs.version != ''
@@ -61,4 +86,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $tag = if ("${{ inputs.version }}") { "${{ inputs.version }}" } else { "${{ github.ref_name }}" }
-          gh release create $tag $env:ZIP --target "${{ github.sha }}" --title "PixPin Max $tag" --notes "Descomprime el ZIP y ejecuta Instalar.cmd (o pixpinmax.exe directamente)."
+          gh release create $tag $env:ZIP --target "${{ github.sha }}" --title "PixDesk $tag" --notes "Descomprime el ZIP y ejecuta Instalar.cmd (o pixdesk.exe directamente). Si tenias PixPin Max, Instalar.cmd la sustituye y conserva tus datos."

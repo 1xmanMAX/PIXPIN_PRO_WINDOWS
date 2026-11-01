@@ -1,4 +1,4 @@
-# El paquete de IDENTIDAD de PixPin Max (MSIX con ubicacion externa): lo
+# El paquete de IDENTIDAD de PixDesk (MSIX con ubicacion externa): lo
 # genera, lo firma con un certificado propio, hace que el equipo confie en ese
 # certificado y lo registra apuntando a la carpeta instalada. Con el paquete
 # registrado PixPin sale en el panel Compartir de otras apps y en el menu
@@ -14,12 +14,12 @@
 #   ... -Todo        los cuatro, en orden
 #   ... -Quitar      desregistra el paquete (y con -BorrarCertificado, quita el
 #                    certificado de los dos almacenes; esto PIDE ADMINISTRADOR)
-#   [-Instalado <carpeta>]  por defecto %LOCALAPPDATA%\Programs\PixPinMax
+#   [-Instalado <carpeta>]  por defecto %LOCALAPPDATA%\Programs\PixDesk
 #   [-Salida <carpeta>]     por defecto herramientas\paquete-identidad\salida
 #
 # Requisitos: Windows 10 2004 o mas nuevo; makeappx.exe y signtool.exe del SDK
 # de Windows (se buscan en "Windows Kits\10\bin\<version>\x64"); y que el
-# pixpinmax.exe instalado lleve en su manifiesto el elemento <msix> (desde el
+# pixdesk.exe instalado lleve en su manifiesto el elemento <msix> (desde el
 # 15-oct-2026, apps/pixpin/pixpinmax.manifest): sin el, Windows registra el
 # paquete pero el exe no recibe la identidad.
 
@@ -41,8 +41,10 @@ param(
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path -Parent $PSScriptRoot
 $fuente = Join-Path $PSScriptRoot 'paquete-identidad'
-if (-not $Instalado) { $Instalado = Join-Path $env:LOCALAPPDATA 'Programs\PixPinMax' }
+if (-not $Instalado) { $Instalado = Join-Path $env:LOCALAPPDATA 'Programs\PixDesk' }
 if (-not $Salida) { $Salida = Join-Path $fuente 'salida' }
+# El sujeto, el paquete y los ficheros conservan el nombre de antes de
+# PixDesk: son la identidad del paquete y del certificado ya puestos.
 $sujeto = 'CN=PixPin Max Local'
 $nombrePaquete = 'ForgePixPin.PixPinMax'
 $msix = Join-Path $Salida 'PixPinMax-identidad.msix'
@@ -82,7 +84,7 @@ function Certificado {
 
 $makeappx = Herramienta 'makeappx.exe'
 $signtool = Herramienta 'signtool.exe'
-$exe = Join-Path $Instalado 'pixpinmax.exe'
+$exe = Join-Path $Instalado 'pixdesk.exe'
 $cert = Certificado
 $confiado = Get-ChildItem Cert:\LocalMachine\TrustedPeople -ErrorAction SilentlyContinue | Where-Object { $_.Subject -eq $sujeto }
 $registrado = Get-AppxPackage -Name $nombrePaquete -ErrorAction SilentlyContinue
@@ -93,11 +95,11 @@ if (Test-Path $exe) {
     $conMsix = [Text.Encoding]::ASCII.GetString($bytes).Contains('urn:schemas-microsoft-com:msix.v1')
 }
 
-Write-Host 'Paquete de identidad de PixPin Max'
+Write-Host 'Paquete de identidad de PixDesk'
 Write-Host "  Windows:                 $([Environment]::OSVersion.Version) (hace falta 10.0.19041 o mas)"
 Write-Host "  makeappx.exe:            $(if ($makeappx) {$makeappx} else {'NO esta (instala el SDK de Windows)'})"
 Write-Host "  signtool.exe:            $(if ($signtool) {$signtool} else {'NO esta (instala el SDK de Windows)'})"
-Write-Host "  pixpinmax.exe instalado: $(if (Test-Path $exe) {$exe} else {"NO esta en $Instalado"})"
+Write-Host "  pixdesk.exe instalado: $(if (Test-Path $exe) {$exe} else {"NO esta en $Instalado"})"
 Write-Host "  ...con <msix> dentro:    $(if ($conMsix) {'si'} else {'no (instala una compilacion del 15-oct-2026 o posterior)'})"
 Write-Host "  Certificado propio:      $(if ($cert) {"$($cert.Thumbprint) (caduca $($cert.NotAfter.ToString('yyyy-MM-dd')))"} else {'no creado'})"
 Write-Host "  Confiado en el equipo:   $(if ($confiado) {'si'} else {'no'})"
@@ -186,7 +188,7 @@ if ($Crear -and -not $Elevado) {
         $b.Dispose()
     }
     $grande.Dispose()
-    # /nv: el paquete NO lleva pixpinmax.exe (esta en la ubicacion externa) y
+    # /nv: el paquete NO lleva pixdesk.exe (esta en la ubicacion externa) y
     # la validacion completa lo exigiria. El esquema del manifiesto se
     # comprobo sin /nv el 15-oct-2026 (solo fallaba eso).
     & $makeappx pack /o /nv /d $obra /p $msix
@@ -201,7 +203,7 @@ if ($Firmar -and -not $Elevado) {
     if (-not $cert) {
         # Firma de codigo (EKU 1.3.6.1.5.5.7.3.3), sin ser entidad emisora.
         $cert = New-SelfSignedCertificate -Type Custom -Subject $sujeto -KeyUsage DigitalSignature `
-            -FriendlyName 'PixPin Max (paquete de identidad)' -CertStoreLocation 'Cert:\CurrentUser\My' `
+            -FriendlyName 'PixDesk (paquete de identidad)' -CertStoreLocation 'Cert:\CurrentUser\My' `
             -NotAfter (Get-Date).AddYears(10) `
             -TextExtension @('2.5.29.37={text}1.3.6.1.5.5.7.3.3', '2.5.29.19={text}')
         Write-Host "Certificado creado: $($cert.Thumbprint)"
@@ -226,7 +228,7 @@ if ($Confiar) {
 if ($Registrar -and -not $Elevado) {
     if (-not (Test-Path $msix)) { throw "Falta $msix (pasos -Crear y -Firmar)." }
     if (-not (Test-Path $exe)) { throw "No esta $exe (instala PixPin con herramientas\instalar.ps1)." }
-    if (-not $conMsix) { Write-Warning 'El pixpinmax.exe instalado no lleva <msix>: el paquete se registra pero no le dara identidad.' }
+    if (-not $conMsix) { Write-Warning 'El pixdesk.exe instalado no lleva <msix>: el paquete se registra pero no le dara identidad.' }
     Add-AppxPackage -Path $msix -ExternalLocation $Instalado -ForceUpdateFromAnyVersion
     $r = Get-AppxPackage -Name $nombrePaquete
     Write-Host "Registrado: $($r.PackageFullName)"
