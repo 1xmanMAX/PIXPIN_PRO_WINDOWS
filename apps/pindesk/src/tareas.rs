@@ -41,6 +41,7 @@
 #![forbid(unsafe_code)]
 
 pub(crate) mod chapitas;
+mod destino;
 mod emoticonos;
 pub(crate) mod frase;
 pub(crate) mod kanban;
@@ -128,6 +129,10 @@ pub struct Lista {
     /// El codigo corto (`K7Q2`) del aparato donde nacio el mensaje de la
     /// lista: en un chat compartido dice quien la apunto ([`autor`]).
     pub aparato: Option<String>,
+    /// Si es la lista de una asignatura del horario (1-nov-2026): su color,
+    /// `0xRRGGBB` (`horario::asignaturas::marcar`). Esas salen en la ventana
+    /// aunque esten vacias, para poder apuntarles tareas.
+    pub asignatura: Option<u32>,
 }
 
 impl Lista {
@@ -210,6 +215,7 @@ pub fn lista_de(ficha: &almacen::Ficha, m: &cuaderno::Mensaje) -> Option<Lista> 
         cuando: m.cuando,
         filas,
         aparato: m.aparato.as_deref().map(aparato_corto),
+        asignatura: None,
     })
 }
 
@@ -273,6 +279,8 @@ pub fn reunir(raiz: &Path) -> (Vec<Lista>, Vec<String>) {
         };
         listas.extend(c.mensajes.iter().filter_map(|m| lista_de(ficha, m)));
     }
+    // Las de las asignaturas, con su color (y a la vista aunque esten vacias).
+    crate::horario::asignaturas::marcar(raiz, &mut listas);
     ordenar_listas(&mut listas);
     (listas, proyectos)
 }
@@ -288,6 +296,8 @@ pub fn firma(raiz: &Path, proyectos: &[String]) -> Vec<Option<(SystemTime, u64)>
             .map(|m| (m.modified().unwrap_or(SystemTime::UNIX_EPOCH), m.len()))
     };
     std::iter::once(de(&almacen::ruta(raiz)))
+        // El horario: el color y el nombre de las listas de las asignaturas.
+        .chain(std::iter::once(de(&crate::horario::ruta(raiz))))
         .chain(
             proyectos
                 .iter()
@@ -889,6 +899,7 @@ mod pruebas {
             cuando,
             filas: filas_de(documento),
             aparato: None,
+            asignatura: None,
         }
     }
 

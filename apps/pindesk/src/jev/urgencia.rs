@@ -296,6 +296,7 @@ mod pruebas {
             cuando: 0,
             filas: crate::tareas::filas_de("- [ ] pagar la matrícula ⏫\n- [ ] pan"),
             aparato: None,
+            asignatura: None,
         }];
         aplicar(&u, &mut listas);
         assert!(listas[0].filas.iter().all(|f| f.prioridad.is_none()));

@@ -100,12 +100,28 @@ pub enum Pedido {
     /// `imagenes`: rutas absolutas de imagenes que van con la tarea. En
     /// `texto`, `[img 01]`, `[img 02]`… (desde 1, en el orden de la lista)
     /// marcan donde va cada una; la que no tenga ficha va al final.
+    ///
+    /// `asignatura` (1-nov-2026, `p geometría <tarea>` de Flow): el nombre
+    /// de una asignatura del horario; la tarea va a su lista (la de su
+    /// enlace, creandola si aun no esta) y no se miran `proyecto` ni
+    /// `codigo`.
     AnadirTarea {
         texto: String,
         proyecto: Option<String>,
         codigo: Option<String>,
         #[serde(default)]
         imagenes: Vec<PathBuf>,
+        #[serde(default)]
+        asignatura: Option<String>,
+    },
+    /// **La ventana de Tareas en una lista** (1-nov-2026): la de la
+    /// `asignatura` (por su nombre) o la `codigo` del chat `proyecto`.
+    /// Sin ninguna de las dos, la ventana como siempre.
+    AbrirLista {
+        #[serde(default)]
+        asignatura: Option<String>,
+        proyecto: Option<String>,
+        codigo: Option<String>,
     },
     MarcarTarea {
         proyecto: Option<String>,
@@ -685,6 +701,7 @@ pub fn atender(json: &str, cx: &Contexto) -> Hecho {
                 | Pedido::Pinear { .. }
                 | Pedido::PinearUltima { .. }
                 | Pedido::Ventana { .. }
+                | Pedido::AbrirLista { .. }
                 | Pedido::CarpetaPaginas { .. }
                 | Pedido::LeccionNueva { .. }
                 | Pedido::Lecciones { .. }
@@ -1065,7 +1082,19 @@ fn hacer(p: Pedido, cx: &Contexto) -> Result<Hecho, Fallo> {
             proyecto,
             codigo,
             imagenes,
+            asignatura,
         } => {
+            // A una asignatura: a su lista, como si viniera con su chat y
+            // su codigo.
+            let (proyecto, codigo) = match asignatura.as_deref().map(str::trim) {
+                Some(a) if !a.is_empty() => {
+                    let l =
+                        crate::horario::asignaturas::lista_de_la_asignatura(raiz, cx.aparato, a)?;
+                    crate::tareas::refrescar();
+                    (Some(l.proyecto), Some(l.codigo))
+                }
+                _ => (proyecto, codigo),
+            };
             // Lo que se reconoce al escribir una tarea (18-oct-2026), el
             // mismo parser de la ventana de Tareas y del plugin de Flow:
             // #etiquetas, urgencia con las palabras de Ajustes y la hora.
@@ -1183,6 +1212,31 @@ fn hacer(p: Pedido, cx: &Contexto) -> Result<Hecho, Fallo> {
                     ir_al_chat(f.id, None);
                 }
                 None => crate::ventana_chat::lanzar(cx.idioma, cx.ubicacion.clone(), cx.opciones),
+            }
+        }
+        Pedido::AbrirLista {
+            asignatura,
+            proyecto,
+            codigo,
+        } => {
+            let clave = match (asignatura.as_deref().map(str::trim), codigo) {
+                (Some(a), _) if !a.is_empty() => Some(
+                    crate::horario::asignaturas::lista_de_la_asignatura(raiz, cx.aparato, a)?
+                        .clave(),
+                ),
+                (_, Some(c)) if !c.trim().is_empty() => {
+                    let f = ficha_de(raiz, proyecto.as_deref(), cx.aparato, ahora)?;
+                    let m = mensaje_de(raiz, &f.id, c.trim())?;
+                    if !es_lista(&m) {
+                        return Err(Fallo::NoEsLista);
+                    }
+                    Some(format!("{}/{}", f.id, m.id))
+                }
+                _ => None,
+            };
+            match clave {
+                Some(k) => crate::tareas::abrir_en(cx.idioma, cx.ubicacion.clone(), cx.aparato, k),
+                None => crate::tareas::abrir(cx.idioma, cx.ubicacion.clone(), cx.aparato),
             }
         }
         // Las mismas entradas que la bandeja: su ventana es la respuesta.
@@ -2535,7 +2589,7 @@ mod pruebas {
 
     /// Un ejemplo de cada accion, con lo minimo que pide la tabla del
     /// protocolo.
-    const EJEMPLOS: [(&str, &str); 39] = [
+    const EJEMPLOS: [(&str, &str); 40] = [
         (
             "pines",
             r#"{"pindesk":1,"accion":"pines","operacion":"ocultar_mostrar"}"#,
@@ -2668,6 +2722,10 @@ mod pruebas {
             "lectura_veloz",
             r#"{"pindesk":1,"accion":"lectura_veloz","doc":"uid-1","ruta":"C:\\Libros\\Tesis.pdf","tipo":"pdf","pagina":4,"frac":"0.25","fraccion":0.3,"t":1761562800000}"#,
         ),
+        (
+            "abrir_lista",
+            r#"{"pindesk":1,"accion":"abrir_lista","asignatura":"Geometría"}"#,
+        ),
     ];
 
     #[test]
@@ -2735,6 +2793,37 @@ mod pruebas {
                 pindesk_shell::mensajero::respuesta::ACEPTADO
             );
         }
+    }
+
+    #[test]
+    fn una_tarea_puede_ir_a_una_asignatura_y_la_ventana_abrirse_en_ella() {
+        let p = leer(
+            r#"{"pindesk":1,"accion":"anadir_tarea","texto":"hoja 3","asignatura":"Geometría"}"#,
+        )
+        .unwrap();
+        assert!(
+            matches!(&p, Pedido::AnadirTarea { asignatura: Some(a), .. } if a == "Geometría"),
+            "{p:?}"
+        );
+        // Sin el campo, como siempre (al Inbox o a su lista).
+        let p = leer(r#"{"pindesk":1,"accion":"anadir_tarea","texto":"pan"}"#).unwrap();
+        assert!(matches!(
+            &p,
+            Pedido::AnadirTarea {
+                asignatura: None,
+                ..
+            }
+        ));
+        let p =
+            leer(r#"{"pindesk":1,"accion":"abrir_lista","proyecto":"p1","codigo":"m1"}"#).unwrap();
+        assert_eq!(
+            p,
+            Pedido::AbrirLista {
+                asignatura: None,
+                proyecto: Some("p1".into()),
+                codigo: Some("m1".into()),
+            }
+        );
     }
 
     #[test]

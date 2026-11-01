@@ -868,7 +868,7 @@ fn arrancar(
     // asi el primer pin nace con la ventana ya en pie.
     recordatorios::vigilar(ubicacion.raiz(), hwnd.0 as isize);
     // Y el horario de clases: relee la agenda si se edita o cambia el dia.
-    horario::vigilar(ubicacion.raiz());
+    horario::vigilar(ubicacion.raiz(), &identidad_equipo);
     calendario_google::vigilar(ubicacion.raiz());
     // Las automatizaciones del asistente: su hilo mira la hora y espera a
     // las capturas y a la sincronizacion (13-oct).

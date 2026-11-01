@@ -228,19 +228,19 @@ pub const VERBOS: &[Verbo] = &[
     },
     Verbo {
         nombres: &["tarea", "task", "todo"],
-        uso: "tarea \"<texto>\" [--proyecto P] [--lista <id>]",
-        ayuda: "Apunta una tarea (sin proyecto ni lista, en el Inbox); sin texto, abre las tareas.",
-        opciones: &["proyecto", "lista", "texto"],
+        uso: "tarea \"<texto>\" [--proyecto P] [--lista <id>] [--asignatura <nombre>]",
+        ayuda: "Apunta una tarea (sin proyecto ni lista, en el Inbox; con --asignatura, en la lista de esa asignatura del horario); sin texto, abre las tareas.",
+        opciones: &["proyecto", "lista", "texto", "asignatura"],
         por_enlace: true,
         armar: armar_tarea,
     },
     Verbo {
         nombres: &["tareas", "tasks"],
-        uso: "tareas",
-        ayuda: "Abre la ventana de tareas.",
-        opciones: &[],
+        uso: "tareas [--asignatura <nombre>]",
+        ayuda: "Abre la ventana de tareas (con --asignatura, en la lista de esa asignatura).",
+        opciones: &["asignatura"],
         por_enlace: true,
-        armar: |_| ventana("tareas"),
+        armar: armar_tareas,
     },
     Verbo {
         nombres: &["capturas", "galeria"],
@@ -913,7 +913,7 @@ pub enum Seguridad {
 /// las tres ultimas: marcar una tarea, posponer un recordatorio y conservar
 /// una captura (que la app solo hace con una ruta de su carpeta de capturas,
 /// `pedidos::captura_de`; una de red sigue sin pasar).
-pub const SEGURAS: [&str; 18] = [
+pub const SEGURAS: [&str; 19] = [
     "abrir",
     "chat",
     "nota_nueva",
@@ -937,6 +937,10 @@ pub const SEGURAS: [&str; 18] = [
     // (`pindesk_docs::lectura_veloz::Progreso::de_campos`, que se mira otra
     // vez en la app al recibirlo).
     "lectura_veloz",
+    // 1-nov: abrir la ventana de Tareas en una lista (o la de una
+    // asignatura). Solo abre una ventana; si la asignatura no tiene lista,
+    // le crea una vacia, como `lista_nueva`.
+    "abrir_lista",
 ];
 
 /// **Cuanto se fia uno de un pedido llegado por enlace.** Se mira el pedido
@@ -1263,7 +1267,7 @@ fn armar_proyecto(e: &Entrada) -> Result<Orden, Fallo> {
 fn armar_tarea(e: &Entrada) -> Result<Orden, Fallo> {
     let (texto, ficheros) = e.texto_y_ficheros();
     if texto.is_empty() && ficheros.is_empty() {
-        return ventana("tareas");
+        return armar_tareas(e);
     }
     if ficheros.iter().any(|f| !es_imagen(f)) {
         return Err(Fallo::no_se_entiende("una tarea solo lleva imagenes"));
@@ -1272,10 +1276,23 @@ fn armar_tarea(e: &Entrada) -> Result<Orden, Fallo> {
     if e.campo("proyecto").is_some() {
         campos["proyecto"] = e.proyecto();
     }
+    // 1-nov: a la lista de una asignatura del horario (la app la busca).
+    if let Some(a) = e.campo("asignatura") {
+        campos["asignatura"] = json!(a);
+    }
     if !ficheros.is_empty() {
         campos["imagenes"] = Value::Array(ficheros.iter().map(|p| ruta_json(p)).collect());
     }
     pedidos(vec![pedido("anadir_tarea", campos)])
+}
+
+/// `tareas`: la ventana; con `--asignatura`, en la lista de esa asignatura
+/// (pedido `abrir_lista`).
+fn armar_tareas(e: &Entrada) -> Result<Orden, Fallo> {
+    match e.campo("asignatura") {
+        Some(a) => pedidos(vec![pedido("abrir_lista", json!({ "asignatura": a }))]),
+        None => ventana("tareas"),
+    }
 }
 
 /// Texto e imagenes para `nota_nueva` y `leccion_nueva`.

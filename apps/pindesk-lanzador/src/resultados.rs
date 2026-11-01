@@ -70,6 +70,8 @@ pub mod glifo {
     pub const AUTOMATIZACION: &str = "\u{E768}";
     /// `Library`: una carpeta de paginas (un cuaderno).
     pub const CARPETA_PAGINAS: &str = "\u{E8F1}";
+    /// `Education` (el birrete): una asignatura del horario.
+    pub const ASIGNATURA: &str = "\u{E7BE}";
 }
 
 /// El pedido `soltar`: el recuadro flotante donde se sueltan archivos, que
@@ -504,7 +506,7 @@ pub fn hace(ms: i64, ahora: i64) -> String {
     }
 }
 
-fn unir(trozos: &[&str]) -> String {
+pub(crate) fn unir(trozos: &[&str]) -> String {
     trozos
         .iter()
         .filter(|t| !t.is_empty())
@@ -1289,7 +1291,7 @@ pub fn listas(proyectos: &[Proyecto]) -> Vec<Lista> {
 }
 
 /// «2 pendientes de 3», «vacía»...
-fn cuenta_de(l: &Lista) -> String {
+pub(crate) fn cuenta_de(l: &Lista) -> String {
     let pendientes = l.tareas.iter().filter(|t| !t.hecha).count();
     match (pendientes, l.tareas.len()) {
         (_, 0) => "vacía".to_string(),
@@ -1550,7 +1552,24 @@ pub fn resultados(proyectos: &[Proyecto], busqueda: &str, ctx: &Contexto) -> Vec
             v
         }
         Modo::Buscar { texto, proyecto } => match proyecto {
-            None => buscar(proyectos, &texto, None, None, ctx),
+            // Las asignaturas del horario delante (1-nov-2026): su nombre la
+            // ensena, y su nombre y algo mas le apunta esa tarea. Su lista no
+            // sale otra vez debajo.
+            None => {
+                let asignaturas = ctx
+                    .raiz_de_datos()
+                    .map(|r| crate::asignaturas::leer(&r))
+                    .unwrap_or_default();
+                let mut v =
+                    crate::asignaturas::para_lo_escrito(&asignaturas, &texto, proyectos, ctx);
+                let suyas = crate::asignaturas::claves_de_sus_listas(&asignaturas, &v);
+                v.extend(
+                    buscar(proyectos, &texto, None, None, ctx)
+                        .into_iter()
+                        .filter(|r| r.clave.as_ref().is_none_or(|k| !suyas.contains(k))),
+                );
+                v
+            }
             Some(pt) => {
                 let elegido = elegir_proyecto(proyectos, &pt);
                 let mut v = Vec::new();
@@ -1602,7 +1621,7 @@ pub(crate) fn resaltar(v: &mut [Resultado], consulta: &str) {
 /// El titulo y lo entendido de una tarea escrita para un resultado de Flow:
 /// el titulo limpio (o lo escrito, si no queda nada) y el resumen («Muy
 /// urgente · #casa · ⏰ mañana 17:00», vacio si no se reconocio nada).
-fn tarea_entendida(texto: &str, ctx: &Contexto) -> (String, String) {
+pub(crate) fn tarea_entendida(texto: &str, ctx: &Contexto) -> (String, String) {
     let f = ctx.entender_tarea(texto);
     let titulo = if f.titulo.is_empty() {
         texto.trim().to_string()

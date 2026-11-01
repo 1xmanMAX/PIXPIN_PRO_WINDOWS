@@ -571,8 +571,12 @@ enum Accion {
     /// titulo y la nota de por que no se esta haciendo.
     FijarPin(usize, usize),
     /// El libro de la caja de apuntar (18-oct-2026): el desplegable de las
-    /// asignaturas del horario.
+    /// asignaturas del horario y, desde el 1-nov-2026, de todas las listas
+    /// (`super::destino`).
     ElegirAsignatura,
+    /// El «＋» del encabezado de la lista `.0` (1-nov-2026): lo que se
+    /// apunte en la caja va a ella.
+    ApuntarEn(usize),
 }
 
 /// Una tarjeta pulsada en el tablero Kanban: hasta que el raton se aleja
@@ -946,7 +950,12 @@ impl Estado {
             let l = self.listas.get(li)?;
             Some((l.clave(), l.filas.get(fi)?.crudo.clone()))
         });
-        self.listas = todas.into_iter().filter(|l| !l.filas.is_empty()).collect();
+        // Las vacias no; las de las asignaturas, si (1-nov-2026): son donde
+        // se apuntan sus tareas.
+        self.listas = todas
+            .into_iter()
+            .filter(|l| !l.filas.is_empty() || l.asignatura.is_some())
+            .collect();
         if let Some((clave, crudo)) = con_foco {
             self.foco = match tarjetas::reubicar(&self.listas, &clave, &crudo) {
                 Some((li, fi)) => Foco::Tarjeta(li, fi),
@@ -2097,31 +2106,37 @@ fn hacer(
             }
         }
         Accion::ElegirAsignatura => {
-            // El desplegable: las asignaturas del horario y «Sin asignatura».
+            // El desplegable: el Inbox, las asignaturas del horario y las
+            // demas listas (1-nov-2026, `super::destino`).
             let nombres = crate::horario::asignaturas::nombres(raiz);
-            if nombres.is_empty() {
-                e.asignatura = None;
-                e.decir(textos.t("tareas-sin-asignaturas"));
-                return true;
-            }
             let Some(hwnd) = e.hwnd else {
                 return true;
             };
-            let mut entradas: Vec<(u32, String)> = vec![(1, textos.t("tareas-sin-asignatura"))];
-            entradas.extend(nombres.iter().enumerate().map(|(i, n)| {
-                let marca = if e.asignatura.as_deref() == Some(n.as_str()) {
-                    "✓ "
-                } else {
-                    ""
-                };
-                (i as u32 + 2, format!("{marca}{n}"))
-            }));
-            match pindesk_shell::menu_llano(hwnd, &entradas) {
-                Some(1) => e.asignatura = None,
-                Some(id) => e.asignatura = nombres.get(id as usize - 2).cloned(),
-                None => {}
+            let ahora = super::destino::elegido(e.asignatura.as_deref(), e.apuntar_en.as_ref());
+            let opciones = super::destino::opciones(
+                &textos.t("tareas-sin-asignatura"),
+                &nombres,
+                &e.destinos,
+                &ahora,
+            );
+            let entradas: Vec<(u32, String)> = opciones
+                .iter()
+                .enumerate()
+                .map(|(i, (_, rotulo))| (i as u32 + 1, rotulo.clone()))
+                .collect();
+            if let Some(id) = pindesk_shell::menu_llano(hwnd, &entradas)
+                && let Some((d, _)) = opciones.get(id as usize - 1)
+            {
+                elegir_destino(e, d.clone());
             }
             e.foco = Foco::Apuntar;
+        }
+        Accion::ApuntarEn(li) => {
+            if let Some(l) = e.listas.get(li).cloned() {
+                let nombres = crate::horario::asignaturas::nombres(raiz);
+                elegir_destino(e, super::destino::de_la_lista(&l, &nombres));
+                e.foco = Foco::Apuntar;
+            }
         }
         Accion::Imagen(li, fi, k) => {
             let ruta = e.fila(li, fi).and_then(|(l, f)| e.ruta_de(l, f, k));
@@ -3095,7 +3110,7 @@ fn pintar_caja(e: &mut Estado, p: &Pintor, x: f32, y: f32, ancho: f32, s: f32, t
     p.icono(
         &mi::MENU_BOOK,
         crate::v2::geom::centrado((libro.x + lado / 2.0, libro.y + lado / 2.0), li),
-        if e.asignatura.is_some() {
+        if e.asignatura.is_some() || e.apuntar_en.is_some() {
             ACENTO
         } else if sobre_libro {
             TEXTO
@@ -3188,9 +3203,10 @@ fn pintar_caja(e: &mut Estado, p: &Pintor, x: f32, y: f32, ancho: f32, s: f32, t
             ancho: x + ancho + MARGEN * s,
             alto: 100_000.0,
         };
-        let pista = match &e.asignatura {
-            Some(a) => format!("{}: {a}", textos.t("tareas-asignatura-pista")),
-            None => textos.t("tareas-asignatura-pista"),
+        let pista = match (&e.asignatura, &e.apuntar_en) {
+            (Some(a), _) => format!("{}: {a}", textos.t("tareas-destino-pista")),
+            (None, Some(l)) => format!("{}: {}", textos.t("tareas-destino-pista"), l.titulo),
+            (None, None) => textos.t("tareas-destino-pista"),
         };
         crate::v2::pista::pintar(p, libro, &pista, limite, s);
     }
@@ -3474,6 +3490,31 @@ fn pintar_sin_resultados(
     );
 }
 
+/// Lo elegido en el desplegable del libro o con el «＋» de una lista: adonde
+/// va lo que se apunte en la caja.
+fn elegir_destino(e: &mut Estado, d: super::destino::Destino) {
+    use super::destino::Destino;
+    match d {
+        Destino::Inbox => {
+            e.asignatura = None;
+            e.apuntar_en = None;
+        }
+        Destino::Asignatura(n) => {
+            e.asignatura = Some(n);
+            e.apuntar_en = None;
+        }
+        Destino::Lista(k) => {
+            e.asignatura = None;
+            e.apuntar_en = e
+                .listas
+                .iter()
+                .chain(&e.destinos)
+                .find(|l| l.clave() == k)
+                .cloned();
+        }
+    }
+}
+
 /// El encabezado de un grupo: el nombre de la lista en negrita, «· su
 /// chat» en gris (no en el Inbox: que es de «Mensajes guardados» ya se
 /// sabe) y, pegada al borde derecho, cuantas quedan pendientes. Con el raton
@@ -3534,9 +3575,26 @@ fn pintar_encabezado(
     } else {
         p.texto(&cuenta, x + ancho - cw, ty + (th - ch) / 2.0, tam_c, GRIS);
     }
+    // Y siempre, a su izquierda, el «＋» (1-nov-2026): lo que se apunte en
+    // la caja va a esta lista (el usuario no encontraba como añadir tareas
+    // a sus asignaturas).
+    let ocupado = cw.max(2.0 * ASPA * s + 4.0 * s);
+    crate::v2::boton_icono(
+        p,
+        &mut e.botones,
+        RectF {
+            x: x + ancho - ocupado - ASPA * s - 4.0 * s,
+            ..papelera
+        },
+        Accion::ApuntarEn(g.lista),
+        &mi::ADD,
+        false,
+        false,
+        s,
+    );
     // Lo que queda para el nombre: lo mismo pase o no el raton, para que no
     // se recorte de otra forma al pasar.
-    let derecha = cw.max(2.0 * ASPA * s + 4.0 * s);
+    let derecha = ocupado + ASPA * s + 4.0 * s;
     let libre = (ancho - derecha - 34.0 * s).max(0.0);
     let con_chat = !super::es_inbox(&l);
     // De un chat compartido: la insignia verde detras del nombre (como en
@@ -4089,6 +4147,12 @@ fn colores_de_listas(claves: &[(String, bool)]) -> Vec<usize> {
 
 /// **El degradado de la lista `li`** de la ventana (ver [`colores_de_listas`]).
 fn degradado_de_lista(e: &Estado, li: usize) -> (Color, Color) {
+    // La de una asignatura, con el color de la asignatura (1-nov-2026): el
+    // mismo que en la vista Horario.
+    if let Some(c) = e.listas.get(li).and_then(|l| l.asignatura) {
+        let base = hex(c);
+        return (base, mezcla(base, Color::NEGRO, 0.35));
+    }
     let claves: Vec<(String, bool)> = e
         .listas
         .iter()
@@ -4804,6 +4868,7 @@ mod pruebas {
             cuando,
             filas: super::super::filas_de(doc),
             aparato: None,
+            asignatura: None,
         };
         let mut e = Estado::nuevo();
         e.hoy = pindesk_proyecto::mini::Fecha {

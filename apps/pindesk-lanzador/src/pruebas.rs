@@ -3605,3 +3605,73 @@ fn flow_ensena_lo_que_entendio_de_la_tarea_antes_de_pulsar() {
     );
     let _ = fs::remove_dir_all(&r);
 }
+
+/// Las asignaturas que deja la app (`horario::asignaturas::para_flow`):
+/// «Cálculo», con su lista en «Compra» de Mensajes guardados.
+fn escribir_asignaturas(r: &Path) {
+    fs::create_dir_all(r.join("cache")).unwrap();
+    let a = json!({"version": 1, "asignaturas": [
+        {"nombre": "Cálculo", "aula": "B-3", "color": "#0A84FF", "proyecto": "G1", "codigo": "t1",
+         "clases": [{"dia": 0, "inicio": 480, "fin": 600, "aula": "B-3"}]},
+        {"nombre": "Arte", "proyecto": null, "codigo": null, "clases": []}
+    ]});
+    fs::write(r.join("cache").join("asignaturas.json"), a.to_string()).unwrap();
+}
+
+#[test]
+fn una_asignatura_se_busca_por_su_nombre_y_se_le_apuntan_tareas() {
+    let r = raiz("asignaturas");
+    escribir_asignaturas(&r);
+    let v = buscar_en(&r, "calc", 1000);
+    assert_eq!(v[0].titulo, "Cálculo", "{v:#?}");
+    assert!(
+        v[0].subtitulo.starts_with("Asignatura"),
+        "{}",
+        v[0].subtitulo
+    );
+    assert!(
+        v[0].subtitulo.contains("2 pendientes de 3"),
+        "{}",
+        v[0].subtitulo
+    );
+    let Accion::Pedido(p) = &v[0].accion else {
+        panic!("{:?}", v[0].accion)
+    };
+    assert_eq!(p["accion"], "abrir_lista");
+    assert_eq!(p["asignatura"], "Cálculo");
+    assert_eq!(v[0].autocompletar.as_deref(), Some("pp Cálculo "));
+    // El nombre y algo detras: apuntarle la tarea, y Flow se queda en ella.
+    let v = buscar_en(&r, "calculo repasar integrales", 1000);
+    assert_eq!(v[0].titulo, "Añadir tarea a Cálculo: repasar integrales");
+    let Accion::PedirYSeguir { pedido, consulta } = &v[0].accion else {
+        panic!("{:?}", v[0].accion)
+    };
+    assert_eq!(pedido["accion"], "anadir_tarea");
+    assert_eq!(pedido["asignatura"], "Cálculo");
+    assert_eq!(pedido["texto"], "repasar integrales");
+    assert_eq!(consulta, "pp Cálculo ");
+    assert_eq!(v[1].titulo, "Cálculo");
+    // Su lista no sale otra vez como «Compra»...
+    let v = buscar_en(&r, "calculo", 1000);
+    assert!(
+        !v.iter().any(|x| x.clave.as_deref() == Some("lista/G1/t1")),
+        "{v:#?}"
+    );
+    // ...pero buscada por su titulo, si.
+    let v = buscar_en(&r, "compra", 1000);
+    assert!(
+        v.iter().any(|x| x.clave.as_deref() == Some("lista/G1/t1")),
+        "{v:#?}"
+    );
+    // Una sin lista aun tambien se busca.
+    assert_eq!(buscar_en(&r, "arte", 1000)[0].titulo, "Arte");
+    // Caso negativo: sin el fichero de la app, nada de asignaturas.
+    let r2 = raiz("sin-asignaturas");
+    assert!(
+        buscar_en(&r2, "calc", 1000)
+            .iter()
+            .all(|x| x.titulo != "Cálculo")
+    );
+    let _ = fs::remove_dir_all(&r);
+    let _ = fs::remove_dir_all(&r2);
+}

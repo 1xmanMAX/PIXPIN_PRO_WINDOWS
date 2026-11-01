@@ -193,6 +193,7 @@ impl Semana {
             nombre,
             aula,
             color: None,
+            lista: None,
         });
         Ok(Some(self.asignaturas.len() - 1))
     }
@@ -219,6 +220,31 @@ impl Semana {
             .position(|&c| c == ahora)
             .map_or(0, |k| (k + 1) % PALETA.len());
         self.asignaturas[i].color = Some(PALETA[k]);
+    }
+
+    /// **Renombra la asignatura `i`** y sus clases, que la nombran. Su
+    /// enlace con la lista se queda (quien guarda renombra tambien la lista,
+    /// [`super::asignaturas::renombrar`]). `Err` con la otra si ya hay una
+    /// que se llama asi; `Ok(None)` si no cambia nada (vacio o el mismo
+    /// nombre); `Ok(Some(antes))`, con el nombre de antes, si se cambio.
+    pub fn renombrar_asignatura(&mut self, i: usize, nuevo: &str) -> Result<Option<String>, usize> {
+        let nuevo = nuevo.split_whitespace().collect::<Vec<_>>().join(" ");
+        let Some(antes) = self.asignaturas.get(i).map(|a| a.nombre.clone()) else {
+            return Ok(None);
+        };
+        if nuevo.is_empty() || nuevo == antes {
+            return Ok(None);
+        }
+        if let Some(j) = self.asignatura(&nuevo).filter(|&j| j != i) {
+            return Err(j);
+        }
+        for b in &mut self.bloques {
+            if mismo(&b.nombre, &antes) {
+                b.nombre = nuevo.clone();
+            }
+        }
+        self.asignaturas[i].nombre = nuevo;
+        Ok(Some(antes))
     }
 
     /// Cambia el aula de la asignatura `i` (y de sus clases que tenian la de
@@ -394,6 +420,9 @@ pub fn linea_de_asignatura(a: &Asignatura) -> String {
     }
     if let Some(c) = a.color {
         s.push_str(&format!(" #{c:06X}"));
+    }
+    if let Some(id) = a.lista.as_deref().filter(|id| !id.is_empty()) {
+        s.push_str(&format!(" {}{id}", super::ENLACE));
     }
     s
 }
@@ -702,5 +731,50 @@ Fin de la nota.
         assert!(!n.contains('\t'), "{n}");
         assert!(n.contains("Lun 8:00-10:00 Geometría"));
         assert!(n.contains("nota final"));
+    }
+
+    #[test]
+    fn el_enlace_con_la_lista_va_y_vuelve_y_sobrevive_al_renombrar() {
+        let t = "Asignatura Geometría @A-12 #0A84FF lista:1730000000000-ab12\n\
+                 Lun 8:00-9:00 Geometría @A-12\n";
+        let mut s = semana_de(t);
+        assert_eq!(
+            s.asignaturas[0].nombre, "Geometría",
+            "el enlace no es nombre"
+        );
+        assert_eq!(s.asignaturas[0].aula.as_deref(), Some("A-12"));
+        assert_eq!(
+            s.asignaturas[0].lista.as_deref(),
+            Some("1730000000000-ab12")
+        );
+        // Renombrar: la asignatura y sus clases; el enlace, el mismo.
+        assert_eq!(
+            s.renombrar_asignatura(0, "  Geometría   analítica "),
+            Ok(Some("Geometría".to_string()))
+        );
+        let n = reescribir(t, &s);
+        assert!(
+            n.contains("Asignatura Geometría analítica @A-12 #0A84FF lista:1730000000000-ab12"),
+            "{n}"
+        );
+        assert!(n.contains("Lun 8:00-9:00 Geometría analítica @A-12"), "{n}");
+        let h = leer(&n, ahora());
+        assert_eq!(h.clases[0].nombre, "Geometría analítica");
+        assert_eq!(
+            h.asignaturas[0].lista.as_deref(),
+            Some("1730000000000-ab12")
+        );
+    }
+
+    #[test]
+    fn caso_negativo_renombrar_a_otra_que_ya_esta_no_cambia_nada() {
+        let t = "Asignatura Física\nAsignatura Química\nMar 10:00-11:00 Física\n";
+        let mut s = semana_de(t);
+        let antes = s.clone();
+        assert_eq!(s.renombrar_asignatura(0, "química"), Err(1));
+        assert_eq!(s.renombrar_asignatura(0, "   "), Ok(None));
+        assert_eq!(s.renombrar_asignatura(0, "Física"), Ok(None));
+        assert_eq!(s.renombrar_asignatura(7, "Arte"), Ok(None));
+        assert_eq!(s, antes);
     }
 }
