@@ -43,6 +43,9 @@ use crate::motor::{Fin, LlamadaCruda, Medidas, Mensaje, Parte, Peticion, Respues
 use super::{Proveedor, instrucciones};
 
 pub const URL: &str = "https://api.anthropic.com/v1/messages";
+/// La lista de modelos (`GET`, no gasta tokens): la comprobacion del
+/// puntito del estado de las IA (`nube::comprobar`). Con uno basta.
+pub const URL_MODELOS: &str = "https://api.anthropic.com/v1/models?limit=1";
 pub const MODELO: &str = "claude-haiku-5-5";
 /// **El critico de respaldo** de la revision con rubrica (23-oct): mas
 /// fuerte que el del turno, solo para puntuar cuando Haiku no da una nota
