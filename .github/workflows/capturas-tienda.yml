@@ -1,0 +1,129 @@
+name: Capturas para la Store
+
+# Pinta las pantallas de PinDesk con las pruebas de muestra (#[ignore], las
+# que dibujan la ventana con Direct2D fuera de pantalla y la guardan en PNG) y
+# compone con ellas las capturas de la ficha de la Microsoft Store: 1920x1080,
+# la ventana centrada sobre un fondo suave y un titulo por idioma
+# (tienda/ficha/capturas/componer.py). Se lanza a mano.
+#
+# El runner no tiene GPU: pixpin_capture::Dispositivo::nuevo ya cae solo a
+# WARP (el rasterizador por software de Windows), asi que no hace falta nada
+# mas. Una escena que no se pinta no para el trabajo: sale en el resumen.
+#
+# Resultado: el artefacto «capturas-tienda» con
+#   - compuestas/<idioma>/NN-<escena>.png  -> lo que se sube a Partner Center
+#   - crudas/*.png                         -> lo que pintaron las pruebas
+#   - compuestas/informe.md                -> que muestra uso cada escena
+
+on:
+  workflow_dispatch:
+    inputs:
+      pruebas:
+        description: "Pruebas de muestra a ejecutar (nombres de funcion, separados por espacios)"
+        required: false
+        default: >-
+          muestra_de_la_foto_con_descripcion
+          muestra_del_chat_con_la_zona
+          muestra_captura2_despues
+          muestra_del_chat_con_el_asistente
+          muestra_de_la_ventana
+          horario_ventana_se_pinta_en_menos_de_medio_segundo
+          muestras_del_lienzo
+          muestra_del_lienzo_en_ventana
+          muestra_del_timeline
+          muestras_del_buscador
+          muestras_de_la_ventana
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  capturas:
+    runs-on: windows-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Compilar las pruebas de la app
+        run: cargo test -p pixpin --bin pindesk --no-run
+
+      - name: Pintar las muestras
+        shell: pwsh
+        env:
+          PRUEBAS: ${{ inputs.pruebas }}
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $raiz = Join-Path $env:RUNNER_TEMP 'muestras-todo'
+          $mu = Join-Path $raiz 'muestras'
+          $tmp = Join-Path $raiz 'tmp'
+          New-Item -ItemType Directory -Force $mu, $tmp | Out-Null
+          # Las pruebas que no miran PIXPIN_MUESTRAS dejan el PNG en la
+          # temporal: se apunta TEMP a una carpeta propia para recogerlos.
+          $env:PIXPIN_MUESTRAS = $mu
+          $env:TEMP = $tmp
+          $env:TMP = $tmp
+
+          $lista = cargo test -p pixpin --bin pindesk -- --ignored --list 2>$null |
+            Where-Object { $_ -match ': test$' } |
+            ForEach-Object { $_ -replace ': test$', '' }
+          "Pruebas #[ignore] en la app: $($lista.Count)"
+
+          $filas = @()
+          foreach ($nombre in ($env:PRUEBAS -split '\s+' | Where-Object { $_ })) {
+            $completas = @($lista | Where-Object { $_ -eq $nombre -or $_.EndsWith("::$nombre") })
+            if ($completas.Count -eq 0) {
+              "::warning::no hay ninguna prueba #[ignore] que se llame $nombre"
+              $filas += "| ``$nombre`` | no existe |"
+              continue
+            }
+            foreach ($c in $completas) {
+              "::group::$c"
+              cargo test -p pixpin --bin pindesk $c -- --ignored --exact --test-threads=1 --nocapture
+              $codigo = $LASTEXITCODE
+              "::endgroup::"
+              if ($codigo -eq 0) { $estado = 'bien' } else {
+                $estado = "fallo ($codigo)"
+                "::warning::la muestra $c no se pudo pintar"
+              }
+              $filas += "| ``$c`` | $estado |"
+            }
+          }
+          $resumen = @('## Muestras pintadas', '', '| Prueba | Estado |', '|---|---|') + $filas
+          $resumen -join "`n" | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+
+          # Las crudas, juntas en una carpeta (sin los PNG de entrada de las
+          # pruebas, que viven en subcarpetas de la temporal).
+          $crudas = Join-Path $env:RUNNER_TEMP 'crudas'
+          New-Item -ItemType Directory -Force $crudas | Out-Null
+          Get-ChildItem -Recurse -File -Filter *.png $raiz |
+            Where-Object { $_.Length -gt 4096 } |
+            ForEach-Object { Copy-Item $_.FullName (Join-Path $crudas $_.Name) -Force }
+          "PNG recogidos: $((Get-ChildItem $crudas).Count)"
+          exit 0
+
+      - name: Componer las capturas de la Store
+        shell: pwsh
+        run: |
+          python -m pip install --quiet pillow
+          $salida = Join-Path $env:RUNNER_TEMP 'compuestas'
+          python tienda/ficha/capturas/componer.py (Join-Path $env:RUNNER_TEMP 'crudas') $salida
+          Get-Content (Join-Path $salida 'informe.md') | Out-File -Append -Encoding utf8 $env:GITHUB_STEP_SUMMARY
+
+      - name: Subir las capturas
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: capturas-tienda
+          path: |
+            ${{ runner.temp }}/compuestas
+            ${{ runner.temp }}/crudas
+          if-no-files-found: warn
+          retention-days: 30
