@@ -14,9 +14,23 @@
 //! 2. **Se guarda reducida, no entera.** Una celda mide 82 px; guardar en
 //!    memoria el JPEG de 12 MP seria tirar cien megas por foto. Se reduce al
 //!    cargarla y lo grande se suelta enseguida.
+//!
+//! 3. **Con tope de memoria** ([`Cupo`]): pasado el tope se suelta lo que
+//!    hace mas que no se ve. Sin el, recorrer un chat de mil fotos dejaba mil
+//!    vistas previas en memoria y otras mil en la GPU.
+//!
+//! 4. **El historial del chat lee en otro hilo** ([`Miniaturas::en_segundo_plano`]):
+//!    leer cuatro fotos de 12 MP en el hilo de la ventana eran tirones al
+//!    subir. Su hilo lee a la medida a la que se van a ver (WIC reduce el
+//!    JPEG en la propia transformada), primero lo que se ve y luego lo que
+//!    se va a ver ([`Miniaturas::precargar`]), y despierta a la ventana con
+//!    cada una. Lo que queda lejos se cancela antes de leerlo.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Condvar, Mutex};
+
+use pixpin_ui::cupo::Cupo;
 
 use pixpin_render::{Interpolacion, MotorRender, Pintor, RectF};
 use windows::Win32::Graphics::Direct2D::ID2D1Bitmap1;
@@ -33,6 +47,12 @@ const LADO: u32 = 164;
 /// los siguientes.
 const POR_FOTOGRAMA: usize = 4;
 
+/// **El tope de memoria de unas miniaturas**, en bytes, contando los pixeles
+/// guardados y su copia en la GPU. Las vistas previas del chat (520 px de
+/// lado mayor, ~1,6 MB cada una con las dos copias) caben unas sesenta: seis
+/// pantallas de fotos, de sobra para la que se ve y la precarga.
+pub const CUPO_BYTES: usize = 96 * 1024 * 1024;
+
 /// Una miniatura: sus pixeles reducidos y, si ya se subio, su bitmap.
 ///
 /// Se guardan los pixeles ademas del bitmap porque con el dispositivo
@@ -44,6 +64,13 @@ struct Miniatura {
     bitmap: Option<ID2D1Bitmap1>,
 }
 
+impl Miniatura {
+    /// Lo que pesa: los pixeles y su copia en la GPU.
+    fn bytes(&self) -> usize {
+        2 * self.ancho as usize * self.alto as usize * 4
+    }
+}
+
 /// Lo que se sabe de una ruta.
 enum Estado {
     /// Cargada y lista (o a falta de subirla).
@@ -52,6 +79,43 @@ enum Estado {
     /// no esta, no va a estar en el fotograma siguiente, y reintentarlo seria
     /// leer del disco sesenta veces por segundo para nada.
     Imposible,
+    /// Pedida a su hilo, que avisara al tenerla.
+    EnCamino,
+}
+
+/// Lo que el hilo de lectura comparte con la ventana.
+#[derive(Default)]
+struct Cola {
+    /// Lo que se ve: va primero.
+    urgentes: VecDeque<PathBuf>,
+    /// Lo que se va a ver (la precarga), en el orden en que hara falta.
+    luego: VecDeque<PathBuf>,
+    /// Lo ya leido, a falta de que la ventana lo recoja (`None`: no se pudo).
+    listas: Vec<(PathBuf, Option<Leida>)>,
+    cerrar: bool,
+}
+
+/// Los pixeles reducidos que deja el hilo (el bitmap lo crea la ventana:
+/// los recursos de dibujo son de su hilo).
+struct Leida {
+    pixeles: Vec<u8>,
+    ancho: u32,
+    alto: u32,
+}
+
+/// El hilo de lectura de unas miniaturas. Al tirarlo, el hilo termina.
+struct Hilo {
+    cola: Arc<(Mutex<Cola>, Condvar)>,
+}
+
+impl Drop for Hilo {
+    fn drop(&mut self) {
+        let (m, cv) = &*self.cola;
+        if let Ok(mut c) = m.lock() {
+            c.cerrar = true;
+        }
+        cv.notify_all();
+    }
 }
 
 /// Las miniaturas ya cargadas, por ruta.
@@ -60,6 +124,10 @@ pub struct Miniaturas {
     /// El lado mayor con el que se guardan. El panel usa `LADO`; la vista
     /// previa de las burbujas, que es mas grande, el suyo.
     lado: u32,
+    /// Las cuentas del tope de memoria.
+    cupo: Cupo<PathBuf>,
+    /// Con hilo propio, se lee alli; sin el, aqui y poco a poco.
+    hilo: Option<Hilo>,
 }
 
 impl Miniaturas {
@@ -73,7 +141,156 @@ impl Miniaturas {
         Self {
             por_ruta: HashMap::new(),
             lado,
+            cupo: Cupo::nuevo(CUPO_BYTES),
+            hilo: None,
         }
+    }
+
+    /// **Que lea en su propio hilo**, a prioridad por debajo de lo normal, y
+    /// despierte a la ventana `hwnd` con cada foto leida. `asegurar` deja
+    /// entonces de leer: pide, y lo pedido llega en [`Miniaturas::recoger`].
+    pub fn en_segundo_plano(mut self, hwnd: isize) -> Self {
+        let cola: Arc<(Mutex<Cola>, Condvar)> = Arc::default();
+        let suya = cola.clone();
+        let lado = self.lado;
+        let hecho = std::thread::Builder::new()
+            .name("vistas-previas".into())
+            .spawn(move || hilo_de_lectura(&suya, lado, hwnd));
+        match hecho {
+            Ok(_) => self.hilo = Some(Hilo { cola }),
+            // Sin hilo se sigue leyendo aqui, como siempre: peor, pero se ve.
+            Err(e) => tracing::warn!(?e, "sin hilo de vistas previas"),
+        }
+        self
+    }
+
+    /// Empieza otro fotograma: lo que no se vuelva a pedir en este puede
+    /// soltarse si no cabe, y lo urgente de antes que ya no se ve se cancela
+    /// (si se sigue viendo, el fotograma lo vuelve a pedir enseguida).
+    pub fn nuevo_fotograma(&mut self) {
+        self.cupo.nuevo_fotograma();
+        let Some(h) = &self.hilo else { return };
+        let urgentes = {
+            let (m, _) = &*h.cola;
+            let Ok(mut c) = m.lock() else { return };
+            let urgentes = std::mem::take(&mut c.urgentes);
+            urgentes
+                .into_iter()
+                .filter(|r| !c.luego.contains(r))
+                .collect::<Vec<_>>()
+        };
+        for ruta in urgentes {
+            self.olvidar_si_en_camino(&ruta);
+        }
+    }
+
+    /// **Lo que se va a ver pronto**, en el orden en que hara falta: se lee
+    /// en cuanto no quede nada de lo que se ve. Sustituye a la precarga de
+    /// antes: lo que ya no esta en la lista y aun no se habia leido se
+    /// cancela. Sin hilo propio no hace nada: leer aqui lo que no se ve
+    /// seria dar tirones por adelantado.
+    pub fn precargar(&mut self, rutas: &[PathBuf]) {
+        let Some(h) = &self.hilo else { return };
+        let mut cancelar = Vec::new();
+        {
+            let (m, cv) = &*h.cola;
+            let Ok(mut c) = m.lock() else { return };
+            let antes = std::mem::take(&mut c.luego);
+            for ruta in rutas {
+                match self.por_ruta.get(ruta) {
+                    Some(Estado::Hecha(_)) => self.cupo.usar(ruta),
+                    Some(Estado::Imposible) => {}
+                    // En camino: sigue en su cola si estaba en esta; si no,
+                    // es urgente o ya la tiene el hilo.
+                    Some(Estado::EnCamino) => {
+                        if antes.contains(ruta) && !c.luego.contains(ruta) {
+                            c.luego.push_back(ruta.clone());
+                        }
+                    }
+                    None => {
+                        self.por_ruta.insert(ruta.clone(), Estado::EnCamino);
+                        c.luego.push_back(ruta.clone());
+                    }
+                }
+            }
+            // Lo que se pidio y ya queda lejos, sin leer: fuera.
+            cancelar.extend(
+                antes
+                    .into_iter()
+                    .filter(|r| !c.luego.contains(r) && !c.urgentes.contains(r)),
+            );
+            if !c.luego.is_empty() {
+                cv.notify_one();
+            }
+        }
+        for ruta in cancelar {
+            self.olvidar_si_en_camino(&ruta);
+        }
+    }
+
+    /// Recoge lo que haya leido el hilo. Devuelve si llego algo: entonces
+    /// hay que pintar, que alguna burbuja tiene ya su foto.
+    pub fn recoger(&mut self) -> bool {
+        let Some(h) = &self.hilo else { return false };
+        let listas = {
+            let (m, _) = &*h.cola;
+            let Ok(mut c) = m.lock() else { return false };
+            std::mem::take(&mut c.listas)
+        };
+        let llego = !listas.is_empty();
+        for (ruta, leida) in listas {
+            let estado = match leida {
+                Some(l) => Estado::Hecha(Miniatura {
+                    pixeles: l.pixeles,
+                    ancho: l.ancho,
+                    alto: l.alto,
+                    bitmap: None,
+                }),
+                None => Estado::Imposible,
+            };
+            self.guardar(ruta, estado);
+        }
+        llego
+    }
+
+    /// Apunta lo leido y, si ya no cabe, suelta lo que hace mas que no se ve.
+    fn guardar(&mut self, ruta: PathBuf, estado: Estado) {
+        if let Estado::Hecha(m) = &estado {
+            for fuera in self.cupo.meter(ruta.clone(), m.bytes()) {
+                self.por_ruta.remove(&fuera);
+            }
+        }
+        self.por_ruta.insert(ruta, estado);
+    }
+
+    /// Una ruta pedida que se deja de querer antes de leerla vuelve a ser
+    /// desconocida: si se vuelve a ver, se pedira otra vez.
+    fn olvidar_si_en_camino(&mut self, ruta: &Path) {
+        if matches!(self.por_ruta.get(ruta), Some(Estado::EnCamino)) {
+            self.por_ruta.remove(ruta);
+        }
+    }
+
+    /// Pide `ruta` a su hilo delante de la precarga, salvo que ya la tenga.
+    fn pedir_urgente(&mut self, ruta: &Path) {
+        let Some(h) = &self.hilo else { return };
+        let ya_pedida = matches!(self.por_ruta.get(ruta), Some(Estado::EnCamino));
+        let (m, cv) = &*h.cola;
+        let Ok(mut c) = m.lock() else { return };
+        if c.urgentes.iter().any(|r| r == ruta) {
+            return;
+        }
+        let en_la_precarga = c.luego.iter().position(|r| r == ruta);
+        if let Some(k) = en_la_precarga {
+            c.luego.remove(k);
+        } else if ya_pedida {
+            // En camino y en ninguna cola: la esta leyendo el hilo.
+            return;
+        }
+        c.urgentes.push_back(ruta.to_path_buf());
+        cv.notify_one();
+        drop(c);
+        self.por_ruta.insert(ruta.to_path_buf(), Estado::EnCamino);
     }
 
     /// Carga y sube lo que haga falta de `rutas`, hasta el cupo del
@@ -83,11 +300,20 @@ impl Miniaturas {
     /// Devuelve si quedaron rutas sin leer por el cupo: quien llama tiene que
     /// pedir otro fotograma, o las que faltan no saldrian hasta que el
     /// usuario moviera el raton.
+    ///
+    /// Con hilo propio (`en_segundo_plano`) no lee nada: pide lo que falte,
+    /// delante de la precarga, y no cuenta como que falte, que lo pedido
+    /// despierta a la ventana al llegar.
     pub fn asegurar(&mut self, rutas: &[PathBuf], motor: &MotorRender) -> bool {
         let mut cupo = POR_FOTOGRAMA;
         let mut faltan = false;
         for ruta in rutas {
-            if !self.por_ruta.contains_key(ruta) {
+            self.cupo.usar(ruta);
+            if self.hilo.is_some() {
+                if matches!(self.por_ruta.get(ruta), None | Some(Estado::EnCamino)) {
+                    self.pedir_urgente(ruta);
+                }
+            } else if !self.por_ruta.contains_key(ruta) {
                 if cupo == 0 {
                     // Las que faltan llegan en los fotogramas siguientes;
                     // mientras, su celda ensena el nombre.
@@ -99,7 +325,7 @@ impl Miniaturas {
                     Some(m) => Estado::Hecha(m),
                     None => Estado::Imposible,
                 };
-                self.por_ruta.insert(ruta.clone(), estado);
+                self.guardar(ruta.clone(), estado);
             }
             let Some(Estado::Hecha(m)) = self.por_ruta.get_mut(ruta) else {
                 continue;
@@ -133,7 +359,8 @@ impl Miniaturas {
 
     /// Si una ruta todavia no se ha intentado leer. Lo que no se pudo leer
     /// no cuenta: volver a pedirlo no lo va a arreglar, y pedir fotogramas
-    /// para nada mantendria la ventana despierta.
+    /// para nada mantendria la ventana despierta. Lo pedido a su hilo
+    /// tampoco: llegara solo, y despertara a la ventana.
     pub fn pendiente(&self, ruta: &Path) -> bool {
         !self.por_ruta.contains_key(ruta)
     }
@@ -211,6 +438,63 @@ fn cargar_reducida(ruta: &Path, lado: u32) -> Option<Miniatura> {
             |e| tracing::info!(?e, ruta = %ruta.display(), "no es una imagen que sepamos leer"),
         )
         .ok()?;
+    reducir(imagen, lado)
+}
+
+/// El hilo que lee las miniaturas pedidas: lo urgente primero, luego la
+/// precarga, y avisa a la ventana con cada una.
+fn hilo_de_lectura(cola: &(Mutex<Cola>, Condvar), lado: u32, hwnd: isize) {
+    // Cede la CPU a la ventana: esto es trabajo por adelantado.
+    pixpin_shell::prioridad::hilo_por_debajo_de_lo_normal();
+    let (m, cv) = cola;
+    loop {
+        let ruta = {
+            let Ok(mut c) = m.lock() else { return };
+            loop {
+                if c.cerrar {
+                    return;
+                }
+                if let Some(r) = c.urgentes.pop_front().or_else(|| c.luego.pop_front()) {
+                    break r;
+                }
+                c = match cv.wait(c) {
+                    Ok(c) => c,
+                    Err(_) => return,
+                };
+            }
+        };
+        let leida = leer_a_la_medida(&ruta, lado);
+        {
+            let Ok(mut c) = m.lock() else { return };
+            if c.cerrar {
+                return;
+            }
+            c.listas.push((ruta, leida));
+        }
+        if hwnd != 0 {
+            pixpin_shell::overlay::despertar(hwnd);
+        }
+    }
+}
+
+/// Lee una foto ya a la medida de la miniatura: WIC reduce un JPEG en su
+/// propia transformada, que cuesta mucho menos que descomprimirlo entero y
+/// encogerlo despues. Si eso no sale (un formato que Windows no trae), por
+/// el camino de siempre.
+fn leer_a_la_medida(ruta: &Path, lado: u32) -> Option<Leida> {
+    let m = match pixpin_codec::vista::cargar_para_ver(ruta, (lado, lado)) {
+        Ok(v) => reducir(v.imagen, lado)?,
+        Err(_) => cargar_reducida(ruta, lado)?,
+    };
+    Some(Leida {
+        pixeles: m.pixeles,
+        ancho: m.ancho,
+        alto: m.alto,
+    })
+}
+
+/// Deja una imagen ya leida en tamano de miniatura.
+fn reducir(imagen: pixpin_codec::ImagenRgba, lado: u32) -> Option<Miniatura> {
     if imagen.ancho == 0 || imagen.alto == 0 {
         return None;
     }
@@ -318,5 +602,45 @@ mod pruebas {
         // Y una que se supo imposible tampoco la da, aunque se conozca.
         m.por_ruta.insert(ruta.to_path_buf(), Estado::Imposible);
         assert!(m.ya(ruta).is_none());
+    }
+
+    #[test]
+    fn lo_precargado_que_queda_lejos_se_cancela_sin_leerlo() {
+        let mut m = Miniaturas::nuevo();
+        // Un hilo de mentira: la cola sin nadie que la vacie, para ver que
+        // queda pedido y que se cancela.
+        m.hilo = Some(Hilo {
+            cola: Arc::default(),
+        });
+        let a = PathBuf::from("precarga-a.png");
+        let b = PathBuf::from("precarga-b.png");
+        m.precargar(&[a.clone(), b.clone()]);
+        assert!(!m.pendiente(&a), "pedida: no hace falta otro fotograma");
+        // La vista se fue: solo queda la «b» en la precarga.
+        m.precargar(std::slice::from_ref(&b));
+        assert!(m.pendiente(&a), "cancelada: si vuelve a verse, se pide otra vez");
+        assert!(!m.pendiente(&b));
+        let cola = m.hilo.as_ref().map(|h| h.cola.clone()).expect("hilo");
+        let c = cola.0.lock().expect("cola");
+        assert_eq!(c.luego, VecDeque::from([b]));
+    }
+
+    #[test]
+    fn pasado_el_cupo_se_suelta_lo_que_ya_no_se_ve() {
+        let mut m = Miniaturas::nuevo();
+        m.cupo = Cupo::nuevo(1000);
+        let foto = |lado: u32| Miniatura {
+            pixeles: vec![0; (lado * lado * 4) as usize],
+            ancho: lado,
+            alto: lado,
+            bitmap: None,
+        };
+        // 2·10·10·4 = 800 bytes cada una: con dos ya no se cabe.
+        m.guardar(PathBuf::from("vieja.png"), Estado::Hecha(foto(10)));
+        m.cupo.nuevo_fotograma();
+        m.guardar(PathBuf::from("nueva.png"), Estado::Hecha(foto(10)));
+        assert!(m.pendiente(Path::new("vieja.png")), "soltada");
+        assert!(!m.pendiente(Path::new("nueva.png")));
+        assert_eq!(m.cupo.usado(), 800);
     }
 }

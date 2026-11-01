@@ -146,6 +146,17 @@ pub fn pagina_pintada(
     None
 }
 
+/// Si la pagina esta pedida a su hilo y aun no ha llegado (ni ha fallado).
+/// Mientras, el chat le guarda su sitio con el tamano final, para que la
+/// burbuja no crezca al llegar y empuje lo que se esta leyendo.
+pub fn en_camino(raiz: &Path, pdf: &Path, pagina: u32, ancho: u32) -> bool {
+    let Some(destino) = en_cache(raiz, pdf, pagina, ancho) else {
+        return false;
+    };
+    let (m, _) = cola();
+    m.lock().is_ok_and(|c| c.en_cola.contains(&destino))
+}
+
 fn hilo_de_paginas() {
     // Abrir un PDF es lo caro; pintar una pagina, no. Se guarda el ultimo.
     let mut abierto: Option<(PathBuf, pixpin_pdf::Documento)> = None;
