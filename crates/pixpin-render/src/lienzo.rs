@@ -17,9 +17,9 @@ use windows::Win32::Graphics::Direct2D::{
 };
 use windows::Win32::Graphics::DirectWrite::{
     DWRITE_FONT_STRETCH_NORMAL, DWRITE_FONT_STYLE_ITALIC, DWRITE_FONT_STYLE_NORMAL,
-    DWRITE_FONT_WEIGHT_BOLD, DWRITE_FONT_WEIGHT_NORMAL, DWRITE_TEXT_METRICS, DWRITE_TEXT_RANGE,
-    DWRITE_TRIMMING, DWRITE_TRIMMING_GRANULARITY_CHARACTER, DWRITE_WORD_WRAPPING_NO_WRAP,
-    IDWriteFactory, IDWriteTextLayout,
+    DWRITE_FONT_WEIGHT_BOLD, DWRITE_FONT_WEIGHT_NORMAL, DWRITE_READING_DIRECTION_RIGHT_TO_LEFT,
+    DWRITE_TEXT_METRICS, DWRITE_TEXT_RANGE, DWRITE_TRIMMING, DWRITE_TRIMMING_GRANULARITY_CHARACTER,
+    DWRITE_WORD_WRAPPING_NO_WRAP, IDWriteFactory, IDWriteTextLayout,
 };
 use windows::core::Interface;
 use windows::core::w;
@@ -194,9 +194,20 @@ pub(crate) fn disposicion_dwrite(
                 DWRITE_FONT_STYLE_NORMAL,
                 DWRITE_FONT_STRETCH_NORMAL,
                 tam,
-                w!("es-ES"),
+                // El del idioma de la interfaz: con el elige DirectWrite la
+                // letra de reserva del chino, el japones, el coreano o el
+                // hindi (ver `idioma`).
+                crate::idioma::locale(),
             )
             .ok()?;
+        let rtl = crate::idioma::de_derecha_a_izquierda(&texto, crate::idioma::interfaz_rtl());
+        if rtl {
+            // En el formato y no en la disposicion: el signo «…» del
+            // recorte se crea con el y tambien tiene que ir al reves.
+            formato
+                .SetReadingDirection(DWRITE_READING_DIRECTION_RIGHT_TO_LEFT)
+                .ok()?;
+        }
         let disposicion = dwrite
             .CreateTextLayout(&contenido, &formato, ancho_max, f32::MAX)
             .ok()?;
@@ -233,6 +244,18 @@ pub(crate) fn disposicion_dwrite(
         }
         let mut metricas = DWRITE_TEXT_METRICS::default();
         disposicion.GetMetrics(&mut metricas).ok()?;
+        if rtl {
+            // De derecha a izquierda, cada renglon se pega al borde
+            // derecho de la caja, y la caja de muchos rotulos es infinita
+            // (`f32::MAX`, «sin partir»): el texto se iria fuera. Se ciñe la
+            // caja a lo que ocupa el texto, que sigue empezando en `x` como
+            // uno de izquierda a derecha, con los renglones cortos
+            // alineados a la derecha del mas largo. Los mismos cortes: el
+            // ancho nuevo es el del renglon mas largo, que ya cabia.
+            let justo = (metricas.width + 0.5).min(ancho_max).max(1.0);
+            disposicion.SetMaxWidth(justo).ok()?;
+            disposicion.GetMetrics(&mut metricas).ok()?;
+        }
         Some((disposicion, metricas.width, metricas.height))
     }
 }

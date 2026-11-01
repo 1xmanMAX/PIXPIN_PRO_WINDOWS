@@ -45,7 +45,7 @@ use windows::Win32::Graphics::DirectWrite::{
     DWRITE_TEXT_METRICS, DWRITE_WORD_WRAPPING_NO_WRAP, DWriteCreateFactory, IDWriteFactory,
     IDWriteFactory5, IDWriteFontCollection, IDWriteTextFormat, IDWriteTextLayout,
 };
-use windows::core::{BOOL, HSTRING, Interface, w};
+use windows::core::{BOOL, HSTRING, Interface};
 
 /// Las familias que trae la aplicacion, con el nombre con que se piden.
 ///
@@ -393,7 +393,7 @@ pub(crate) fn formato(
                     estilo(letra.cursiva),
                     DWRITE_FONT_STRETCH_NORMAL,
                     tam.max(0.01),
-                    w!("es-ES"),
+                    crate::idioma::locale(),
                 )
                 .ok()?
         };
@@ -460,7 +460,7 @@ pub(crate) fn formato_con_peso(
                     estilo(cursiva),
                     DWRITE_FONT_STRETCH_NORMAL,
                     tam.max(0.01),
-                    w!("es-ES"),
+                    crate::idioma::locale(),
                 )
                 .ok()?
         };
