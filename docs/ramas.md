@@ -22,3 +22,11 @@ restricciones de la Microsoft Store no toquen el codigo general:
    **solo en `microsoft-store`**; en `main` sigue como esta.
 5. Los agentes de los otros aparatos (Android, Mac, iPad) siguen leyendo
    `main`: la sincronizacion y los formatos son los mismos en las dos ramas.
+
+## Los flujos de la Store tambien estan en `main`
+
+GitHub solo deja lanzar a mano (`workflow_dispatch`) un flujo que exista en la
+rama por defecto. Por eso `.github/workflows/tienda.yml` y
+`capturas-tienda.yml` estan tambien en `main`, pero se lanzan con
+`ref: microsoft-store`: compilan y empaquetan lo de esa rama. En `main` no
+cambian nada de la app.
