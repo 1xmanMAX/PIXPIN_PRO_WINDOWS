@@ -1,10 +1,10 @@
 # El compresor de PDF de PixPin, en su propio ejecutable.
 #
-# Va aparte de `pixpinmax.exe` por dos cosas. Una, el tamano: pdfsqueeze y
+# Va aparte de `pindesk.exe` por dos cosas. Una, el tamano: pdfsqueeze y
 # sus codecs son ~1,8 MB, y el programa principal se abre en cada arranque de
 # Windows. Dos, la seguridad: el release es `panic = "abort"`, y un PDF raro
 # que haga entrar en panico a lopdf mataria el proceso donde corra; asi mata
-# este, no PixPin. `pixpinmax` lo busca junto a si mismo y, si no esta, aligera
+# este, no PixPin. `pindesk` lo busca junto a si mismo y, si no esta, aligera
 # con el plan B de `pixpin-pdf` (ver `apps/pixpin/src/aligerar.rs`).
 [package]
 name = "pixpin-aligerar"
@@ -17,7 +17,7 @@ license.workspace = true
 path = "src/lib.rs"
 
 [[bin]]
-name = "pixpin-aligerar"
+name = "pindesk-aligerar"
 path = "src/main.rs"
 
 [dependencies]

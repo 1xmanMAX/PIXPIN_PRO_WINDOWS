@@ -6,7 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 
 # El ejecutable se llama `pindesk.exe` desde nov-2026 (antes
-# `pixpinmax.exe`); el paquete y el crate siguen siendo `pixpin`
+# `pindesk.exe`); el paquete y el crate siguen siendo `pixpin`
 # (docs/nombre-pindesk.md).
 [[bin]]
 name = "pindesk"
@@ -90,7 +90,7 @@ windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_Graphics_
 toml = "0.8"
 # Las pruebas de aligerar fabrican un PDF cifrado; la misma que pdfsqueeze.
 lopdf = { version = "0.42", default-features = false }
-# El compresor en el propio hilo de las pruebas (no hay pixpin-aligerar.exe
+# El compresor en el propio hilo de las pruebas (no hay pindesk-aligerar.exe
 # al lado del ejecutable de pruebas) y los PDF sinteticos de pdfsqueeze.
 pixpin-aligerar = { workspace = true }
 pdfsqueeze-core = { workspace = true }

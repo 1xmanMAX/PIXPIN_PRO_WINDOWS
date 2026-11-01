@@ -1,27 +1,29 @@
-; pixpin.ahk — PinDesk desde AutoHotkey v2.
+; pindesk.ahk — PinDesk desde AutoHotkey v2.
 ;
-;   #Include "C:\Users\<tu>\AppData\Local\Programs\PinDesk\pixpin.ahk"
+;   #Include "C:\Users\<tu>\AppData\Local\Programs\PinDesk\pindesk.ahk"
 ;
-;   ^!t:: PixPinTarea(InputBox("¿Que hay que hacer?", "PixPin").Value)
-;   ^!c:: PixPinCapturar()
-;   ^!o:: MsgBox(PixPinTexto("C:\capturas\factura.png"))
-;   ^!i:: PixPinAsistente("resume mis tareas de hoy")
+;   ^!t:: PinDeskTarea(InputBox("¿Que hay que hacer?", "PinDesk").Value)
+;   ^!c:: PinDeskCapturar()
+;   ^!o:: MsgBox(PinDeskTexto("C:\capturas\factura.png"))
+;   ^!i:: PinDeskAsistente("resume mis tareas de hoy")
 ;
 ; Todo va por la linea de ordenes de pindesk.exe (docs/integraciones.md),
-; que manda el pedido a la PixPin abierta (y la abre si no lo esta). Cada
+; que manda el pedido a la PinDesk abierta (y la abre si no lo esta). Cada
 ; funcion devuelve el codigo de salida: 0 aceptado, 1 fallo aqui, 2 version,
-; 3 no se entiende, 4 PixPin no esta abierta, 5 no contesto, 6 rechazado.
+; 3 no se entiende, 4 PinDesk no esta abierta, 5 no contesto, 6 rechazado.
 ;
-; El ejecutable: la variable de entorno PIXPIN_EXE, o el que esta junto a
+; El ejecutable: la variable de entorno PINDESK_EXE (o la PIXPIN_EXE de antes), o el que esta junto a
 ; este fichero, o el instalado en %LOCALAPPDATA%\Programs\PinDesk (o el
 ; pixpinmax.exe de cuando se llamaba PixPin Max).
 
 #Requires AutoHotkey v2.0
 
-PixPinExe() {
-    exe := EnvGet("PIXPIN_EXE")
-    if (exe != "" && FileExist(exe))
-        return exe
+PinDeskExe() {
+    for v in ["PINDESK_EXE", "PIXPIN_EXE"] {
+        exe := EnvGet(v)
+        if (exe != "" && FileExist(exe))
+            return exe
+    }
     SplitPath(A_LineFile, , &dir)
     for exe in [dir "\pindesk.exe", dir "\pixpinmax.exe"
             , EnvGet("LOCALAPPDATA") "\Programs\PinDesk\pindesk.exe"
@@ -34,14 +36,14 @@ PixPinExe() {
 
 ; La linea de ordenes, con cada argumento entre comillas como lo lee Windows
 ; (CommandLineToArgvW): un texto con comillas o barras llega entero.
-PixPinLinea(args*) {
-    linea := '"' PixPinExe() '"'
+PinDeskLinea(args*) {
+    linea := '"' PinDeskExe() '"'
     for a in args
-        linea .= " " PixPinArgumento(a)
+        linea .= " " PinDeskArgumento(a)
     return linea
 }
 
-PixPinArgumento(a) {
+PinDeskArgumento(a) {
     a := String(a)
     if (a != "" && !RegExMatch(a, '[\s"]'))
         return a
@@ -54,61 +56,79 @@ PixPinArgumento(a) {
             continue
         }
         if (c = '"') {
-            s .= PixPin_Repetir("\", barras * 2 + 1) '"'
+            s .= PinDesk_Repetir("\", barras * 2 + 1) '"'
             barras := 0
             continue
         }
-        s .= PixPin_Repetir("\", barras) c
+        s .= PinDesk_Repetir("\", barras) c
         barras := 0
     }
-    return s PixPin_Repetir("\", barras * 2) '"'
+    return s PinDesk_Repetir("\", barras * 2) '"'
 }
 
-PixPin_Repetir(t, n) {
+PinDesk_Repetir(t, n) {
     r := ""
     Loop n
         r .= t
     return r
 }
 
-; Corre una orden y espera a que acabe: PixPin("capturar"), PixPin("tarea", "pan").
-PixPin(args*) => RunWait(PixPinLinea(args*), , "Hide")
+; Corre una orden y espera a que acabe: PinDesk("capturar"), PinDesk("tarea", "pan").
+PinDesk(args*) => RunWait(PinDeskLinea(args*), , "Hide")
 
 ; Un pedido del protocolo tal cual (docs/protocolo-pedidos.md).
-PixPinPedido(json) => PixPin("--pedido", json)
+PinDeskPedido(json) => PinDesk("--pedido", json)
 
-; Un enlace pixpin:// (con su lista blanca, como si se pulsara).
-PixPinEnlace(url) => PixPin("--url", url)
+; Un enlace pindesk:// (con su lista blanca, como si se pulsara).
+PinDeskEnlace(url) => PinDesk("--url", url)
 
-PixPinConProyecto(verbo, texto, proyecto) {
+PinDeskConProyecto(verbo, texto, proyecto) {
     if (proyecto = "")
-        return PixPin(verbo, texto)
-    return PixPin(verbo, texto, "--proyecto", proyecto)
+        return PinDesk(verbo, texto)
+    return PinDesk(verbo, texto, "--proyecto", proyecto)
 }
 
-PixPinTarea(texto, proyecto := "") => PixPinConProyecto("tarea", texto, proyecto)
-PixPinNota(texto := "", proyecto := "") => PixPinConProyecto("nota", texto, proyecto)
-PixPinChat(texto, proyecto := "") => PixPinConProyecto("chat", texto, proyecto)
-PixPinAsistente(pedido, proyecto := "") => PixPinConProyecto("asistente", pedido, proyecto)
-PixPinCapturar() => PixPin("capturar")
-PixPinPinear(ruta) => PixPin("pinear", ruta)
-PixPinPinearUltima() => PixPin("pinear-ultima")
-PixPinGrabar(nombre := "Nota de voz") => PixPin("grabar", nombre)
-PixPinAlMovil(ruta) => PixPin("al-movil", ruta)
+PinDeskTarea(texto, proyecto := "") => PinDeskConProyecto("tarea", texto, proyecto)
+PinDeskNota(texto := "", proyecto := "") => PinDeskConProyecto("nota", texto, proyecto)
+PinDeskChat(texto, proyecto := "") => PinDeskConProyecto("chat", texto, proyecto)
+PinDeskAsistente(pedido, proyecto := "") => PinDeskConProyecto("asistente", pedido, proyecto)
+PinDeskCapturar() => PinDesk("capturar")
+PinDeskPinear(ruta) => PinDesk("pinear", ruta)
+PinDeskPinearUltima() => PinDesk("pinear-ultima")
+PinDeskGrabar(nombre := "Nota de voz") => PinDesk("grabar", nombre)
+PinDeskAlMovil(ruta) => PinDesk("al-movil", ruta)
 
-PixPinAbrir(ruta, pagina := 0) {
+PinDeskAbrir(ruta, pagina := 0) {
     if (pagina > 0)
-        return PixPin("abrir", ruta, "--pagina", pagina)
-    return PixPin("abrir", ruta)
+        return PinDesk("abrir", ruta, "--pagina", pagina)
+    return PinDesk("abrir", ruta)
 }
 
-; El texto de una imagen (OCR de Windows), sin abrir PixPin. Pasa por el
+; El texto de una imagen (OCR de Windows), sin abrir PinDesk. Pasa por el
 ; portapapeles (`ocr --copiar`), que se deja como estaba.
-PixPinTexto(ruta) {
+PinDeskTexto(ruta) {
     antes := ClipboardAll()
     A_Clipboard := ""
-    codigo := PixPin("ocr", ruta, "--copiar")
+    codigo := PinDesk("ocr", ruta, "--copiar")
     texto := codigo = 0 ? A_Clipboard : ""
     A_Clipboard := antes
     return texto
 }
+
+; Los nombres de antes de PinDesk (PixPinTarea…), para los scripts que ya los
+; usan. Se pueden quitar cuando nadie los use (docs/formato-pindesk.md).
+PixPin(args*) => PinDesk(args*)
+PixPinAbrir(args*) => PinDeskAbrir(args*)
+PixPinAlMovil(args*) => PinDeskAlMovil(args*)
+PixPinAsistente(args*) => PinDeskAsistente(args*)
+PixPinCapturar(args*) => PinDeskCapturar(args*)
+PixPinChat(args*) => PinDeskChat(args*)
+PixPinConProyecto(args*) => PinDeskConProyecto(args*)
+PixPinEnlace(args*) => PinDeskEnlace(args*)
+PixPinGrabar(args*) => PinDeskGrabar(args*)
+PixPinNota(args*) => PinDeskNota(args*)
+PixPinPedido(args*) => PinDeskPedido(args*)
+PixPinPinear(args*) => PinDeskPinear(args*)
+PixPinPinearUltima(args*) => PinDeskPinearUltima(args*)
+PixPinTarea(args*) => PinDeskTarea(args*)
+PixPinTexto(args*) => PinDeskTexto(args*)

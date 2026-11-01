@@ -6,33 +6,34 @@
 #       [-Quitar] [-SoloMostrar] [-Raiz <ruta del registro>] [-EnviarA <carpeta>]
 #
 # Lo que pone (docs/integraciones.md):
-#  1. Los protocolos pixpinmax:// y pixpin:// (HKCU\Software\Classes): un
-#     enlace `pixpinmax://tarea?texto=…` abre `pindesk.exe --url "<enlace>"`,
-#     que lo convierte en un pedido. Lo que no es inofensivo pregunta antes.
-#     pixpin:// (el de Android) solo si esta libre: el PixPin original de
-#     DepthPixel lo usa, y no se le quita (salvo con -TomarPixpin).
+#  1. El protocolo pindesk:// (HKCU\Software\Classes): un enlace
+#     `pindesk://tarea?texto=…` abre `pindesk.exe --url "<enlace>"`, que lo
+#     convierte en un pedido. Lo que no es inofensivo pregunta antes. Y el
+#     pixpinmax:// de antes de PinDesk, que aun llevan avisos y enlaces
+#     guardados. pixpin:// ya no se registra (puede ser del PixPin original
+#     de DepthPixel): si lo tenia una version vieja, se suelta; si llega uno,
+#     la app lo entiende igual (docs/formato-pindesk.md).
 #  2. El menu contextual clasico del Explorador (clic derecho → «Mostrar mas
-#     opciones» en Windows 11): «PixPin ▸ Al chat / Pinear / Copiar texto
+#     opciones» en Windows 11): «PinDesk ▸ Al chat / Pinear / Copiar texto
 #     (OCR) / Enviar al movil / Preguntar al asistente». Con varios ficheros
 #     elegidos, Explorer lanza una copia por fichero: `--juntar` hace que
 #     se junten en un solo pedido (pixpin_shell::juntar).
 #  3. «Enviar a» (accesos directos en SendTo): los mismos cinco; ahi
 #     Windows ya pasa todos los ficheros de una vez.
-#  4. El modulo de PowerShell (PixPin.psm1) y la libreria de AutoHotkey
-#     (pixpin.ahk), copiados junto al exe.
+#  4. El modulo de PowerShell (PinDesk.psm1) y la libreria de AutoHotkey
+#     (pindesk.ahk), copiados junto al exe (y fuera los PixPin.psm1 y
+#     pixpin.ahk de antes).
 #
 # -SoloMostrar escribe lo que haria y no toca nada. -Raiz y -EnviarA son
 # para probar el script sobre una rama de prueba
-# (p. ej. HKCU:\Software\PixPinPrueba) y una carpeta temporal.
+# (p. ej. HKCU:\Software\PinDeskPrueba) y una carpeta temporal.
 
 param(
     [string]$Exe = (Join-Path $env:LOCALAPPDATA 'Programs\PinDesk\pindesk.exe'),
     [switch]$Quitar,
     [switch]$SoloMostrar,
     [string]$Raiz = 'HKCU:\Software\Classes',
-    [string]$EnviarA = (Join-Path $env:APPDATA 'Microsoft\Windows\SendTo'),
-    # Tomar pixpin:// aunque sea de otro programa (el PixPin original).
-    [switch]$TomarPixpin
+    [string]$EnviarA = (Join-Path $env:APPDATA 'Microsoft\Windows\SendTo')
 )
 
 $ErrorActionPreference = 'Stop'
@@ -53,20 +54,21 @@ $entradas = @(
 # Los de «Enviar a» de cuando la app se llamaba PixPin Max: se quitan siempre.
 $lnkViejos = $entradas | ForEach-Object { $_.Lnk -replace '^PinDesk - ', 'PixPin - ' }
 
-$protocolo = Join-Path $Raiz 'pixpin'
+$protocolo = Join-Path $Raiz 'pindesk'
+# Los de antes: pixpinmax:// se sigue registrando; pixpin:// solo se suelta.
 $protocoloMax = Join-Path $Raiz 'pixpinmax'
-# La clave del menu conserva el nombre de antes: asi se sobrescribe y no
-# salen dos submenus tras actualizar.
-$menu = Join-Path $Raiz '*\shell\PixPinMax'
+$protocoloPixpin = Join-Path $Raiz 'pixpin'
+$menu = Join-Path $Raiz '*\shell\PinDesk'
+# La clave del menu de antes: se quita, para que no salgan dos submenus.
+$menuViejo = Join-Path $Raiz '*\shell\PixPinMax'
 
-function Protocolo-DeOtro {
-    # La orden de pixpin:// si es de otro programa (no de un pindesk.exe ni
-    # del pixpinmax.exe de antes).
-    $c = Join-Path $protocolo 'shell\open\command'
-    if (-not (Test-Path -LiteralPath $c)) { return $null }
+function Pixpin-EsNuestro {
+    # Si pixpin:// lo abre un pindesk.exe o el pixpinmax.exe de antes (lo
+    # tomo una version vieja de este script): entonces hay que soltarlo.
+    $c = Join-Path $protocoloPixpin 'shell\open\command'
+    if (-not (Test-Path -LiteralPath $c)) { return $false }
     $orden = (Get-Item -LiteralPath $c).GetValue('')
-    if (-not $orden -or $orden -match '(pindesk|pixpinmax)\.exe') { return $null }
-    $orden
+    [bool]($orden -and $orden -match '(pindesk|pixpinmax)\.exe')
 }
 
 function Poner([string]$clave, [string]$nombre, [string]$valor) {
@@ -90,10 +92,12 @@ function Lnk([string]$nombre) { Join-Path $EnviarA "$nombre.lnk" }
 
 if ($Quitar) {
     Write-Host 'Quitando las integraciones de PinDesk:'
+    Quitar-Clave $protocolo
     Quitar-Clave $protocoloMax
     # pixpin:// solo si es nuestro: el del PixPin original no se toca.
-    if ((Test-Path -LiteralPath $protocolo) -and -not (Protocolo-DeOtro)) { Quitar-Clave $protocolo }
+    if (Pixpin-EsNuestro) { Quitar-Clave $protocoloPixpin }
     Quitar-Clave $menu
+    Quitar-Clave $menuViejo
     foreach ($n in @($entradas | ForEach-Object { $_.Lnk }) + $lnkViejos) {
         $l = Lnk $n
         if ($SoloMostrar) { Write-Host "  quitar $l" }
@@ -114,18 +118,18 @@ function Poner-Protocolo([string]$clave) {
     Poner (Join-Path $clave 'shell\open\command') '' "$comillado --url `"%1`""
 }
 
-# pixpinmax:// siempre es nuestro. pixpin:// (el de Android) solo si esta
-# libre o ya era nuestro: el PixPin original de DepthPixel lo registra para
-# si, y quitarselo romperia sus enlaces. -TomarPixpin lo toma igual.
+# pindesk:// es el de ahora; pixpinmax:// el de antes, que aun llevan avisos
+# y enlaces guardados. pixpin:// ya no: si lo tomo una version vieja, se
+# suelta para que sea del PixPin original de DepthPixel si esta.
+Poner-Protocolo $protocolo
 Poner-Protocolo $protocoloMax
-$deOtro = Protocolo-DeOtro
-if ($deOtro -and -not $TomarPixpin) {
-    Write-Host "pixpin:// es de otro programa ($deOtro): se deja; los enlaces del PC usan pixpinmax://"
-} else {
-    Poner-Protocolo $protocolo
+if (Pixpin-EsNuestro) {
+    Write-Host 'pixpin:// lo tenia PinDesk: se suelta (los enlaces son pindesk://)'
+    Quitar-Clave $protocoloPixpin
 }
 
 Write-Host 'Menu contextual del Explorador (PinDesk >):'
+Quitar-Clave $menuViejo
 Poner $menu 'MUIVerb' 'PinDesk'
 Poner $menu 'Icon' "$comillado,0"
 Poner $menu 'SubCommands' ''
@@ -160,10 +164,15 @@ foreach ($e in $entradas) {
 }
 
 # El modulo de PowerShell y la libreria de AutoHotkey, junto al exe: asi
-# `Import-Module "$env:LOCALAPPDATA\Programs\PinDesk\PixPin.psm1"` siempre
-# es el de la version instalada.
+# `Import-Module "$env:LOCALAPPDATA\Programs\PinDesk\PinDesk.psm1"` siempre
+# es el de la version instalada. Los de antes de PinDesk se quitan.
 $dirExe = Split-Path -Parent $Exe
 foreach ($f in @('PixPin.psm1', 'pixpin.ahk')) {
+    $viejo = Join-Path $dirExe $f
+    if ($SoloMostrar) { Write-Host "  quitar $viejo"; continue }
+    Remove-Item $viejo -Force -ErrorAction SilentlyContinue
+}
+foreach ($f in @('PinDesk.psm1', 'pindesk.ahk')) {
     $de = Join-Path $PSScriptRoot $f
     if (-not (Test-Path $de)) { continue }
     if ($SoloMostrar) { Write-Host "  copiar $de -> $dirExe"; continue }

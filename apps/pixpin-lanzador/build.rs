@@ -9,8 +9,8 @@
 fn main() {
     let msvc = std::env::var("CARGO_CFG_TARGET_ENV").is_ok_and(|e| e == "msvc");
     if msvc {
-        println!("cargo:rustc-link-arg-bin=pixpin-lanzador=/DELAYLOAD:user32.dll");
-        println!("cargo:rustc-link-arg-bin=pixpin-lanzador=delayimp.lib");
+        println!("cargo:rustc-link-arg-bin=pindesk-lanzador=/DELAYLOAD:user32.dll");
+        println!("cargo:rustc-link-arg-bin=pindesk-lanzador=delayimp.lib");
     }
     println!("cargo:rerun-if-changed=build.rs");
 }

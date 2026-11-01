@@ -23,7 +23,7 @@ license.workspace = true
 path = "src/lib.rs"
 
 [[bin]]
-name = "pixpin-lanzador"
+name = "pindesk-lanzador"
 path = "src/main.rs"
 
 [dependencies]

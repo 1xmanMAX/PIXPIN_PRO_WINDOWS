@@ -6,7 +6,7 @@
 //   que registra herramientas/registrar-navegador.ps1.
 // - Si esta compilado (PIXPIN_PUENTE_EXE o el target de siempre), una vuelta
 //   entera: el mensaje que arma la extension, por la tuberia, al
-//   pixpin-puente.exe de verdad en modo «en seco» (sin tocar PixPin).
+//   pindesk-puente.exe de verdad en modo «en seco» (sin tocar PixPin).
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -134,8 +134,8 @@ test("el manifiesto es valido y su clave da el id que se registra", () => {
 function exeDelPuente() {
   const candidatos = [
     process.env.PIXPIN_PUENTE_EXE,
-    process.env.CARGO_TARGET_DIR && join(process.env.CARGO_TARGET_DIR, "debug", "pixpin-puente.exe"),
-    "F:/pixpin-targets/integ-navegador/debug/pixpin-puente.exe",
+    process.env.CARGO_TARGET_DIR && join(process.env.CARGO_TARGET_DIR, "debug", "pindesk-puente.exe"),
+    "F:/pixpin-targets/integ-navegador/debug/pindesk-puente.exe",
   ];
   return candidatos.find((c) => c && existsSync(c));
 }
@@ -158,7 +158,7 @@ function alPuente(exe, carpeta, cuerpo) {
 test("de la extension al puente de verdad por la tuberia (en seco)", (t) => {
   const exe = exeDelPuente();
   if (!exe) {
-    t.skip("pixpin-puente.exe sin compilar");
+    t.skip("pindesk-puente.exe sin compilar");
     return;
   }
   const carpeta = mkdtempSync(join(tmpdir(), "pixpin-ext-"));

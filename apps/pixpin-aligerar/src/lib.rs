@@ -1,7 +1,7 @@
-//! **`pixpin-aligerar.exe <entrada> <salida> <nivel> <hilos> <prioridad>`**:
+//! **`pindesk-aligerar.exe <entrada> <salida> <nivel> <hilos> <prioridad>`**:
 //! el compresor de PDF de PixPin (pdfsqueeze), en su propio ejecutable.
 //!
-//! Lo lanza `pixpinmax.exe` desde `apps/pixpin/src/aligerar.rs`, que es donde
+//! Lo lanza `pindesk.exe` desde `apps/pixpin/src/aligerar.rs`, que es donde
 //! vive todo lo demas (la cola, el cambio en su sitio, los ajustes). Aqui solo
 //! se comprime un fichero en otro. El protocolo:
 //!
@@ -21,8 +21,8 @@ use std::io::{Read, Write};
 use std::path::Path;
 use std::sync::atomic::{AtomicU8, Ordering};
 
-/// Como se llama el ejecutable, para que `pixpinmax` lo busque a su lado.
-pub const NOMBRE_EXE: &str = "pixpin-aligerar.exe";
+/// Como se llama el ejecutable, para que `pindesk` lo busque a su lado.
+pub const NOMBRE_EXE: &str = "pindesk-aligerar.exe";
 
 /// Codigos de salida.
 pub mod codigo {
@@ -56,7 +56,7 @@ pub fn perfil_de(nivel: &str) -> Option<pdfsqueeze_core::Profile> {
 /// hilos de trabajo y devuelve `false` para cancelar.
 ///
 /// pdfsqueeze corre en su propio grupo de rayon, que no se mezcla con el
-/// global. Lo usa el `main` de aqui y, en sus pruebas, `pixpinmax`.
+/// global. Lo usa el `main` de aqui y, en sus pruebas, `pindesk`.
 pub fn comprimir(
     entrada: &Path,
     salida: &Path,

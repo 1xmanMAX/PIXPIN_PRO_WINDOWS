@@ -1,4 +1,4 @@
-//! **`pixpin-lanzador.exe`**: PinDesk desde Flow Launcher (`p`).
+//! **`pindesk-lanzador.exe`**: PinDesk desde Flow Launcher (`p`).
 //!
 //! - Con un JSON como argumento es el plugin de Flow tal como lo usa la 2.1.4
 //!   (`Executable`, un proceso por tecla: [`rpc::una_vez`]). Para que cada
@@ -64,12 +64,12 @@ fn silenciar_panicos() {
     }));
 }
 
-/// El icono por defecto de los resultados: `Images\pixpin.png` junto al exe
+/// El icono por defecto de los resultados: `Images\pindesk.png` junto al exe
 /// (la carpeta del plugin) o, si no, el propio `pindesk.exe`.
 fn icono_por_defecto() -> String {
     let junto = std::env::current_exe()
         .ok()
-        .and_then(|e| e.parent().map(|d| d.join("Images").join("pixpin.png")))
+        .and_then(|e| e.parent().map(|d| d.join("Images").join("pindesk.png")))
         .filter(|p| p.is_file());
     junto
         .or_else(datos::exe_instalado)
@@ -82,8 +82,8 @@ fn icono_por_defecto() -> String {
 fn raiz_del_registro() -> std::path::PathBuf {
     std::env::current_exe()
         .ok()
-        .and_then(|e| e.parent().map(|d| d.join("pixpin-lanzador.log")))
-        .unwrap_or_else(|| std::env::temp_dir().join("pixpin-lanzador.log"))
+        .and_then(|e| e.parent().map(|d| d.join("pindesk-lanzador.log")))
+        .unwrap_or_else(|| std::env::temp_dir().join("pindesk-lanzador.log"))
 }
 
 /// Los datos de un proceso que contesta una sola consulta (el modo v1 de

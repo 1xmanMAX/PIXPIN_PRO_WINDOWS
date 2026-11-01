@@ -1,16 +1,18 @@
 # El paquete de IDENTIDAD de PinDesk (MSIX con ubicacion externa): lo
 # genera, lo firma con un certificado propio, hace que el equipo confie en ese
 # certificado y lo registra apuntando a la carpeta instalada. Con el paquete
-# registrado PixPin sale en el panel Compartir de otras apps y en el menu
+# registrado PinDesk sale en el panel Compartir de otras apps y en el menu
 # contextual de primer nivel de Windows 11. Ver docs/integraciones-windows.md.
 #
 # Uso (por pasos, o -Todo):
 #   powershell -ExecutionPolicy Bypass -File herramientas\paquete-identidad.ps1 -SoloMostrar
 #   ... -Crear       genera el .msix (sin firmar) en -Salida
-#   ... -Firmar      crea el certificado "CN=PixPin Max Local" en CurrentUser\My
+#   ... -Firmar      crea el certificado "CN=PinDesk Local" en CurrentUser\My
 #                    si no esta, lo exporta a .cer y firma el .msix
 #   ... -Confiar     mete el .cer en LocalMachine\TrustedPeople (PIDE ADMINISTRADOR)
 #   ... -Registrar   Add-AppxPackage -ExternalLocation <carpeta instalada>
+#                    (y antes quita el paquete de antes de PinDesk,
+#                    ForgePixPin.PixPinMax, si estaba)
 #   ... -Todo        los cuatro, en orden
 #   ... -Quitar      desregistra el paquete (y con -BorrarCertificado, quita el
 #                    certificado de los dos almacenes; esto PIDE ADMINISTRADOR)
@@ -43,12 +45,16 @@ $repo = Split-Path -Parent $PSScriptRoot
 $fuente = Join-Path $PSScriptRoot 'paquete-identidad'
 if (-not $Instalado) { $Instalado = Join-Path $env:LOCALAPPDATA 'Programs\PinDesk' }
 if (-not $Salida) { $Salida = Join-Path $fuente 'salida' }
-# El sujeto, el paquete y los ficheros conservan el nombre de antes de
-# PinDesk: son la identidad del paquete y del certificado ya puestos.
-$sujeto = 'CN=PixPin Max Local'
-$nombrePaquete = 'ForgePixPin.PixPinMax'
-$msix = Join-Path $Salida 'PixPinMax-identidad.msix'
-$cer = Join-Path $Salida 'PixPinMax-identidad.cer'
+# Desde nov-2026 la identidad es PinDesk (paquete PinDesk, editor
+# CN=PinDesk Local, aplicacion PinDesk), la misma que el <msix> de
+# apps/pixpin/pixpinmax.manifest. La de antes se quita al registrar (y su
+# certificado con -Quitar -BorrarCertificado): docs/formato-pindesk.md.
+$sujeto = 'CN=PinDesk Local'
+$nombrePaquete = 'PinDesk'
+$msix = Join-Path $Salida 'PinDesk-identidad.msix'
+$cer = Join-Path $Salida 'PinDesk-identidad.cer'
+$sujetoViejo = 'CN=PixPin Max Local'
+$nombrePaqueteViejo = 'ForgePixPin.PixPinMax'
 if ($Todo) { $Crear = $true; $Firmar = $true; $Confiar = $true; $Registrar = $true }
 if (-not ($Crear -or $Firmar -or $Confiar -or $Registrar -or $Quitar)) { $SoloMostrar = $true }
 
@@ -88,6 +94,7 @@ $exe = Join-Path $Instalado 'pindesk.exe'
 $cert = Certificado
 $confiado = Get-ChildItem Cert:\LocalMachine\TrustedPeople -ErrorAction SilentlyContinue | Where-Object { $_.Subject -eq $sujeto }
 $registrado = Get-AppxPackage -Name $nombrePaquete -ErrorAction SilentlyContinue
+$registradoViejo = Get-AppxPackage -Name $nombrePaqueteViejo -ErrorAction SilentlyContinue
 $conMsix = $false
 if (Test-Path $exe) {
     # El manifiesto va incrustado como texto: basta buscar el elemento.
@@ -104,6 +111,7 @@ Write-Host "  ...con <msix> dentro:    $(if ($conMsix) {'si'} else {'no (instala
 Write-Host "  Certificado propio:      $(if ($cert) {"$($cert.Thumbprint) (caduca $($cert.NotAfter.ToString('yyyy-MM-dd')))"} else {'no creado'})"
 Write-Host "  Confiado en el equipo:   $(if ($confiado) {'si'} else {'no'})"
 Write-Host "  Paquete registrado:      $(if ($registrado) {"si, $($registrado.PackageFullName)"} else {'no'})"
+if ($registradoViejo) { Write-Host "  El de antes de PinDesk:  $($registradoViejo.PackageFullName) (se quita al registrar)" }
 Write-Host "  Paquete generado:        $(if (Test-Path $msix) {$msix} else {'no'})"
 
 if ($SoloMostrar) {
@@ -128,17 +136,20 @@ function Elevar([string[]]$pasos) {
 }
 
 if ($Quitar) {
-    if ($registrado -and -not $Elevado) {
-        Remove-AppxPackage -Package $registrado.PackageFullName
-        Write-Host "Desregistrado: $($registrado.PackageFullName)"
+    foreach ($r in @($registrado, $registradoViejo)) {
+        if ($r -and -not $Elevado) {
+            Remove-AppxPackage -Package $r.PackageFullName
+            Write-Host "Desregistrado: $($r.PackageFullName)"
+        }
     }
     if ($BorrarCertificado) {
         if (-not (Es-Admin)) { Elevar @('-Quitar', '-BorrarCertificado'); return }
-        Get-ChildItem Cert:\LocalMachine\TrustedPeople | Where-Object { $_.Subject -eq $sujeto } | Remove-Item
-        Write-Host 'Certificado quitado de LocalMachine\TrustedPeople.'
+        $sujetos = @($sujeto, $sujetoViejo)
+        Get-ChildItem Cert:\LocalMachine\TrustedPeople | Where-Object { $sujetos -contains $_.Subject } | Remove-Item
+        Write-Host 'Certificados quitados de LocalMachine\TrustedPeople.'
         if (-not $Elevado) {
-            Get-ChildItem Cert:\CurrentUser\My | Where-Object { $_.Subject -eq $sujeto } | Remove-Item
-            Write-Host 'Certificado quitado de CurrentUser\My.'
+            Get-ChildItem Cert:\CurrentUser\My | Where-Object { $sujetos -contains $_.Subject } | Remove-Item
+            Write-Host 'Certificados quitados de CurrentUser\My.'
         }
     }
     return
@@ -227,11 +238,16 @@ if ($Confiar) {
 
 if ($Registrar -and -not $Elevado) {
     if (-not (Test-Path $msix)) { throw "Falta $msix (pasos -Crear y -Firmar)." }
-    if (-not (Test-Path $exe)) { throw "No esta $exe (instala PixPin con herramientas\instalar.ps1)." }
+    if (-not (Test-Path $exe)) { throw "No esta $exe (instala PinDesk con herramientas\instalar.ps1)." }
     if (-not $conMsix) { Write-Warning 'El pindesk.exe instalado no lleva <msix>: el paquete se registra pero no le dara identidad.' }
+    if ($registradoViejo) {
+        # El de antes de PinDesk apunta al mismo exe con otra identidad.
+        Remove-AppxPackage -Package $registradoViejo.PackageFullName
+        Write-Host "Quitado el paquete de antes: $($registradoViejo.PackageFullName)"
+    }
     Add-AppxPackage -Path $msix -ExternalLocation $Instalado -ForceUpdateFromAnyVersion
     $r = Get-AppxPackage -Name $nombrePaquete
     Write-Host "Registrado: $($r.PackageFullName)"
-    Write-Host "AUMID del paquete: $($r.PackageFamilyName)!PixPinMax"
-    Write-Host 'Cierra y abre PixPin: desde el acceso directo de siempre ya arranca con identidad.'
+    Write-Host "AUMID del paquete: $($r.PackageFamilyName)!PinDesk"
+    Write-Host 'Cierra y abre PinDesk: desde el acceso directo de siempre ya arranca con identidad.'
 }

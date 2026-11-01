@@ -354,7 +354,7 @@ fn verbos_con_texto_y_proyecto() {
     assert_eq!(v[0].titulo, "Escribir en el chat: hola que tal");
     assert_eq!(
         *pedido_de(&v[0]),
-        json!({ "pixpin": 1, "accion": "chat", "texto": "hola que tal", "proyecto": "P1" })
+        json!({ "pindesk": 1, "accion": "chat", "texto": "hola que tal", "proyecto": "P1" })
     );
     // `@gest` no es el nombre entero: se sugieren proyectos para completarlo.
     assert!(
@@ -368,12 +368,12 @@ fn verbos_con_texto_y_proyecto() {
     let v = buscar(&r, "nota idea feliz");
     assert_eq!(
         *pedido_de(&v[0]),
-        json!({ "pixpin": 1, "accion": "nota_nueva", "texto": "idea feliz", "proyecto": null })
+        json!({ "pindesk": 1, "accion": "nota_nueva", "texto": "idea feliz", "proyecto": null })
     );
     let v = buscar(&r, "canvas plano");
     assert_eq!(
         *pedido_de(&v[0]),
-        json!({ "pixpin": 1, "accion": "lienzo_nuevo", "nombre": "plano", "proyecto": null })
+        json!({ "pindesk": 1, "accion": "lienzo_nuevo", "nombre": "plano", "proyecto": null })
     );
     assert_eq!(
         v[1].titulo, "Plano de la casa",
@@ -382,7 +382,7 @@ fn verbos_con_texto_y_proyecto() {
     let v = buscar(&r, "grabar Clase 4 @thesis");
     assert_eq!(
         *pedido_de(&v[0]),
-        json!({ "pixpin": 1, "accion": "grabar", "nombre": "Clase 4", "proyecto": "P2" })
+        json!({ "pindesk": 1, "accion": "grabar", "nombre": "Clase 4", "proyecto": "P2" })
     );
     let v = buscar(&r, "grabar");
     assert_eq!(v[0].accion, Accion::Consulta("pp grabar ".into()));
@@ -397,7 +397,7 @@ fn clase_y_carpetas_de_paginas() {
     let v = buscar(&r, "clase");
     assert_eq!(
         *pedido_de(&v[0]),
-        json!({ "pixpin": 1, "accion": "ventana", "cual": "clase" })
+        json!({ "pindesk": 1, "accion": "ventana", "cual": "clase" })
     );
     let v = buscar(&r, "grabar");
     assert!(
@@ -410,7 +410,7 @@ fn clase_y_carpetas_de_paginas() {
     assert_eq!(v[0].titulo, "Nueva carpeta de páginas");
     assert_eq!(
         *pedido_de(&v[0]),
-        json!({ "pixpin": 1, "accion": "carpeta_paginas", "hacer": "nueva", "proyecto": null, "nombre": "" })
+        json!({ "pindesk": 1, "accion": "carpeta_paginas", "hacer": "nueva", "proyecto": null, "nombre": "" })
     );
 
     let carpeta = json!({ "id": "c1", "cuando": 300, "clase": "MINIAPP", "miniapp": "carpeta",
@@ -422,7 +422,7 @@ fn clase_y_carpetas_de_paginas() {
     assert!(v[0].subtitulo.contains("2 páginas"), "{}", v[0].subtitulo);
     assert_eq!(
         *pedido_de(&v[0]),
-        json!({ "pixpin": 1, "accion": "carpeta_paginas", "hacer": "abrir", "proyecto": "P2", "carpeta": "c1" })
+        json!({ "pindesk": 1, "accion": "carpeta_paginas", "hacer": "abrir", "proyecto": "P2", "carpeta": "c1" })
     );
     assert_eq!(v[1].titulo, "Nueva página en «Diario de obra»");
     assert_eq!(pedido_de(&v[1])["hacer"], "pagina");
@@ -438,7 +438,7 @@ fn clase_y_carpetas_de_paginas() {
         .unwrap();
     assert_eq!(
         *pedido_de(nueva),
-        json!({ "pixpin": 1, "accion": "carpeta_paginas", "hacer": "nueva", "proyecto": "P2", "nombre": "Recetas" })
+        json!({ "pindesk": 1, "accion": "carpeta_paginas", "hacer": "nueva", "proyecto": "P2", "nombre": "Recetas" })
     );
     // La carpeta de una clase grabada se abre, pero no se le anaden paginas.
     let clase = json!({ "id": "c2", "cuando": 301, "clase": "MINIAPP", "miniapp": "carpeta",
@@ -471,7 +471,7 @@ fn las_listas_de_tareas_y_una_nueva() {
     assert_eq!(v.len(), 3);
     assert_eq!(
         *pedido_de(&v[0]),
-        json!({ "pixpin": 1, "accion": "ventana", "cual": "tareas" })
+        json!({ "pindesk": 1, "accion": "ventana", "cual": "tareas" })
     );
     let v = &v[1..];
     // La mas reciente primero; las dos se llaman igual y se distinguen por proyecto.
@@ -497,7 +497,7 @@ fn las_listas_de_tareas_y_una_nueva() {
     assert_eq!(v[0].titulo, "Nueva lista: Viaje");
     assert_eq!(
         *pedido_de(&v[0]),
-        json!({ "pixpin": 1, "accion": "lista_nueva", "titulo": "Viaje", "proyecto": null })
+        json!({ "pindesk": 1, "accion": "lista_nueva", "titulo": "Viaje", "proyecto": null })
     );
     let v = buscar(&r, "tareas compra");
     assert!(
@@ -514,7 +514,7 @@ fn dentro_de_una_lista_marcar_y_anadir() {
     assert_eq!(titulos, ["☐ pan", "☐ huevos", "☑ leche"]);
     assert_eq!(
         *pedido_de(&v[1]),
-        json!({ "pixpin": 1, "accion": "marcar_tarea", "proyecto": null, "codigo": "t1", "indice": 2, "hecha": true })
+        json!({ "pindesk": 1, "accion": "marcar_tarea", "proyecto": null, "codigo": "t1", "indice": 2, "hecha": true })
     );
     assert_eq!(pedido_de(&v[2])["hecha"], false);
     let Accion::PedirYSeguir { consulta, .. } = &v[0].accion else {
@@ -527,7 +527,7 @@ fn dentro_de_una_lista_marcar_y_anadir() {
     assert_eq!(
         v[0].accion,
         Accion::PedirYSeguir {
-            pedido: json!({ "pixpin": 1, "accion": "anadir_tarea", "texto": "yogur", "proyecto": null, "codigo": "t1" }),
+            pedido: json!({ "pindesk": 1, "accion": "anadir_tarea", "texto": "yogur", "proyecto": null, "codigo": "t1" }),
             consulta: "pp tareas Compra · Mensajes guardados > ".into(),
         }
     );
@@ -656,7 +656,7 @@ fn initialize_y_query_con_la_forma_de_flow() {
             && primero["contextData"].is_object()
     );
     // El registro va a un fichero de la carpeta de ajustes.
-    assert!(ajustes.join("pixpin-lanzador.log").is_file());
+    assert!(ajustes.join("pindesk-lanzador.log").is_file());
 }
 
 #[test]
@@ -664,7 +664,7 @@ fn una_accion_llega_envuelta_y_manda_el_pedido() {
     let r = raiz("rpc-pedir");
     let mut p = plugin(&r);
     let pedido =
-        json!({ "pixpin": 1, "accion": "abrir", "que": { "tipo": "proyecto", "proyecto": "P1" } });
+        json!({ "pindesk": 1, "accion": "abrir", "que": { "tipo": "proyecto", "proyecto": "P1" } });
     p.atender(
         &json!({ "jsonrpc": "2.0", "id": 7, "method": "pedir", "params": [[pedido]] }).to_string(),
     );
@@ -680,7 +680,7 @@ fn si_la_app_no_esta_se_avisa_con_showmsg() {
     let r = raiz("rpc-falla");
     let mut p = plugin(&r);
     p.mensajero.falla = true;
-    p.atender(&json!({ "jsonrpc": "2.0", "id": 7, "method": "pedir", "params": [[{ "pixpin": 1, "accion": "ventana_principal" }]] }).to_string());
+    p.atender(&json!({ "jsonrpc": "2.0", "id": 7, "method": "pedir", "params": [[{ "pindesk": 1, "accion": "ventana_principal" }]] }).to_string());
     let s = salida(&p);
     assert_eq!(s[0]["result"]["hide"], true);
     assert_eq!(s[1]["method"], "ShowMsg");
@@ -845,7 +845,7 @@ fn el_chat_de_un_proyecto_de_lo_ultimo_a_lo_primero_con_todas_las_clases() {
     assert_eq!(arrastrar.titulo, "Añadir arrastrando (recuadro flotante)");
     assert_eq!(
         *pedido_de(&arrastrar),
-        json!({ "pixpin": 1, "accion": "soltar", "proyecto": "P1" })
+        json!({ "pindesk": 1, "accion": "soltar", "proyecto": "P1" })
     );
     assert_eq!(
         titulos(&v),
@@ -866,7 +866,7 @@ fn el_chat_de_un_proyecto_de_lo_ultimo_a_lo_primero_con_todas_las_clases() {
     );
     assert_eq!(
         *pedido_de(&v[0]),
-        json!({ "pixpin": 1, "accion": "abrir", "que": { "tipo": "proyecto", "proyecto": "P1" } })
+        json!({ "pindesk": 1, "accion": "abrir", "que": { "tipo": "proyecto", "proyecto": "P1" } })
     );
     // Foto: su miniatura, sin glifo.
     let foto = r
@@ -955,7 +955,7 @@ fn en_el_chat_se_filtra_y_abrir_el_proyecto_baja_al_final() {
     );
     assert_eq!(
         *pedido_de(&v[0]),
-        json!({ "pixpin": 1, "accion": "chat", "texto": "nada de esto", "proyecto": "P1" })
+        json!({ "pindesk": 1, "accion": "chat", "texto": "nada de esto", "proyecto": "P1" })
     );
     assert_eq!(
         v[0].autocompletar.as_deref(),
@@ -969,7 +969,7 @@ fn en_el_chat_se_filtra_y_abrir_el_proyecto_baja_al_final() {
     );
     assert_eq!(
         *pedido_de(&v[1]),
-        json!({ "pixpin": 1, "accion": "soltar", "proyecto": null })
+        json!({ "pindesk": 1, "accion": "soltar", "proyecto": null })
     );
     assert_eq!(buscar(&r, "thes > ")[0].titulo, "Abrir proyecto en la app");
     assert!(buscar(&r, "thes > ")[0].subtitulo.starts_with("Thesis"));
@@ -1028,7 +1028,7 @@ fn el_menu_de_cada_tipo() {
     );
     assert_eq!(
         *pedido_de(&menu_de(&v[0])[2]),
-        json!({ "pixpin": 1, "accion": "soltar", "proyecto": "P1" })
+        json!({ "pindesk": 1, "accion": "soltar", "proyecto": "P1" })
     );
     // La foto.
     assert_eq!(
@@ -1048,7 +1048,7 @@ fn el_menu_de_cada_tipo() {
     assert_eq!(m[0].accion, v[1].accion, "Abrir es lo mismo que Intro");
     assert_eq!(
         *pedido_de(&m[1]),
-        json!({ "pixpin": 1, "accion": "pinear", "ruta": foto })
+        json!({ "pindesk": 1, "accion": "pinear", "ruta": foto })
     );
     assert_eq!(m[3].accion, Accion::Windows(foto.clone()));
     assert_eq!(
@@ -1073,7 +1073,7 @@ fn el_menu_de_cada_tipo() {
     let m = menu_de(&v[2]);
     assert_eq!(
         *pedido_de(&m[1]),
-        json!({ "pixpin": 1, "accion": "pinear", "proyecto": "P1", "codigo": "x1" })
+        json!({ "pindesk": 1, "accion": "pinear", "proyecto": "P1", "codigo": "x1" })
     );
     assert_eq!(
         m[3].accion,
@@ -1137,7 +1137,7 @@ fn modo_v1_consulta_menu_y_acciones() {
     // Los iconos que faltan se piden despues de contestar, y sin arrancar la app.
     assert_eq!(
         avisos,
-        vec![json!({ "pixpin": 1, "accion": "iconos", "extensiones": ["pdf"] })]
+        vec![json!({ "pindesk": 1, "accion": "iconos", "extensiones": ["pdf"] })]
     );
     assert_eq!(m.avisos.len(), 1);
     assert!(m.pedidos.is_empty());
@@ -1191,7 +1191,7 @@ fn en_v2_los_iconos_que_faltan_se_piden_tras_contestar() {
     assert_eq!(salida(&p).len(), 1, "la respuesta, y nada mas por stdout");
     assert_eq!(
         p.mensajero.avisos,
-        vec![json!({ "pixpin": 1, "accion": "iconos", "extensiones": ["pdf"] })]
+        vec![json!({ "pindesk": 1, "accion": "iconos", "extensiones": ["pdf"] })]
     );
     assert!(p.mensajero.pedidos.is_empty());
 }
@@ -1199,7 +1199,7 @@ fn en_v2_los_iconos_que_faltan_se_piden_tras_contestar() {
 #[test]
 fn anadir_a_proyecto_con_el_recuadro_flotante() {
     let r = raiz("soltar");
-    let soltar = |p: Value| json!({ "pixpin": 1, "accion": "soltar", "proyecto": p });
+    let soltar = |p: Value| json!({ "pindesk": 1, "accion": "soltar", "proyecto": p });
     // Por su nombre o un alias, la funcion sale la primera.
     for q in ["solt", "adjun", "agreg", "dro"] {
         assert_eq!(buscar(&r, q)[0].titulo, "Añadir a proyecto", "{q}");
@@ -1265,7 +1265,7 @@ fn leccion_con_texto_abre_la_ficha_rellena_y_sin_texto_la_ofrece() {
     assert_eq!(v[1].accion, Accion::Consulta("pp lecciones ".into()));
     assert_eq!(
         *pedido_de(&v[2]),
-        json!({ "pixpin": 1, "accion": "ventana", "cual": "lecciones" })
+        json!({ "pindesk": 1, "accion": "ventana", "cual": "lecciones" })
     );
 }
 
@@ -1365,7 +1365,7 @@ fn lecciones_sin_texto_repasar_y_todas_de_la_mas_tocada() {
         .join("k1.leccion");
     assert_eq!(
         *pedido_de(k1),
-        json!({ "pixpin": 1, "accion": "abrir", "que": { "tipo": "fichero", "ruta": ruta.to_string_lossy() } })
+        json!({ "pindesk": 1, "accion": "abrir", "que": { "tipo": "fichero", "ruta": ruta.to_string_lossy() } })
     );
     let foto = r
         .join("proyectos")
@@ -1423,7 +1423,7 @@ fn lecciones_con_texto_busca_como_el_movil() {
     let n = v.len();
     assert_eq!(
         *pedido_de(&v[n - 2]),
-        json!({ "pixpin": 1, "accion": "lecciones", "consulta": "acta", "proyecto": null })
+        json!({ "pindesk": 1, "accion": "lecciones", "consulta": "acta", "proyecto": null })
     );
     assert_eq!(pedido_de(&v[n - 1])["accion"], "leccion_nueva");
 }
@@ -1525,7 +1525,7 @@ fn el_menu_de_una_leccion() {
     assert_eq!(m[0].accion, v[0].accion);
     assert_eq!(
         *pedido_de(&m[1]),
-        json!({ "pixpin": 1, "accion": "lecciones", "consulta": "Revisar los puntales antes de hormigonar", "proyecto": null })
+        json!({ "pindesk": 1, "accion": "lecciones", "consulta": "Revisar los puntales antes de hormigonar", "proyecto": null })
     );
     assert!(matches!(&m[2].accion, Accion::Copiar(t) if t.starts_with("⚠️ Error que no repetir")));
     let carpeta = r
@@ -1640,14 +1640,14 @@ fn tareas_ensena_el_inbox_primero_con_sus_tareas() {
     assert_eq!(
         v[1].accion,
         Accion::PedirYSeguir {
-            pedido: json!({ "pixpin": 1, "accion": "marcar_tarea", "proyecto": null, "codigo": "ib", "indice": 0, "hecha": true }),
+            pedido: json!({ "pindesk": 1, "accion": "marcar_tarea", "proyecto": null, "codigo": "ib", "indice": 0, "hecha": true }),
             consulta: "pp tareas ".into(),
         }
     );
     assert_eq!(v[1].subtitulo, "Tarea · n.º 1 · Inbox · Intro: hecha");
     assert_eq!(
         *pedido_de(&v[3]),
-        json!({ "pixpin": 1, "accion": "ventana", "cual": "tareas" })
+        json!({ "pindesk": 1, "accion": "ventana", "cual": "tareas" })
     );
     // El Inbox no se repite entre las listas.
     assert_eq!(v.iter().filter(|x| x.titulo == "Inbox").count(), 1);
@@ -1674,7 +1674,7 @@ fn mover_una_tarea_a_otra_lista_desde_el_menu() {
     assert_eq!(m[3].subtitulo, "Lista de tareas · Gestión de proyectos");
     assert_eq!(
         *pedido_de(&m[3]),
-        json!({ "pixpin": 1, "accion": "mover_tarea", "proyecto": null, "codigo": "ib", "indice": 0, "a_proyecto": "P1", "a_codigo": "t2" })
+        json!({ "pindesk": 1, "accion": "mover_tarea", "proyecto": null, "codigo": "ib", "indice": 0, "a_proyecto": "P1", "a_codigo": "t2" })
     );
     assert_eq!(pedido_de(&m[4])["a_proyecto"], Value::Null);
     assert_eq!(pedido_de(&m[4])["a_codigo"], "t1");
@@ -1691,7 +1691,7 @@ fn quitar_una_tarea_y_borrar_una_lista_desde_el_menu() {
     assert_eq!(
         quitar.accion,
         Accion::PedirYSeguir {
-            pedido: json!({ "pixpin": 1, "accion": "quitar_tarea", "proyecto": null, "codigo": "t1", "indice": 2 }),
+            pedido: json!({ "pindesk": 1, "accion": "quitar_tarea", "proyecto": null, "codigo": "t1", "indice": 2 }),
             consulta: "pp tareas Compra · Mensajes guardados > ".into(),
         }
     );
@@ -1706,7 +1706,7 @@ fn quitar_una_tarea_y_borrar_una_lista_desde_el_menu() {
     assert_eq!(
         borrar.accion,
         Accion::PedirYSeguir {
-            pedido: json!({ "pixpin": 1, "accion": "borrar_lista", "proyecto": null, "codigo": "t1" }),
+            pedido: json!({ "pindesk": 1, "accion": "borrar_lista", "proyecto": null, "codigo": "t1" }),
             consulta: "pp tareas ".into(),
         }
     );
@@ -1737,7 +1737,7 @@ fn quitar_una_tarea_la_saca_de_la_lista_sin_cerrar_flow() {
     let mut p = plugin(&r);
     let q = "tareas Compra · Mensajes guardados > ";
     // Lo que manda Flow al elegir «Quitar tarea» en el menu de «pan».
-    let pedido = json!({ "pixpin": 1, "accion": "quitar_tarea", "proyecto": null, "codigo": "t1", "indice": 0 });
+    let pedido = json!({ "pindesk": 1, "accion": "quitar_tarea", "proyecto": null, "codigo": "t1", "indice": 0 });
     p.atender(
         &json!({ "jsonrpc": "2.0", "id": 1, "method": "pedir_y_seguir",
             "params": [[pedido, format!("pp {q}")]] })
@@ -1788,11 +1788,11 @@ fn t_apunta_en_el_inbox_y_tareas_con_texto_tambien() {
     // Sin lista: la app la pone en el Inbox.
     assert_eq!(
         v[0].accion,
-        Accion::Pedido(json!({ "pixpin": 1, "accion": "anadir_tarea", "texto": "comprar pan" }))
+        Accion::Pedido(json!({ "pindesk": 1, "accion": "anadir_tarea", "texto": "comprar pan" }))
     );
     assert_eq!(
         *pedido_de(&v[1]),
-        json!({ "pixpin": 1, "accion": "ventana", "cual": "tareas" })
+        json!({ "pindesk": 1, "accion": "ventana", "cual": "tareas" })
     );
     // «tareas <texto>»: listas que encajan, lista nueva y, abajo, el Inbox.
     let v = buscar(&r, "tareas leche");
@@ -1801,7 +1801,7 @@ fn t_apunta_en_el_inbox_y_tareas_con_texto_tambien() {
     assert_eq!(
         ultimo.accion,
         Accion::PedirYSeguir {
-            pedido: json!({ "pixpin": 1, "accion": "anadir_tarea", "texto": "leche", "proyecto": null, "codigo": "ib" }),
+            pedido: json!({ "pindesk": 1, "accion": "anadir_tarea", "texto": "leche", "proyecto": null, "codigo": "ib" }),
             consulta: "pp tareas ".into(),
         }
     );
@@ -1810,7 +1810,7 @@ fn t_apunta_en_el_inbox_y_tareas_con_texto_tambien() {
     let v = buscar(&r, "tareas leche");
     assert_eq!(
         *pedido_de(v.last().unwrap()),
-        json!({ "pixpin": 1, "accion": "anadir_tarea", "texto": "leche" })
+        json!({ "pindesk": 1, "accion": "anadir_tarea", "texto": "leche" })
     );
 }
 
@@ -1834,39 +1834,39 @@ fn los_atajos_de_una_letra() {
     let r = raiz("atajos");
     assert_eq!(
         *pedido_de(&buscar(&r, "n idea")[0]),
-        json!({ "pixpin": 1, "accion": "nota_nueva", "texto": "idea", "proyecto": null })
+        json!({ "pindesk": 1, "accion": "nota_nueva", "texto": "idea", "proyecto": null })
     );
     assert_eq!(
         *pedido_de(&buscar(&r, "l plano")[0]),
-        json!({ "pixpin": 1, "accion": "lienzo_nuevo", "nombre": "plano", "proyecto": null })
+        json!({ "pindesk": 1, "accion": "lienzo_nuevo", "nombre": "plano", "proyecto": null })
     );
     assert_eq!(
         *pedido_de(&buscar(&r, "g")[0]),
-        json!({ "pixpin": 1, "accion": "ventana", "cual": "galeria" })
+        json!({ "pindesk": 1, "accion": "ventana", "cual": "galeria" })
     );
     assert_eq!(
         *pedido_de(&buscar(&r, "c")[0]),
-        json!({ "pixpin": 1, "accion": "capturar", "modo": "zona" })
+        json!({ "pindesk": 1, "accion": "capturar", "modo": "zona" })
     );
     assert_eq!(
         *pedido_de(&buscar(&r, "u")[0]),
-        json!({ "pixpin": 1, "accion": "pinear_ultima" })
+        json!({ "pindesk": 1, "accion": "pinear_ultima" })
     );
     // Por su nombre tambien.
     assert_eq!(
         *pedido_de(&buscar(&r, "captura")[0]),
-        json!({ "pixpin": 1, "accion": "capturar", "modo": "zona" })
+        json!({ "pindesk": 1, "accion": "capturar", "modo": "zona" })
     );
     assert_eq!(
         *pedido_de(&buscar(&r, "última")[0]),
-        json!({ "pixpin": 1, "accion": "pinear_ultima" })
+        json!({ "pindesk": 1, "accion": "pinear_ultima" })
     );
     assert_eq!(
         *pedido_de(&buscar(&r, "galeria")[0]),
-        json!({ "pixpin": 1, "accion": "ventana", "cual": "galeria" })
+        json!({ "pindesk": 1, "accion": "ventana", "cual": "galeria" })
     );
     // Las lecciones, con su ventana.
-    let ventana = json!({ "pixpin": 1, "accion": "ventana", "cual": "lecciones" });
+    let ventana = json!({ "pindesk": 1, "accion": "ventana", "cual": "lecciones" });
     assert!(
         buscar(&r, "lecciones")
             .iter()
@@ -1948,7 +1948,7 @@ fn las_capturas_de_la_mas_nueva_a_la_mas_vieja_con_su_caducidad() {
     assert_eq!(v[1].subtitulo, "Captura · hace 3 h · Conservada");
     assert_eq!(
         *pedido_de(&v[0]),
-        json!({ "pixpin": 1, "accion": "pinear", "ruta": ruta })
+        json!({ "pindesk": 1, "accion": "pinear", "ruta": ruta })
     );
     // Su icono y su vista previa: la imagen misma.
     assert_eq!(v[0].icono.as_deref(), Some(ruta.as_str()));
@@ -1960,7 +1960,7 @@ fn las_capturas_de_la_mas_nueva_a_la_mas_vieja_con_su_caducidad() {
     assert_eq!(j["recordKey"], "captura/captura-0002.png");
     assert_eq!(
         *pedido_de(&v[2]),
-        json!({ "pixpin": 1, "accion": "ventana", "cual": "galeria" })
+        json!({ "pindesk": 1, "accion": "ventana", "cual": "galeria" })
     );
     // Filtrar por nombre.
     assert_eq!(
@@ -2003,15 +2003,15 @@ fn el_menu_de_una_captura() {
     );
     assert_eq!(
         *pedido_de(&m[0]),
-        json!({ "pixpin": 1, "accion": "conservar_captura", "ruta": ruta })
+        json!({ "pindesk": 1, "accion": "conservar_captura", "ruta": ruta })
     );
     assert_eq!(
         *pedido_de(&m[1]),
-        json!({ "pixpin": 1, "accion": "copiar_imagen", "ruta": ruta })
+        json!({ "pindesk": 1, "accion": "copiar_imagen", "ruta": ruta })
     );
     assert_eq!(
         *pedido_de(&m[2]),
-        json!({ "pixpin": 1, "accion": "borrar_captura", "ruta": ruta })
+        json!({ "pindesk": 1, "accion": "borrar_captura", "ruta": ruta })
     );
     assert_eq!(
         m[3].accion,
@@ -2022,7 +2022,7 @@ fn el_menu_de_una_captura() {
     );
     assert_eq!(
         *pedido_de(&m[4]),
-        json!({ "pixpin": 1, "accion": "ventana", "cual": "galeria" })
+        json!({ "pindesk": 1, "accion": "ventana", "cual": "galeria" })
     );
     // La conservada no ofrece conservarla otra vez.
     assert_eq!(
@@ -2047,7 +2047,7 @@ fn caso_negativo_sin_capturas_o_sin_coincidencias() {
     assert_eq!(v[0].titulo, "No hay capturas todavía");
     assert_eq!(
         *pedido_de(&v[0]),
-        json!({ "pixpin": 1, "accion": "capturar", "modo": "zona" })
+        json!({ "pindesk": 1, "accion": "capturar", "modo": "zona" })
     );
     // Sin raiz conocida (sin carpeta de iconos), tampoco se rompe nada.
     assert_eq!(buscar(&r, "capturas")[0].titulo, "No hay capturas todavía");
@@ -2422,7 +2422,7 @@ fn pegar_guarda_la_imagen_y_la_tarea_la_lleva_en_el_pedido() {
     intro(&mut p, 6, &anadir);
     assert_eq!(
         p.mensajero.pedidos.last().unwrap(),
-        &json!({ "pixpin": 1, "accion": "anadir_tarea", "texto": "comprar [img 01] esto [img 02]", "imagenes": [img1, img2] })
+        &json!({ "pindesk": 1, "accion": "anadir_tarea", "texto": "comprar [img 01] esto [img 02]", "imagenes": [img1, img2] })
     );
     // Mandada la tarea, el borrador se olvida.
     assert!(imagenes::leer_borrador(&r, crate::datos::ahora_ms()).is_none());
@@ -2448,7 +2448,7 @@ fn una_ficha_borrada_no_va_y_las_demas_se_renumeran() {
     assert_eq!(v[0].titulo, "Añadir tarea: leer [img 02]");
     assert_eq!(
         *pedido_de(&v[0]),
-        json!({ "pixpin": 1, "accion": "anadir_tarea", "texto": "leer [img 01]", "proyecto": null, "codigo": "t1",
+        json!({ "pindesk": 1, "accion": "anadir_tarea", "texto": "leer [img 01]", "proyecto": null, "codigo": "t1",
             "imagenes": [b.to_string_lossy()] })
     );
     // Y en «tareas <texto>» la ficha hace que sea una tarea del Inbox.
@@ -2470,7 +2470,7 @@ fn caso_negativo_una_ficha_desconocida_se_queda_como_texto() {
     let v = buscar_con(&r, "t foto [img 05]", imagenes::SIN_PORTAPAPELES);
     assert_eq!(
         *pedido_de(&v[0]),
-        json!({ "pixpin": 1, "accion": "anadir_tarea", "texto": "foto [img 05]" })
+        json!({ "pindesk": 1, "accion": "anadir_tarea", "texto": "foto [img 05]" })
     );
     assert!(
         v[0].subtitulo
@@ -3240,7 +3240,7 @@ fn ia_y_la_interrogacion_piden_al_asistente_con_su_proyecto() {
     assert_eq!(v[1].titulo, "Abrir el chat «Asistente»");
     assert_eq!(
         pedido_de(&v[1]),
-        &json!({"pixpin": 1, "accion": "asistente"})
+        &json!({"pindesk": 1, "accion": "asistente"})
     );
     // Caso negativo: «iaas» o «ia» pegado a otra palabra es buscar.
     assert!(matches!(analizar("iaas"), Modo::Buscar { .. }));
@@ -3292,7 +3292,7 @@ fn ia_sin_texto_ofrece_las_automatizaciones_para_correrlas() {
     assert!(v[3].subtitulo.contains("apagada"), "{}", v[3].subtitulo);
     assert_eq!(
         pedido_de(&v[2]),
-        &json!({"pixpin": 1, "accion": "asistente", "automatizacion": "a1"})
+        &json!({"pindesk": 1, "accion": "asistente", "automatizacion": "a1"})
     );
     // Caso negativo: un fichero roto no rompe la lista.
     fs::write(&fichero, "{roto").unwrap();
@@ -3434,17 +3434,17 @@ fn los_encargos_salen_con_su_estado_en_orden() {
     // Intro en una acabada abre lo que hizo: el lienzo si dibujo.
     assert_eq!(
         pedido_de(&v[5]),
-        &json!({"pixpin": 1, "accion": "abrir", "que": {"tipo": "hoja", "proyecto": "asis", "referencia": "L9"}})
+        &json!({"pindesk": 1, "accion": "abrir", "que": {"tipo": "hoja", "proyecto": "asis", "referencia": "L9"}})
     );
     assert_eq!(pedido_de(&v[7])["que"]["codigo"], "IA-1");
     // En una que falla o se hace, el chat «Asistente».
     assert_eq!(
         pedido_de(&v[6]),
-        &json!({"pixpin": 1, "accion": "asistente"})
+        &json!({"pindesk": 1, "accion": "asistente"})
     );
     assert_eq!(
         pedido_de(&v[2]),
-        &json!({"pixpin": 1, "accion": "asistente"})
+        &json!({"pindesk": 1, "accion": "asistente"})
     );
     // El motor, en la primera fila.
     assert!(
@@ -3478,6 +3478,7 @@ fn el_motor_sale_de_los_ajustes() {
         "la nube (Claude Haiku 5.5 o DeepSeek)"
     );
     let r = raiz("cola-motor");
+    // El `pixpinmax.toml` de antes de PinDesk tambien se lee.
     fs::write(
         r.join("pixpinmax.toml"),
         "[asistente]\nmotor = \"claude\"\n",
@@ -3496,7 +3497,7 @@ fn intro_espera_a_que_la_app_lo_apunte_y_vuelve_a_la_lista() {
     let mut p = plugin(&r);
     p.espera_lista = std::time::Duration::from_secs(2);
     p.mensajero.encargos_en = Some(r.clone());
-    let pedido = json!({ "pixpin": 1, "accion": "asistente", "texto": "apunta pan", "proyecto": null, "encargo": "f1-x" });
+    let pedido = json!({ "pindesk": 1, "accion": "asistente", "texto": "apunta pan", "proyecto": null, "encargo": "f1-x" });
     let t = std::time::Instant::now();
     p.atender(
         &json!({ "jsonrpc": "2.0", "id": 1, "method": "pedir_y_seguir", "params": [[pedido, "pp asistente "]] })
@@ -3529,7 +3530,7 @@ fn lienzo_nombre_y_separador_manda_al_lienzo() {
     );
     assert_eq!(
         *pedido_de(&v[0]),
-        json!({ "pixpin": 1, "accion": "al_lienzo", "lienzo": "Plano casa", "texto": "la puerta del fondo", "proyecto": "P1" })
+        json!({ "pindesk": 1, "accion": "al_lienzo", "lienzo": "Plano casa", "texto": "la puerta del fondo", "proyecto": "P1" })
     );
     // Sin «>», sigue siendo un lienzo nuevo con ese nombre (caso negativo).
     let v = buscar(&r, "lienzo Plano casa");
@@ -3568,7 +3569,7 @@ fn flow_ensena_lo_que_entendio_de_la_tarea_antes_de_pulsar() {
     assert_eq!(
         v[0].accion,
         Accion::Pedido(
-            json!({ "pixpin": 1, "accion": "anadir_tarea", "texto": "llamar #casa al banco muy urgente 18/10 17:00" })
+            json!({ "pindesk": 1, "accion": "anadir_tarea", "texto": "llamar #casa al banco muy urgente 18/10 17:00" })
         )
     );
     // «tareas …» tambien (el «Añadir al Inbox» de abajo).
@@ -3584,9 +3585,9 @@ fn flow_ensena_lo_que_entendio_de_la_tarea_antes_de_pulsar() {
     let v = buscar_c("t comprar pan");
     assert_eq!(v[0].titulo, "Apuntar tarea: comprar pan");
     assert!(v[0].subtitulo.starts_with("Tarea"), "{}", v[0].subtitulo);
-    // Las palabras de Ajustes, leidas del pixpinmax.toml de la raiz.
+    // Las palabras de Ajustes, leidas del pindesk.toml de la raiz.
     fs::write(
-        r.join("pixpinmax.toml"),
+        r.join("pindesk.toml"),
         "[tareas]\nurgente = [\"pronto\"]\nmuy_urgente = []\n",
     )
     .unwrap();

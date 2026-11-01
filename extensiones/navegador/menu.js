@@ -61,7 +61,7 @@ async function mandar(accion, pregunta) {
   $("estado").textContent = accion === "captura_pagina" ? "Capturando la página…" : "Enviando…";
   for (const b of document.querySelectorAll("button")) b.disabled = true;
   const r = await chrome.runtime.sendMessage({
-    tipo: "pixpin-accion",
+    tipo: "pindesk-accion",
     accion,
     datos: {
       tabId: pestana.id,

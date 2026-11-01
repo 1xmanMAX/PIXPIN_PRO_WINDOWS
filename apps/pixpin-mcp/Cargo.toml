@@ -1,8 +1,8 @@
-# El servidor MCP de PinDesk (`pixpin-mcp.exe`), en su propio ejecutable.
+# El servidor MCP de PinDesk (`pindesk-mcp.exe`), en su propio ejecutable.
 #
 # Claude Desktop, Claude Code y cualquier cliente MCP lo arrancan y le hablan
 # JSON-RPC 2.0 por stdin/stdout (una linea por mensaje). Va aparte de
-# pixpinmax.exe para no costar nada cuando nadie lo usa: solo vive mientras el
+# pindesk.exe para no costar nada cuando nadie lo usa: solo vive mientras el
 # cliente lo tiene abierto. Ver docs/integraciones-mcp.md.
 #
 # Sin SDK de MCP: el de Rust (rmcp) trae tokio y macros para algo que aqui son
@@ -20,7 +20,7 @@ license.workspace = true
 path = "src/lib.rs"
 
 [[bin]]
-name = "pixpin-mcp"
+name = "pindesk-mcp"
 path = "src/main.rs"
 
 [dependencies]
@@ -30,7 +30,7 @@ serde_json = "1.0"
 pixpin-ia = { path = "../../crates/pixpin-ia" }
 # Los pedidos por WM_COPYDATA, la hora local, las ventanas que se ven y COM.
 pixpin-shell = { workspace = true }
-# Donde estan los datos (portable o %APPDATA%\PixPinMax).
+# Donde estan los datos (portable o %APPDATA%\PinDesk).
 pixpin-store = { workspace = true }
 # Leer (solo leer) chats, listas de tareas y notas.
 pixpin-proyecto = { path = "../../crates/pixpin-proyecto" }

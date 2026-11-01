@@ -1,10 +1,10 @@
-# PixPin.psm1 — pedirle cosas a PinDesk desde PowerShell.
+# PinDesk.psm1 — pedirle cosas a PinDesk desde PowerShell.
 #
-#   Import-Module "$env:LOCALAPPDATA\Programs\PinDesk\PixPin.psm1"
-#   New-PixPinTarea "llamar al ingeniero" -Proyecto Obra
-#   Get-ChildItem *.png | Send-PixPinChat -Texto "fotos de hoy"
-#   Get-PixPinTexto .\captura.png | Set-Clipboard
-#   Get-Process | Select-Object Name, CPU -First 10 | Out-PixPin -Tabla "Procesos"
+#   Import-Module "$env:LOCALAPPDATA\Programs\PinDesk\PinDesk.psm1"
+#   New-PinDeskTarea "llamar al ingeniero" -Proyecto Obra
+#   Get-ChildItem *.png | Send-PinDeskChat -Texto "fotos de hoy"
+#   Get-PinDeskTexto .\captura.png | Set-Clipboard
+#   Get-Process | Select-Object Name, CPU -First 10 | Out-PinDesk -Tabla "Procesos"
 #
 # Todo va por la linea de ordenes de pindesk.exe (docs/integraciones.md):
 # este modulo no habla con la app por su cuenta. Los pedidos se le pasan por
@@ -14,18 +14,18 @@
 #
 # Cada funcion devuelve lo que la orden escribe (el texto del OCR, la ayuda)
 # y deja el codigo de salida en $LASTEXITCODE: 0 aceptado, 1 fallo local,
-# 2 version, 3 no se entiende, 4 PixPin no esta abierta, 5 no contesto,
+# 2 version, 3 no se entiende, 4 PinDesk no esta abierta, 5 no contesto,
 # 6 rechazado. Si no es 0, ademas escribe un error (Write-Error).
 #
-# El ejecutable: $env:PIXPIN_EXE, o el que esta junto a este modulo, o el
+# El ejecutable: $env:PINDESK_EXE (o el $env:PIXPIN_EXE de antes), o el que esta junto a este modulo, o el
 # instalado en %LOCALAPPDATA%\Programs\PinDesk (o, si aun no se actualizo,
 # el pixpinmax.exe de cuando se llamaba PixPin Max).
 
 Set-StrictMode -Version 2
 
-function Get-PixPinExe {
+function Get-PinDeskExe {
     <# .SYNOPSIS Donde esta pindesk.exe. #>
-    if ($env:PIXPIN_EXE -and (Test-Path $env:PIXPIN_EXE)) { return $env:PIXPIN_EXE }
+    foreach ($v in $env:PINDESK_EXE, $env:PIXPIN_EXE) { if ($v -and (Test-Path $v)) { return $v } }
     $sitios = @(
         (Join-Path $PSScriptRoot 'pindesk.exe'),
         (Join-Path $PSScriptRoot 'pixpinmax.exe'),
@@ -33,10 +33,10 @@ function Get-PixPinExe {
         (Join-Path $env:LOCALAPPDATA 'Programs\PixPinMax\pixpinmax.exe')
     )
     foreach ($s in $sitios) { if (Test-Path $s) { return $s } }
-    throw 'No se encuentra pindesk.exe (pon su ruta en $env:PIXPIN_EXE)'
+    throw 'No se encuentra pindesk.exe (pon su ruta en $env:PINDESK_EXE)'
 }
 
-function Invoke-PixPin {
+function Invoke-PinDesk {
     <#
     .SYNOPSIS
     Corre pindesk.exe con esos argumentos y espera a que acabe.
@@ -45,9 +45,9 @@ function Invoke-PixPin {
     la espera ni ve lo que escribe. Aqui se lanza con su salida redirigida y se
     espera, asi el texto y el codigo de salida llegan.
     .EXAMPLE
-    Invoke-PixPin capturar
+    Invoke-PinDesk capturar
     .EXAMPLE
-    Invoke-PixPin ayuda
+    Invoke-PinDesk ayuda
     #>
     [CmdletBinding()]
     param(
@@ -56,8 +56,8 @@ function Invoke-PixPin {
         [string]$Entrada
     )
     $info = New-Object System.Diagnostics.ProcessStartInfo
-    $info.FileName = Get-PixPinExe
-    $info.Arguments = (@($Argumentos) | Where-Object { $_ -ne $null } | ForEach-Object { ConvertTo-PixPinArgumento $_ }) -join ' '
+    $info.FileName = Get-PinDeskExe
+    $info.Arguments = (@($Argumentos) | Where-Object { $_ -ne $null } | ForEach-Object { ConvertTo-PinDeskArgumento $_ }) -join ' '
     $info.UseShellExecute = $false
     $info.RedirectStandardOutput = $true
     $info.RedirectStandardError = $true
@@ -82,7 +82,7 @@ function Invoke-PixPin {
     if ($texto) { $texto.TrimEnd("`r", "`n") }
 }
 
-function ConvertTo-PixPinArgumento([string]$a) {
+function ConvertTo-PinDeskArgumento([string]$a) {
     # Las reglas de CommandLineToArgvW: entre comillas si hace falta, las
     # comillas de dentro con barra y las barras que las preceden dobladas.
     if ($a -ne '' -and $a -notmatch '[\s"]') { return $a }
@@ -97,14 +97,14 @@ function ConvertTo-PixPinArgumento([string]$a) {
     $s + ('\' * ($barras * 2)) + '"'
 }
 
-function Send-PixPin {
+function Send-PinDesk {
     <#
     .SYNOPSIS
-    Manda un pedido del protocolo (docs/protocolo-pedidos.md) a PixPin.
+    Manda un pedido del protocolo (docs/protocolo-pedidos.md) a PinDesk.
     .EXAMPLE
-    Send-PixPin -Accion anadir_tarea -Campos @{ texto = 'pan'; proyecto = 'pr-1' }
+    Send-PinDesk -Accion anadir_tarea -Campos @{ texto = 'pan'; proyecto = 'pr-1' }
     .EXAMPLE
-    Send-PixPin -Json '{"pixpin":1,"accion":"capturar"}'
+    Send-PinDesk -Json '{"pindesk":1,"accion":"capturar"}'
     #>
     [CmdletBinding(DefaultParameterSetName = 'Accion')]
     param(
@@ -113,37 +113,37 @@ function Send-PixPin {
         [Parameter(ParameterSetName = 'Json', Mandatory = $true)][string]$Json,
         # Solo devolver el JSON, sin mandarlo.
         [switch]$ComoJson,
-        # Si PixPin no esta abierta, no abrirla (sale con 4).
+        # Si PinDesk no esta abierta, no abrirla (sale con 4).
         [switch]$SinArrancar
     )
     if ($PSCmdlet.ParameterSetName -eq 'Accion') {
-        $pedido = [ordered]@{ pixpin = 1; accion = $Accion }
+        $pedido = [ordered]@{ pindesk = 1; accion = $Accion }
         foreach ($k in $Campos.Keys) { $pedido[$k] = $Campos[$k] }
         $Json = $pedido | ConvertTo-Json -Depth 10 -Compress
     }
     if ($ComoJson) { return $Json }
     $a = @('--pedido-archivo', '-')
     if ($SinArrancar) { $a += '--sin-arrancar' }
-    Invoke-PixPin -Argumentos $a -Entrada $Json
+    Invoke-PinDesk -Argumentos $a -Entrada $Json
 }
 
-function Resolve-PixPinRuta([string[]]$Ruta) {
+function Resolve-PinDeskRuta([string[]]$Ruta) {
     foreach ($r in $Ruta) { (Resolve-Path -LiteralPath $r -ErrorAction Stop).ProviderPath }
 }
 
-function Add-PixPinCampoProyecto([hashtable]$c, [string]$Proyecto) {
+function Add-PinDeskCampoProyecto([hashtable]$c, [string]$Proyecto) {
     # Un nombre lo cambia por su id la propia orden.
     if ($Proyecto) { $c.proyecto = $Proyecto }
     $c
 }
 
-function New-PixPinTarea {
+function New-PinDeskTarea {
     <#
     .SYNOPSIS
     Apunta una tarea (sin proyecto ni lista, en el Inbox). Acepta la tuberia:
     cada linea, una tarea.
     .EXAMPLE
-    'pan', 'leche' | New-PixPinTarea -Proyecto Casa
+    'pan', 'leche' | New-PinDeskTarea -Proyecto Casa
     #>
     [CmdletBinding()]
     param(
@@ -154,13 +154,13 @@ function New-PixPinTarea {
         [switch]$ComoJson
     )
     process {
-        $c = Add-PixPinCampoProyecto @{ texto = $Texto } $Proyecto
+        $c = Add-PinDeskCampoProyecto @{ texto = $Texto } $Proyecto
         if ($Lista) { $c.codigo = $Lista }
-        Send-PixPin -Accion anadir_tarea -Campos $c -ComoJson:$ComoJson
+        Send-PinDesk -Accion anadir_tarea -Campos $c -ComoJson:$ComoJson
     }
 }
 
-function New-PixPinNota {
+function New-PinDeskNota {
     <# .SYNOPSIS Abre una nota nueva empezada con ese texto. La tuberia se junta en una nota. #>
     [CmdletBinding()]
     param(
@@ -171,19 +171,19 @@ function New-PixPinNota {
     begin { $lineas = New-Object System.Collections.Generic.List[string] }
     process { if ($Texto) { $lineas.Add($Texto) } }
     end {
-        $c = Add-PixPinCampoProyecto @{} $Proyecto
+        $c = Add-PinDeskCampoProyecto @{} $Proyecto
         if ($lineas.Count) { $c.texto = $lineas -join "`n" }
-        Send-PixPin -Accion nota_nueva -Campos $c -ComoJson:$ComoJson
+        Send-PinDesk -Accion nota_nueva -Campos $c -ComoJson:$ComoJson
     }
 }
 
-function Send-PixPinChat {
+function Send-PinDeskChat {
     <#
     .SYNOPSIS
     Escribe en el chat (sin proyecto, en Mensajes guardados) un texto y
     ficheros. Los ficheros pueden llegar por la tuberia (Get-ChildItem).
     .EXAMPLE
-    Get-ChildItem .\fotos\*.jpg | Send-PixPinChat -Texto 'Avance de obra' -Proyecto Obra
+    Get-ChildItem .\fotos\*.jpg | Send-PinDeskChat -Texto 'Avance de obra' -Proyecto Obra
     #>
     [CmdletBinding()]
     param(
@@ -193,27 +193,27 @@ function Send-PixPinChat {
         [switch]$ComoJson
     )
     begin { $todos = New-Object System.Collections.Generic.List[string] }
-    process { if ($Archivo) { foreach ($r in (Resolve-PixPinRuta $Archivo)) { $todos.Add($r) } } }
+    process { if ($Archivo) { foreach ($r in (Resolve-PinDeskRuta $Archivo)) { $todos.Add($r) } } }
     end {
         $imagen = '\.(png|jpe?g|bmp|gif|webp|tif)$'
-        $c = Add-PixPinCampoProyecto @{ texto = $Texto } $Proyecto
+        $c = Add-PinDeskCampoProyecto @{ texto = $Texto } $Proyecto
         $img = @($todos | Where-Object { $_ -match $imagen })
         $otros = @($todos | Where-Object { $_ -notmatch $imagen })
         if ($img.Count) { $c.imagenes = $img }
         if ($otros.Count) { $c.archivos = $otros }
-        Send-PixPin -Accion chat -Campos $c -ComoJson:$ComoJson
+        Send-PinDesk -Accion chat -Campos $c -ComoJson:$ComoJson
     }
 }
 
-function Add-PixPinPin {
+function Add-PinDeskPin {
     <# .SYNOPSIS Saca cada fichero a la pantalla como pin. #>
     [CmdletBinding()]
     param([Parameter(Mandatory = $true, Position = 0, ValueFromPipeline = $true, ValueFromPipelineByPropertyName = $true)][Alias('FullName')][string[]]$Ruta)
-    process { foreach ($r in (Resolve-PixPinRuta $Ruta)) { Send-PixPin -Accion pinear -Campos @{ ruta = $r } } }
+    process { foreach ($r in (Resolve-PinDeskRuta $Ruta)) { Send-PinDesk -Accion pinear -Campos @{ ruta = $r } } }
 }
 
-function Open-PixPin {
-    <# .SYNOPSIS Abre un fichero en PixPin (lector, editor o pin), en una pagina o buscando un texto. #>
+function Open-PinDesk {
+    <# .SYNOPSIS Abre un fichero en PinDesk (lector, editor o pin), en una pagina o buscando un texto. #>
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true, Position = 0, ValueFromPipeline = $true, ValueFromPipelineByPropertyName = $true)][Alias('FullName')][string[]]$Ruta,
@@ -221,22 +221,22 @@ function Open-PixPin {
         [string]$Buscar
     )
     process {
-        foreach ($r in (Resolve-PixPinRuta $Ruta)) {
+        foreach ($r in (Resolve-PinDeskRuta $Ruta)) {
             $que = @{ tipo = 'fichero'; ruta = $r }
             if ($Pagina) { $que.pagina = $Pagina }
             if ($Buscar) { $que.buscar = $Buscar }
-            Send-PixPin -Accion abrir -Campos @{ que = $que }
+            Send-PinDesk -Accion abrir -Campos @{ que = $que }
         }
     }
 }
 
-function Get-PixPinTexto {
+function Get-PinDeskTexto {
     <#
     .SYNOPSIS
     El texto de unas imagenes (OCR de Windows), en orden de lectura. No
-    necesita PixPin abierta.
+    necesita PinDesk abierta.
     .EXAMPLE
-    Get-PixPinTexto .\factura.png -Copiar
+    Get-PinDeskTexto .\factura.png -Copiar
     #>
     [CmdletBinding()]
     param(
@@ -244,19 +244,19 @@ function Get-PixPinTexto {
         [switch]$Copiar
     )
     process {
-        $a = @('ocr') + @(Resolve-PixPinRuta $Ruta)
+        $a = @('ocr') + @(Resolve-PinDeskRuta $Ruta)
         if ($Copiar) { $a += '--copiar' }
-        Invoke-PixPin -Argumentos $a
+        Invoke-PinDesk -Argumentos $a
     }
 }
 
-function Invoke-PixPinAsistente {
+function Invoke-PinDeskAsistente {
     <#
     .SYNOPSIS
     Le pide algo al asistente sin abrir el chat; la respuesta sale en el aviso
-    de PixPin y queda en el chat «Asistente».
+    de PinDesk y queda en el chat «Asistente».
     .EXAMPLE
-    Invoke-PixPinAsistente 'resume mis tareas de hoy'
+    Invoke-PinDeskAsistente 'resume mis tareas de hoy'
     #>
     [CmdletBinding()]
     param(
@@ -265,24 +265,24 @@ function Invoke-PixPinAsistente {
         [string]$Proyecto,
         [switch]$ComoJson
     )
-    $c = Add-PixPinCampoProyecto @{ texto = $Pedido } $Proyecto
+    $c = Add-PinDeskCampoProyecto @{ texto = $Pedido } $Proyecto
     if ($Archivo) {
-        $rutas = @(Resolve-PixPinRuta $Archivo)
+        $rutas = @(Resolve-PinDeskRuta $Archivo)
         $img = @($rutas | Where-Object { $_ -match '\.(png|jpe?g|bmp|gif|webp|tif)$' })
         $otros = @($rutas | Where-Object { $_ -notmatch '\.(png|jpe?g|bmp|gif|webp|tif)$' })
         if ($img.Count) { $c.imagenes = $img }
         if ($otros.Count) { $c.texto += "`n`nArchivos:`n" + (($otros | ForEach-Object { "- $_" }) -join "`n") }
     }
-    Send-PixPin -Accion asistente -Campos $c -ComoJson:$ComoJson
+    Send-PinDesk -Accion asistente -Campos $c -ComoJson:$ComoJson
 }
 
-function Start-PixPinCaptura {
+function Start-PinDeskCaptura {
     <# .SYNOPSIS Empieza la captura de una zona, como el atajo general. #>
     [CmdletBinding()] param()
-    Send-PixPin -Accion capturar
+    Send-PinDesk -Accion capturar
 }
 
-function Send-PixPinAlMovil {
+function Send-PinDeskAlMovil {
     <# .SYNOPSIS Manda ficheros al movil (a todos, o a -Aparato). #>
     [CmdletBinding()]
     param(
@@ -290,10 +290,10 @@ function Send-PixPinAlMovil {
         [string]$Aparato = 'todos'
     )
     begin { $todos = New-Object System.Collections.Generic.List[string] }
-    process { foreach ($r in (Resolve-PixPinRuta $Ruta)) { $todos.Add($r) } }
+    process { foreach ($r in (Resolve-PinDeskRuta $Ruta)) { $todos.Add($r) } }
     end {
         $imagen = '\.(png|jpe?g|bmp|gif|webp|tif)$'
-        Send-PixPin -Accion enviar_al_movil -Campos @{
+        Send-PinDesk -Accion enviar_al_movil -Campos @{
             aparato  = $Aparato
             imagenes = @($todos | Where-Object { $_ -match $imagen })
             archivos = @($todos | Where-Object { $_ -notmatch $imagen })
@@ -301,13 +301,13 @@ function Send-PixPinAlMovil {
     }
 }
 
-function Out-PixPin {
+function Out-PinDesk {
     <#
     .SYNOPSIS
     Convierte lo que llega por la tuberia en una tabla del chat (la del pin de
     hoja, que viaja al movil) y la abre.
     .EXAMPLE
-    Import-Csv .\gastos.csv | Out-PixPin -Tabla 'Gastos de octubre' -Proyecto Obra
+    Import-Csv .\gastos.csv | Out-PinDesk -Tabla 'Gastos de octubre' -Proyecto Obra
     #>
     [CmdletBinding()]
     param(
@@ -332,17 +332,38 @@ function Out-PixPin {
                 foreach ($o in $todos) { $filas.Add(@($props | ForEach-Object { [string]$o.$_ })) }
             }
         }
-        $c = Add-PixPinCampoProyecto @{ nombre = $Tabla; filas = $filas.ToArray(); cabecera = $cabecera; abrir = $true } $Proyecto
-        Send-PixPin -Accion tabla_nueva -Campos $c -ComoJson:$ComoJson
+        $c = Add-PinDeskCampoProyecto @{ nombre = $Tabla; filas = $filas.ToArray(); cabecera = $cabecera; abrir = $true } $Proyecto
+        Send-PinDesk -Accion tabla_nueva -Campos $c -ComoJson:$ComoJson
     }
 }
 
-function Open-PixPinEnlace {
-    <# .SYNOPSIS Hace un enlace pixpin:// (lo mismo que pulsarlo, con su lista blanca). #>
+function Open-PinDeskEnlace {
+    <# .SYNOPSIS Hace un enlace pindesk:// (lo mismo que pulsarlo, con su lista blanca). #>
     [CmdletBinding()] param([Parameter(Mandatory = $true, Position = 0)][string]$Url)
-    Invoke-PixPin -Argumentos @('--url', $Url)
+    Invoke-PinDesk -Argumentos @('--url', $Url)
 }
 
-Export-ModuleMember -Function Get-PixPinExe, Invoke-PixPin, Send-PixPin, New-PixPinTarea, New-PixPinNota,
-    Send-PixPinChat, Add-PixPinPin, Open-PixPin, Get-PixPinTexto, Invoke-PixPinAsistente, Start-PixPinCaptura,
-    Send-PixPinAlMovil, Out-PixPin, Open-PixPinEnlace
+Export-ModuleMember -Function Get-PinDeskExe, Invoke-PinDesk, Send-PinDesk, New-PinDeskTarea, New-PinDeskNota,
+    Send-PinDeskChat, Add-PinDeskPin, Open-PinDesk, Get-PinDeskTexto, Invoke-PinDeskAsistente, Start-PinDeskCaptura,
+    Send-PinDeskAlMovil, Out-PinDesk, Open-PinDeskEnlace
+
+# Los nombres de antes de PinDesk (`New-PixPinTarea`…), para que los perfiles
+# y scripts que ya los usan sigan andando. Se pueden quitar cuando nadie los
+# use (docs/formato-pindesk.md).
+Set-Alias -Name Add-PixPinCampoProyecto -Value Add-PinDeskCampoProyecto
+Set-Alias -Name Add-PixPinPin -Value Add-PinDeskPin
+Set-Alias -Name Get-PixPinExe -Value Get-PinDeskExe
+Set-Alias -Name Get-PixPinTexto -Value Get-PinDeskTexto
+Set-Alias -Name Invoke-PixPin -Value Invoke-PinDesk
+Set-Alias -Name Invoke-PixPinAsistente -Value Invoke-PinDeskAsistente
+Set-Alias -Name New-PixPinNota -Value New-PinDeskNota
+Set-Alias -Name New-PixPinTarea -Value New-PinDeskTarea
+Set-Alias -Name Open-PixPin -Value Open-PinDesk
+Set-Alias -Name Open-PixPinEnlace -Value Open-PinDeskEnlace
+Set-Alias -Name Out-PixPin -Value Out-PinDesk
+Set-Alias -Name Resolve-PixPinRuta -Value Resolve-PinDeskRuta
+Set-Alias -Name Send-PixPin -Value Send-PinDesk
+Set-Alias -Name Send-PixPinAlMovil -Value Send-PinDeskAlMovil
+Set-Alias -Name Send-PixPinChat -Value Send-PinDeskChat
+Set-Alias -Name Start-PixPinCaptura -Value Start-PinDeskCaptura
+Export-ModuleMember -Alias Add-PixPinCampoProyecto, Add-PixPinPin, Get-PixPinExe, Get-PixPinTexto, Invoke-PixPin, Invoke-PixPinAsistente, New-PixPinNota, New-PixPinTarea, Open-PixPin, Open-PixPinEnlace, Out-PixPin, Resolve-PixPinRuta, Send-PixPin, Send-PixPinAlMovil, Send-PixPinChat, Start-PixPinCaptura

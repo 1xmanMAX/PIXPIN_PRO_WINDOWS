@@ -156,7 +156,7 @@ impl Funcion {
             ],
             // «?» tambien: `p ? <pedido>` (va por `atajo`, es un solo signo).
             Funcion::Asistente => &["ia", "asistente", "ai", "assistant", "?"],
-            Funcion::Abrir => &["pixpin", "abrir", "open"],
+            Funcion::Abrir => &["pindesk", "pixpin", "abrir", "open"],
         }
     }
 

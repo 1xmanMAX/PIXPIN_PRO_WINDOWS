@@ -31,7 +31,7 @@ pub fn extension(nombre: &str) -> Option<String> {
 
 /// El pedido que pinta los que faltan.
 pub fn pedido(extensiones: &[String]) -> serde_json::Value {
-    serde_json::json!({ "pixpin": 1, "accion": "iconos", "extensiones": extensiones })
+    serde_json::json!({ "pindesk": 1, "accion": "iconos", "extensiones": extensiones })
 }
 
 #[cfg(test)]

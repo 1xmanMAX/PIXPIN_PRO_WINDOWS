@@ -401,16 +401,16 @@ pub fn pedido_de_abrir(a: Option<&Abrir>) -> serde_json::Value {
             lienzo: Some(l),
             ..
         }) => json!({
-            "pixpin": 1, "accion": "abrir",
+            "pindesk": 1, "accion": "abrir",
             "que": { "tipo": "hoja", "proyecto": proyecto, "referencia": l }
         }),
         Some(Abrir {
             proyecto, codigo, ..
         }) => json!({
-            "pixpin": 1, "accion": "abrir",
+            "pindesk": 1, "accion": "abrir",
             "que": { "tipo": "nota", "proyecto": proyecto, "codigo": codigo }
         }),
-        None => json!({ "pixpin": 1, "accion": "asistente" }),
+        None => json!({ "pindesk": 1, "accion": "asistente" }),
     }
 }
 
@@ -480,7 +480,7 @@ pub fn arrancar(app: encargo::DeLaApp) {
 
 /// El icono de las notificaciones (el del plugin de Flow), que Windows lee
 /// de un PNG en el disco.
-const ICONO: &[u8] = include_bytes!("../../../pixpin-lanzador/plugin/Images/pixpin.png");
+const ICONO: &[u8] = include_bytes!("../../../pixpin-lanzador/plugin/Images/pindesk.png");
 
 /// **Da de alta la identidad de las notificaciones y el protocolo de
 /// «Abrir»** (`pixpin_shell::notificacion`), en su hilo: el arranque no
@@ -909,7 +909,7 @@ mod pruebas {
         assert_eq!(t.texto, "Falta la clave de Claude");
         assert_eq!(
             t.botones[0].pedido,
-            serde_json::json!({"pixpin": 1, "accion": "asistente"})
+            serde_json::json!({"pindesk": 1, "accion": "asistente"})
         );
         // Y el boton pasa el filtro del protocolo.
         assert!(notificacion::permitido(&t.botones[0].pedido));

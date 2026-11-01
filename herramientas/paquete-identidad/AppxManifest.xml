@@ -16,10 +16,10 @@
   de apps/pixpin/pixpinmax.manifest, y el editor igual al sujeto del
   certificado que crea paquete-identidad.ps1. La version la pone el script.
 
-  Name, Publisher, el Id de la aplicacion y el nombre de la asociacion son
-  los de cuando la app se llamaba PixPin Max y NO cambian: son la identidad
-  del paquete (y del certificado ya instalado). Lo visible dice PinDesk
-  (docs/nombre-pindesk.md).
+  Desde nov-2026 la identidad es la de PinDesk (antes ForgePixPin.PixPinMax,
+  CN=PixPin Max Local y aplicacion PixPinMax): hay que volver a registrar el
+  paquete una vez (paquete-identidad.ps1 -Todo, que quita el de antes;
+  docs/formato-pindesk.md).
 
   Pasos: docs/integraciones-windows.md
 -->
@@ -33,8 +33,8 @@
   IgnorableNamespaces="uap uap2 uap3 uap10 rescap">
 
   <Identity
-    Name="ForgePixPin.PixPinMax"
-    Publisher="CN=PixPin Max Local"
+    Name="PinDesk"
+    Publisher="CN=PinDesk Local"
     Version="0.1.0.0"
     ProcessorArchitecture="x64" />
 
@@ -62,7 +62,7 @@
 
   <Applications>
     <Application
-      Id="PixPinMax"
+      Id="PinDesk"
       Executable="pindesk.exe"
       uap10:TrustLevel="mediumIL"
       uap10:RuntimeBehavior="win32App">
@@ -92,10 +92,10 @@
         </uap:Extension>
 
         <!-- Menu contextual de primer nivel en Windows 11: verbos del paquete
-             para lo que PixPin sabe abrir. No es una asociacion: no cambia
+             para lo que PinDesk sabe abrir. No es una asociacion: no cambia
              que programa abre cada tipo, solo anade las dos entradas. -->
         <uap3:Extension Category="windows.fileTypeAssociation" Executable="pindesk.exe" EntryPoint="Windows.FullTrustApplication">
-          <uap3:FileTypeAssociation Name="pixpinmax">
+          <uap3:FileTypeAssociation Name="pindesk">
             <uap:DisplayName>PinDesk</uap:DisplayName>
             <uap:SupportedFileTypes>
               <uap:FileType>.png</uap:FileType>
@@ -125,7 +125,7 @@
             </uap:SupportedFileTypes>
             <uap2:SupportedVerbs>
               <!-- Un fichero suelto a pindesk.exe = sacarlo como pin (lo de
-                   siempre al abrir con PixPin). -->
+                   siempre al abrir con PinDesk). -->
               <uap3:Verb Id="pinear" Parameters="&quot;%1&quot;">Pinear con PinDesk</uap3:Verb>
               <!-- Varios a la vez en UNA llamada (MultiSelectModel=Player). -->
               <uap3:Verb Id="alchat" Parameters="--al-chat &quot;%1&quot;" MultiSelectModel="Player">Enviar al chat de PinDesk</uap3:Verb>

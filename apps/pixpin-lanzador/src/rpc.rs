@@ -270,11 +270,11 @@ impl<M: Mensajero, W: Write> Plugin<M, W> {
         {
             let dir = PathBuf::from(dir);
             let _ = std::fs::create_dir_all(&dir);
-            self.registro.ruta = Some(dir.join("pixpin-lanzador.log"));
+            self.registro.ruta = Some(dir.join("pindesk-lanzador.log"));
             crate::poner_registro_de_panicos(self.registro.clone());
         }
         if let Some(dir) = meta.get("pluginDirectory").and_then(Value::as_str) {
-            let png = PathBuf::from(dir).join("Images").join("pixpin.png");
+            let png = PathBuf::from(dir).join("Images").join("pindesk.png");
             if png.is_file() {
                 self.icono = png.to_string_lossy().to_string();
             }

@@ -1,4 +1,4 @@
-//! El `pixpin-puente.exe` de verdad, arrancado como lo arranca el navegador
+//! El `pindesk-puente.exe` de verdad, arrancado como lo arranca el navegador
 //! (tuberias, un mensaje con su largo), en modo «en seco»: no busca la
 //! PixPin del usuario, escribe en una carpeta de la prueba y devuelve el
 //! pedido. Mide lo que tarda de punta a punta.
@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 
 fn correr(carpeta: &std::path::Path, mensaje: &[u8]) -> (serde_json::Value, Duration) {
     let inicio = Instant::now();
-    let mut hijo = Command::new(env!("CARGO_BIN_EXE_pixpin-puente"))
+    let mut hijo = Command::new(env!("CARGO_BIN_EXE_pindesk-puente"))
         .arg("chrome-extension://abc/")
         .env("PIXPIN_PUENTE_EN_SECO", carpeta)
         .stdin(Stdio::piped())

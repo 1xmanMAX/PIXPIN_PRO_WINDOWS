@@ -83,8 +83,14 @@ jobs:
           } else {
             throw 'No hay ejecutable principal (ni pindesk.exe ni pixpinmax.exe)'
           }
-          foreach ($exe in 'pixpin-aligerar','pixpin-lanzador','pixpin-puente','pixpin-mcp') {
-            Copy-Item "target\release\$exe.exe" $dir
+          # Los ayudantes se llaman pindesk-* desde que la rama tiene el
+          # renombrado de main (docs/formato-pindesk.md); antes, pixpin-*. Se
+          # copia el que haya, con su nombre: el AppxManifest de esa rama lo
+          # nombra igual.
+          foreach ($exe in 'aligerar','lanzador','puente','mcp') {
+            $nuevo = "target\release\pindesk-$exe.exe"
+            if (Test-Path $nuevo) { Copy-Item $nuevo $dir }
+            else { Copy-Item "target\release\pixpin-$exe.exe" $dir }
           }
           Copy-Item 'tienda\Assets' "$dir\Assets" -Recurse
           Copy-Item 'LICENSE' "$dir\LICENSE.txt"

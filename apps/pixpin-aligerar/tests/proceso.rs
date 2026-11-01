@@ -1,4 +1,4 @@
-//! El compresor de PDF en su proceso: `pixpin-aligerar.exe`.
+//! El compresor de PDF en su proceso: `pindesk-aligerar.exe`.
 //!
 //! La aplicacion lo lanza asi para que un PDF que haga entrar en panico a
 //! pdfsqueeze no se lleve PixPin por delante (el release es
@@ -12,7 +12,7 @@ use std::process::{Child, Command, Stdio};
 
 use pdfsqueeze_core::testgen::{self, ImgEnc, Synth};
 
-const EXE: &str = env!("CARGO_BIN_EXE_pixpin-aligerar");
+const EXE: &str = env!("CARGO_BIN_EXE_pindesk-aligerar");
 
 fn carpeta(etiqueta: &str) -> PathBuf {
     let d = std::env::temp_dir().join(format!(

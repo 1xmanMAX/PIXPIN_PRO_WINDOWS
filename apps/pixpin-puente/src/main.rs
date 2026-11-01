@@ -1,4 +1,4 @@
-//! `pixpin-puente.exe`: ver la cabecera de `lib.rs`.
+//! `pindesk-puente.exe`: ver la cabecera de `lib.rs`.
 //!
 //! Subsistema de Windows y no de consola: el navegador lo arranca con las
 //! tuberias redirigidas, y una consola saldria parpadeando en cada clic.
