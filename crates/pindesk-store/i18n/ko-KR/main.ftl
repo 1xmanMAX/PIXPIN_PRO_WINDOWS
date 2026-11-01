@@ -3437,7 +3437,7 @@ cad-web-anotaciones = 주석
 cad-web-todas = 모두
 cad-web-ninguna = 없음
 cad-web-sin-soporte = 이 브라우저는 도면의 압축을 풀 수 없습니다: 최신 Edge, Chrome, Firefox 또는 Safari로 여세요.
-cad-web-pista = 휠: 확대/축소 · 드래그: 이동 · 더블클릭: 전체 보기 · F, B, L
+cad-web-pista = 휠 또는 두 손가락: 이동 · Ctrl+휠 또는 핀치: 확대/축소 · 더블클릭: 전체 보기 · F, B, L
 # El membrete de un plano impreso
 lamina-proyecto = 프로젝트
 lamina-lamina = 도면 번호

@@ -3488,7 +3488,7 @@ cad-web-anotaciones = Anotaciones
 cad-web-todas = Todas
 cad-web-ninguna = Ninguna
 cad-web-sin-soporte = Este navegador no sabe descomprimir el plano: ábrelo con Edge, Chrome, Firefox o Safari recientes.
-cad-web-pista = Rueda: acercar · Arrastrar: mover · Doble clic: ver todo · F, B, L
+cad-web-pista = Rueda o dos dedos: mover · Ctrl+rueda o pellizcar: acercar · Doble clic: ver todo · F, B, L
 # El membrete de un plano impreso (plano_cad/imprimir.rs)
 lamina-proyecto = PROYECTO
 lamina-lamina = LÁMINA

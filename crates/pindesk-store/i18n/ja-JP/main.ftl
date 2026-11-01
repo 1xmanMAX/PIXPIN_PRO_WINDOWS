@@ -3437,7 +3437,7 @@ cad-web-anotaciones = 注釈
 cad-web-todas = すべて
 cad-web-ninguna = なし
 cad-web-sin-soporte = このブラウザーでは図面を展開できません：最新の Edge、Chrome、Firefox、Safari で開いてください。
-cad-web-pista = ホイール：ズーム · ドラッグ：移動 · ダブルクリック：全体表示 · F、B、L
+cad-web-pista = ホイール・2本指：移動 · Ctrl+ホイール・ピンチ：ズーム · ダブルクリック：全体表示 · F、B、L
 # El membrete de un plano impreso
 lamina-proyecto = プロジェクト
 lamina-lamina = 図面番号
