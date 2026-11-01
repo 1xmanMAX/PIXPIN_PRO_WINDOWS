@@ -132,18 +132,21 @@ pub fn coincide(l: &Lista, f: &Fila, palabras: &[String], hoy: mini::Fecha) -> b
 pub struct Grupo {
     /// El sitio de la lista en las listas de la ventana.
     pub lista: usize,
-    /// Lo pendiente (y lo recien tachado, que se queda en su sitio unos
-    /// segundos), como lo ordena `Lista::a_la_vista`.
+    /// Lo pendiente (y lo recien tachado, que se queda en su sitio hasta
+    /// salir de Tareas, `pindesk_ui::tareas_quietas`), como lo ordena
+    /// `Lista::a_la_vista`.
     pub arriba: Vec<usize>,
     /// Lo hecho, plegable, en el orden del documento.
     pub hechas: Vec<usize>,
 }
 
 impl Grupo {
-    /// Cuantas de arriba siguen pendientes (lo recien tachado no cuenta).
+    /// Cuantas siguen pendientes: lo recien tachado no cuenta, y lo recien
+    /// destachado que se quedo en «Hechas» si.
     pub fn pendientes(&self, l: &Lista) -> usize {
         self.arriba
             .iter()
+            .chain(&self.hechas)
             .filter(|&&i| l.filas.get(i).is_some_and(|f| !f.hecha))
             .count()
     }

@@ -353,6 +353,8 @@ pub fn solo_de_vista(orden: &Orden, t: &mut Teclado) -> bool {
     match orden {
         Orden::VerHechas => {
             t.ocultar_hechas = !t.ocultar_hechas;
+            // Pulsarlo es mirar de otra manera: lo tachado, escondido ya.
+            t.tachadas.clear();
             // La marcada era un sitio en la lista de antes: en la nueva
             // seria otra tarea, y Espacio tacharia la que no se ve venir.
             t.marcada = None;
@@ -948,6 +950,12 @@ pub struct Teclado {
     /// Tareas: las hechas, escondidas. Vive mientras el panel esta abierto,
     /// como la fila marcada: es como se mira, no un dato.
     pub ocultar_hechas: bool,
+    /// Con las hechas escondidas, las recien tachadas (su texto guardado):
+    /// siguen a la vista, tachadas y en su sitio, hasta volver a pulsar el
+    /// boton o cerrar el panel (1-nov-2026). Si se escondieran en el mismo
+    /// clic, la de debajo subiria bajo el raton y el siguiente clic
+    /// tacharia otra.
+    pub tachadas: Vec<String>,
 }
 
 /// Una tecla pulsada, con lo que habia mantenido.
@@ -1007,8 +1015,15 @@ pub fn vista_con(
 ) -> Option<Vista> {
     let mut v = vista(cual, documento, moneda, ahora)?;
     if cual == mini::TAREAS && t.ocultar_hechas {
-        let escondidas = v.lista.iter().filter(|f| f.hecha).count();
-        v.lista.retain(|f| !f.hecha);
+        let tareas = mini::leer_tareas(documento);
+        let se_ve = |f: &FilaLista| {
+            !f.hecha
+                || tareas
+                    .get(f.indice)
+                    .is_some_and(|x| t.tachadas.contains(&x.texto))
+        };
+        let escondidas = v.lista.iter().filter(|f| !se_ve(f)).count();
+        v.lista.retain(se_ve);
         // El mismo boton las vuelve a ensenar, y relleno mientras haya
         // alguna escondida: una lista que «se queda corta» sin que nada lo
         // diga parece rota.
@@ -1099,7 +1114,7 @@ fn indices_visibles(
         mini::TAREAS => mini::leer_tareas(documento)
             .iter()
             .enumerate()
-            .filter(|(_, x)| !(t.ocultar_hechas && x.hecha))
+            .filter(|(_, x)| !(t.ocultar_hechas && x.hecha && !t.tachadas.contains(&x.texto)))
             .map(|(n, _)| n)
             .collect(),
         mini::GASTOS => (0..gastos::leer(documento, moneda).gastos.len()).collect(),
@@ -1197,7 +1212,10 @@ pub fn cumplir_toque(
     match toque {
         ToqueDeFila::Marcar(n) => {
             clic_en_fila(t, n);
-            indice(n).map_or(Efecto::Nada, |i| Efecto::Hacer(Orden::Alternar(i)))
+            indice(n).map_or(Efecto::Nada, |i| {
+                anotar_tachada(documento, t, i);
+                Efecto::Hacer(Orden::Alternar(i))
+            })
         }
         ToqueDeFila::Elegir(n) => {
             let ya = t.marcada == Some(n);
@@ -1366,8 +1384,24 @@ fn entrar(cual: &str, documento: &str, t: &mut Teclado, indices: &[usize]) -> Ef
     principal(cual, documento, t, indices)
 }
 
+/// La tarea `i` del documento se va a tachar o destachar: con las hechas
+/// escondidas, la que se tacha se queda a la vista ([`Teclado::tachadas`]).
+fn anotar_tachada(documento: &str, t: &mut Teclado, i: usize) {
+    if !t.ocultar_hechas {
+        return;
+    }
+    let Some(x) = mini::leer_tareas(documento).into_iter().nth(i) else {
+        return;
+    };
+    if x.hecha {
+        t.tachadas.retain(|c| *c != x.texto);
+    } else {
+        t.tachadas.push(x.texto);
+    }
+}
+
 /// Lo que hace Intro o Espacio con la caja vacia: el boton gordo.
-fn principal(cual: &str, documento: &str, t: &Teclado, indices: &[usize]) -> Efecto {
+fn principal(cual: &str, documento: &str, t: &mut Teclado, indices: &[usize]) -> Efecto {
     match cual {
         mini::CRONOMETRO | mini::TEMPORIZADOR => Efecto::Hacer(Orden::ArrancarOParar),
         mini::ALARMA => Efecto::Hacer(Orden::Activar),
@@ -1376,7 +1410,10 @@ fn principal(cual: &str, documento: &str, t: &Teclado, indices: &[usize]) -> Efe
             Efecto::Hacer(Orden::Girar(0.0))
         }
         mini::TAREAS => match t.marcada {
-            Some(n) if n < indices.len() => Efecto::Hacer(Orden::Alternar(indices[n])),
+            Some(n) if n < indices.len() => {
+                anotar_tachada(documento, t, indices[n]);
+                Efecto::Hacer(Orden::Alternar(indices[n]))
+            }
             _ => Efecto::Nada,
         },
         _ => Efecto::Nada,
@@ -1959,6 +1996,7 @@ mod pruebas {
             edicion: Edicion::Anadir,
             marcada: Some(0),
             ocultar_hechas: false,
+            tachadas: Vec::new(),
         };
         let d = aplicar(
             mini::TAREAS,
@@ -2390,10 +2428,64 @@ mod pruebas {
         d = pulsar(mini::TAREAS, &d, &mut t, k(VK_ABAJO));
         d = teclear(mini::TAREAS, &d, &mut t, " ");
         assert_eq!(d, "# L\n\n- [x] a\n- [x] b\n- [x] c\n- [ ] d");
-        // Ya solo se ve «d»; Supr la borra a ella.
-        t.marcada = Some(0);
+        // «b» se queda a la vista, tachada, en su sitio; Supr en «d» (la
+        // segunda que se ve) la borra a ella.
+        t.marcada = Some(1);
         d = pulsar(mini::TAREAS, &d, &mut t, k(VK_SUPR));
         assert_eq!(d, "# L\n\n- [x] a\n- [x] b\n- [x] c");
+    }
+
+    #[test]
+    fn con_las_hechas_escondidas_lo_recien_tachado_no_se_va_bajo_el_raton() {
+        let mut d = "# L\n\n- [ ] a\n- [ ] b\n- [ ] c".to_string();
+        let mut t = Teclado::default();
+        solo_de_vista(&Orden::VerHechas, &mut t);
+        let se_ven = |d: &str, t: &Teclado| -> Vec<(String, bool)> {
+            vista_con(mini::TAREAS, d, &euro(), 0, t)
+                .unwrap()
+                .lista
+                .iter()
+                .map(|f| (f.texto.clone(), f.hecha))
+                .collect()
+        };
+        // Se tacha «a» con el raton y luego «b»: las dos siguen donde
+        // estaban, tachadas; ninguna sube bajo el raton.
+        for n in [0, 1] {
+            let v = vista_con(mini::TAREAS, &d, &euro(), 0, &t).unwrap();
+            let Efecto::Hacer(o) = cumplir_toque(
+                mini::TAREAS,
+                &d,
+                &euro(),
+                &v,
+                &mut t,
+                ToqueDeFila::Marcar(n),
+            ) else {
+                panic!("marcar es una orden");
+            };
+            d = aplicar(mini::TAREAS, &d, &euro(), &o, 0);
+        }
+        assert_eq!(
+            se_ven(&d, &t),
+            [("a".into(), true), ("b".into(), true), ("c".into(), false)]
+        );
+        // Destachar una recien tachada la deja pendiente, en su sitio.
+        let v = vista_con(mini::TAREAS, &d, &euro(), 0, &t).unwrap();
+        let Efecto::Hacer(o) = cumplir_toque(
+            mini::TAREAS,
+            &d,
+            &euro(),
+            &v,
+            &mut t,
+            ToqueDeFila::Marcar(0),
+        ) else {
+            panic!("marcar es una orden");
+        };
+        d = aplicar(mini::TAREAS, &d, &euro(), &o, 0);
+        assert_eq!(se_ven(&d, &t)[0], ("a".into(), false));
+        // Ensenar y volver a esconder es mirar de nuevo: lo hecho, fuera.
+        solo_de_vista(&Orden::VerHechas, &mut t);
+        solo_de_vista(&Orden::VerHechas, &mut t);
+        assert_eq!(se_ven(&d, &t), [("a".into(), false), ("c".into(), false)]);
     }
 
     #[test]
