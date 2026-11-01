@@ -165,3 +165,12 @@ sistema) se quedan en su español e inglés y en los demás idiomas salen en ing
 - **Textos escritos aún en el código** (no en Fluent) en español e inglés: los demás idiomas ven
   el inglés (`Idioma::base`). Otro trabajo los está pasando a los catálogos.
 - La copia de `pixpin-timeline` en `apple/` sigue con las fechas en español e inglés.
+- **Frases del dictado del timeline** («con esto pasó…», «y así te lo cuento…»,
+  `pixpin_timeline::frases`): solo en español; por eso `timeline-vacio` las deja en español en
+  todos los catálogos. Para hacerlas por idioma haría falta una lista de frases por idioma.
+- **Buscar tareas por día**: «hoy» y «ayer» se reconocen en los catorce idiomas a la vez (las
+  palabras de la pista `tareas3-buscar`, en `tareas::tarjetas::dia_de`). «hier» es ayer en
+  francés y también «aquí» en alemán: buscarla añade lo de ayer a lo que la contiene.
+- **`mini-moneda`**: cada catálogo trae la moneda de su país (CNY, JPY, KRW, INR, BRL, EUR, USD);
+  es solo la moneda por defecto de un gasto nuevo, y `Moneda::de_codigo` sabe los decimales de
+  cada una (JPY y KRW sin decimales).
