@@ -50,6 +50,19 @@ fn los_verbos_dan_el_pedido_del_protocolo() {
             vec!["tarea"],
             json!({"pindesk":1,"accion":"ventana","cual":"tareas"}),
         ),
+        // 1-nov: a la lista de una asignatura, y la ventana en ella.
+        (
+            vec!["tarea", "hoja 3", "--asignatura", "Geometría"],
+            json!({"pindesk":1,"accion":"anadir_tarea","texto":"hoja 3","asignatura":"Geometría"}),
+        ),
+        (
+            vec!["tareas", "--asignatura=Física"],
+            json!({"pindesk":1,"accion":"abrir_lista","asignatura":"Física"}),
+        ),
+        (
+            vec!["tarea", "--asignatura", "Física"],
+            json!({"pindesk":1,"accion":"abrir_lista","asignatura":"Física"}),
+        ),
         (
             vec!["nota"],
             json!({"pindesk":1,"accion":"nota_nueva","proyecto":null}),
