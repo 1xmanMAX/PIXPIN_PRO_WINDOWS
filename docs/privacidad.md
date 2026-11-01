@@ -1,6 +1,6 @@
-# Política de privacidad de PixPin Max
+# Política de privacidad de PinDesk
 
-Aplicación para Windows «PixPin Max» (`pixpinmax.exe`). Sirve como texto de
+Aplicación para Windows «PinDesk» (`pindesk.exe`). Sirve como texto de
 la política para la ficha de la Microsoft Store y es la que abre
 Ajustes › General › «Privacidad y datos» › «Política de privacidad».
 
@@ -9,7 +9,7 @@ noviembre de 2026. La versión en inglés está al final ([English](#pixpin-max-
 
 > **En pocas palabras**
 >
-> - PixPin Max no tiene cuentas de usuario ni servidores propios. Lo que creas
+> - PinDesk no tiene cuentas de usuario ni servidores propios. Lo que creas
 >   se guarda en tu PC.
 > - No hay publicidad, ni analítica, ni informes de fallos, ni seguimiento, ni
 >   SDK de terceros que recojan datos. No vendemos datos.
@@ -37,17 +37,17 @@ Contenido: [1 Responsable](#1-quién-es-el-responsable) ·
 
 ## 1. Quién es el responsable
 
-PixPin Max lo desarrolla un desarrollador independiente (en adelante,
+PinDesk lo desarrolla un desarrollador independiente (en adelante,
 «nosotros»). Para cualquier asunto de privacidad, escribe a
 **max.antony.8.5.1@gmail.com**.
 
-Como PixPin Max no tiene servidores propios ni cuentas, nosotros no recibimos
+Como PinDesk no tiene servidores propios ni cuentas, nosotros no recibimos
 ni almacenamos tus datos. Lo que la aplicación guarda está en tu PC, bajo tu
 control.
 
 ## 2. Datos que se quedan en tu PC
 
-PixPin Max guarda en su carpeta de datos (`%APPDATA%\PixPinMax`, o junto al
+PinDesk guarda en su carpeta de datos (`%APPDATA%\PixPinMax`, o junto al
 ejecutable en la versión portátil) lo que tú creas o traes a ella:
 
 - Chats, mensajes, notas, tareas, horarios, recordatorios, lecciones y
@@ -96,7 +96,7 @@ sección 12. Solo nos llega lo que tú decidas enviar.
 
 ## 4. Sincronización por la red local
 
-PixPin Max puede sincronizar chats, fotos y grabaciones con tu móvil o con
+PinDesk puede sincronizar chats, fotos y grabaciones con tu móvil o con
 otros aparatos en la misma red. Los aparatos se encuentran por la red local y
 se emparejan con un código o un QR. Todo lo que viaja va **cifrado con
 AES-GCM** con una clave que solo conocen tus aparatos. No hay ningún servidor
@@ -114,7 +114,7 @@ recibe una copia en su aparato.
 - **Red**: las funciones de la sección 3 y la sincronización de la sección 4.
 - **Arrancar con Windows**: si lo enciendes en Ajustes › General.
 
-PixPin Max no lee tus contactos, tu ubicación ni tus correos.
+PinDesk no lee tus contactos, tu ubicación ni tus correos.
 
 ## 6. Lo que no hacemos
 
@@ -129,9 +129,9 @@ PixPin Max no lee tus contactos, tu ubicación ni tus correos.
 - Tus datos se conservan en tu PC hasta que los borras.
 - **Llevártelos o borrarlos**: Ajustes › General › «Tus datos, en tu disco»
   abre la carpeta de datos. Para llevártelos, cópiala; para borrarlo todo,
-  cierra PixPin Max y bórrala (también los modelos bajados, en `whisper`,
+  cierra PinDesk y bórrala (también los modelos bajados, en `whisper`,
   `qwen3`, `vosk`…). Las claves se borran desde Ajustes › Asistente.
-- Según cómo se instaló, desinstalar PixPin Max puede dejar tu carpeta de
+- Según cómo se instaló, desinstalar PinDesk puede dejar tu carpeta de
   datos (para no perder tus cosas por error); si quieres borrarlo todo,
   bórrala a mano.
 - Lo que ya enviaste a un tercero (sección 3) se rige por ese servicio; por
@@ -148,7 +148,7 @@ Ningún sistema es infalible: protege tu cuenta de Windows con contraseña.
 
 ## 9. Menores
 
-PixPin Max no está dirigida a menores de 13 años (ni de la edad mínima que
+PinDesk no está dirigida a menores de 13 años (ni de la edad mínima que
 fije la ley de tu país) y no recoge conscientemente datos de niños. El
 asistente usa servicios de IA de terceros cuyas condiciones exigen ser mayor
 de edad. Si crees que un menor nos ha enviado datos, escríbenos y los
@@ -177,14 +177,14 @@ Correo: **max.antony.8.5.1@gmail.com**
 
 ---
 
-# PixPin Max Privacy Policy (English)
+# PinDesk Privacy Policy (English)
 
-Windows app “PixPin Max” (`pixpinmax.exe`). Effective date: November 1, 2026.
+Windows app “PinDesk” (`pindesk.exe`). Effective date: November 1, 2026.
 This is the policy text for the Microsoft Store listing.
 
 > **In short**
 >
-> - PixPin Max has no user accounts and no servers of its own. What you
+> - PinDesk has no user accounts and no servers of its own. What you
 >   create is stored on your PC.
 > - No ads, no analytics, no crash reports, no tracking, no third-party SDKs
 >   that collect data. We do not sell data.
@@ -201,8 +201,8 @@ This is the policy text for the Microsoft Store listing.
 
 ## Who we are
 
-PixPin Max is made by an independent developer. Contact:
-**max.antony.8.5.1@gmail.com**. PixPin Max has no accounts and no servers of
+PinDesk is made by an independent developer. Contact:
+**max.antony.8.5.1@gmail.com**. PinDesk has no accounts and no servers of
 its own, so we do not receive or store your data.
 
 ## Data kept on your PC
@@ -252,7 +252,7 @@ internet relay is used.
 Microphone (voice notes, dictation, reviewing aloud, recording classes or
 meetings), screen capture and camera are used only for features you start.
 Network access is used for the features above and for sync. Start with
-Windows only if you turn it on. PixPin Max does not read your contacts,
+Windows only if you turn it on. PinDesk does not read your contacts,
 location or email.
 
 ## What we don't do
@@ -264,7 +264,7 @@ personal data, no use of your data to train models.
 
 Data stays on your PC until you delete it. Settings › General › “Your data,
 on your disk” opens the data folder: copy it to take your data with you, or
-close PixPin Max and delete it to remove everything (downloaded models
+close PinDesk and delete it to remove everything (downloaded models
 included). Keys are removed from Settings › Assistant. Depending on how it
 was installed, uninstalling may leave the data folder (so nothing is lost by
 accident); delete it by hand to remove everything. Data you sent to third
@@ -272,7 +272,7 @@ parties is governed by those services.
 
 ## Children
 
-PixPin Max is not directed to children under 13 (or the minimum age in your
+PinDesk is not directed to children under 13 (or the minimum age in your
 country) and does not knowingly collect children's data.
 
 ## Your rights

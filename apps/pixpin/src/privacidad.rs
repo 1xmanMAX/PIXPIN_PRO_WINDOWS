@@ -188,7 +188,7 @@ impl Reporte {
     /// El asunto del correo.
     pub fn asunto(&self, t: &Catalogo) -> String {
         format!(
-            "PixPin Max · {} · {}",
+            "PinDesk · {} · {}",
             t.t("reportar-ia-asunto"),
             Motivo::de_id(&self.motivo).rotulo(t)
         )
