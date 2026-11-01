@@ -1,0 +1,192 @@
+# El paquete de la Microsoft Store (solo en la rama `microsoft-store`, ver
+# docs/tienda.md): compila PinDesk con `--features pixpin/tienda`, junta los
+# ejecutables con tienda/AppxManifest.xml y los logos, y deja
+# PinDesk_<version>_x64.msix SIN FIRMAR (la Store lo firma al publicarlo) como
+# artefacto y como version previa `v<version>-store` en Releases. Si el
+# runner trae el Kit de certificacion (WACK), lo pasa sobre una copia firmada
+# con un certificado de prueba y sube su informe; sin el, sigue.
+#
+# A mano: Actions → Tienda → Run workflow (rama microsoft-store) y la version.
+name: Tienda
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version del paquete: cuatro numeros y el ultimo 0 (p. ej. 1.0.0.0)"
+        required: true
+        default: "1.0.0.0"
+      wack:
+        description: "Pasar el Kit de certificacion de apps de Windows (si esta en el runner)"
+        type: boolean
+        default: true
+      publicar:
+        description: "Crear la version previa v<version>-store en Releases"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  paquete:
+    runs-on: windows-latest
+    env:
+      VERSION: ${{ inputs.version }}
+      # El onnxruntime.dll va dentro del paquete (junto al exe): asi la app
+      # nunca baja una DLL (politica 10.2.2 de la Store). El mismo que baja
+      # main, crates/pixpin-indra/src/catalogo.rs (RUNTIME).
+      ORT_URL: https://github.com/microsoft/onnxruntime/releases/download/v1.31.0/onnxruntime-win-x64-1.31.0.zip
+      ORT_SHA256: 0c42dc4e278f0968fdf9ebf1b1e54a74c657a9942e70803e453c91993451cf4c
+    steps:
+      - uses: actions/checkout@v4
+      - name: Comprobar la version
+        shell: pwsh
+        run: |
+          if ($env:VERSION -notmatch '^\d{1,5}\.\d{1,5}\.\d{1,5}\.0$') {
+            throw "La version tiene que ser de cuatro numeros con el ultimo 0 (la Store reserva el cuarto): '$env:VERSION'"
+          }
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: tienda
+      - name: Compilar (release, feature tienda)
+        run: cargo build --release -p pixpin --features pixpin/tienda -p pixpin-aligerar -p pixpin-lanzador -p pixpin-puente -p pixpin-mcp
+
+      - name: Herramientas del SDK de Windows
+        shell: pwsh
+        run: |
+          # La version mas nueva del SDK que traiga las tres (x64).
+          $kits = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10\bin'
+          $bin = Get-ChildItem $kits -Directory |
+            Where-Object { $_.Name -match '^10\.' } |
+            Sort-Object { [version]$_.Name } -Descending |
+            ForEach-Object { Join-Path $_.FullName 'x64' } |
+            Where-Object { (Test-Path "$_\makeappx.exe") -and (Test-Path "$_\makepri.exe") -and (Test-Path "$_\signtool.exe") } |
+            Select-Object -First 1
+          if (-not $bin) { throw "No esta makeappx/makepri/signtool en $kits" }
+          Write-Host "SDK: $bin"
+          "SDK_BIN=$bin" | Out-File -Append $env:GITHUB_ENV
+
+      - name: Preparar la carpeta del paquete
+        shell: pwsh
+        run: |
+          $dir = 'paquete'
+          New-Item -ItemType Directory $dir | Out-Null
+          # El exe principal: pindesk.exe cuando el renombrado de main llegue
+          # aqui; hasta entonces, pixpinmax.exe copiado con el nombre nuevo.
+          if (Test-Path 'target\release\pindesk.exe') {
+            Copy-Item 'target\release\pindesk.exe' "$dir\pindesk.exe"
+          } elseif (Test-Path 'target\release\pixpinmax.exe') {
+            Write-Host 'Aun no hay pindesk.exe: se copia pixpinmax.exe como pindesk.exe'
+            Copy-Item 'target\release\pixpinmax.exe' "$dir\pindesk.exe"
+          } else {
+            throw 'No hay ejecutable principal (ni pindesk.exe ni pixpinmax.exe)'
+          }
+          foreach ($exe in 'pixpin-aligerar','pixpin-lanzador','pixpin-puente','pixpin-mcp') {
+            Copy-Item "target\release\$exe.exe" $dir
+          }
+          Copy-Item 'tienda\Assets' "$dir\Assets" -Recurse
+          Copy-Item 'LICENSE' "$dir\LICENSE.txt"
+          Copy-Item 'THIRD-PARTY-NOTICES.md' "$dir\THIRD-PARTY-NOTICES.md"
+
+          # onnxruntime.dll: del ZIP oficial, comprobada con su sha256.
+          Invoke-WebRequest $env:ORT_URL -OutFile ort.zip
+          Expand-Archive ort.zip -DestinationPath ort
+          $dll = Get-ChildItem ort -Recurse -Filter onnxruntime.dll | Select-Object -First 1
+          $sha = (Get-FileHash $dll.FullName -Algorithm SHA256).Hash.ToLower()
+          if ($sha -ne $env:ORT_SHA256) { throw "onnxruntime.dll no es la esperada ($sha)" }
+          Copy-Item $dll.FullName $dir
+          $lic = Get-ChildItem ort -Recurse -Filter LICENSE* | Select-Object -First 1
+          if ($lic) { Copy-Item $lic.FullName "$dir\onnxruntime-LICENSE.txt" }
+
+          # La version en el manifiesto.
+          $m = [xml](Get-Content 'tienda\AppxManifest.xml' -Raw -Encoding utf8)
+          $m.Package.Identity.Version = $env:VERSION
+          $m.Save((Join-Path (Resolve-Path $dir) 'AppxManifest.xml'))
+          Get-ChildItem $dir | Format-Table Name, Length
+
+      - name: Recursos (resources.pri) y paquete (makeappx)
+        shell: pwsh
+        run: |
+          $sdk = $env:SDK_BIN
+          # resources.pri: sin el, Windows solo ve los logos sin calificador
+          # (escala 100) y no los targetsize-* de la barra de tareas.
+          & "$sdk\makepri.exe" createconfig /cf priconfig.xml /dq es-ES /pv 10.0.0 /o
+          if ($LASTEXITCODE) { throw "makepri createconfig: $LASTEXITCODE" }
+          & "$sdk\makepri.exe" new /pr paquete /cf priconfig.xml /mn paquete\AppxManifest.xml /of paquete\resources.pri /o
+          if ($LASTEXITCODE) { throw "makepri new: $LASTEXITCODE" }
+          $msix = "PinDesk_$($env:VERSION)_x64.msix"
+          & "$sdk\makeappx.exe" pack /d paquete /p $msix /o
+          if ($LASTEXITCODE) { throw "makeappx pack: $LASTEXITCODE" }
+          "MSIX=$msix" | Out-File -Append $env:GITHUB_ENV
+          Get-Item $msix | Format-Table Name, Length
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: PinDesk-msix-${{ inputs.version }}
+          path: ${{ env.MSIX }}
+
+      # El WACK instala el paquete, y para eso tiene que ir firmado con un
+      # certificado de confianza cuyo sujeto sea el editor del manifiesto:
+      # se firma una COPIA con uno de prueba. El .msix que se sube a la Store
+      # es el de arriba, sin firmar. Nada de esto para el trabajo si falla.
+      - name: Kit de certificacion (WACK)
+        if: inputs.wack
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $appcert = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10\App Certification Kit\appcert.exe'
+          if (-not (Test-Path $appcert)) {
+            Write-Host "::notice::No hay WACK en este runner ($appcert); se omite."
+            exit 0
+          }
+          $editor = 'CN=6973A70C-69AD-469C-8C2B-2A0DC3118CCC'
+          $cert = New-SelfSignedCertificate -Type Custom -Subject $editor -KeyUsage DigitalSignature `
+            -FriendlyName 'PinDesk prueba WACK' -CertStoreLocation 'Cert:\CurrentUser\My' `
+            -TextExtension @('2.5.29.37={text}1.3.6.1.5.5.7.3.3', '2.5.29.19={text}')
+          $clave = ConvertTo-SecureString -String 'prueba-wack' -Force -AsPlainText
+          Export-PfxCertificate -Cert $cert -FilePath prueba.pfx -Password $clave | Out-Null
+          Export-Certificate -Cert $cert -FilePath prueba.cer | Out-Null
+          Import-Certificate -FilePath prueba.cer -CertStoreLocation 'Cert:\LocalMachine\TrustedPeople' | Out-Null
+          Copy-Item $env:MSIX firmado.msix
+          & "$env:SDK_BIN\signtool.exe" sign /fd SHA256 /f prueba.pfx /p prueba-wack firmado.msix
+          if ($LASTEXITCODE) { throw "signtool: $LASTEXITCODE" }
+          # La dependencia del manifiesto (VCLibs) tiene que estar para instalar.
+          try {
+            Invoke-WebRequest 'https://aka.ms/Microsoft.VCLibs.x64.14.00.Desktop.appx' -OutFile vclibs.appx
+            Add-AppxPackage vclibs.appx -ErrorAction SilentlyContinue
+          } catch { Write-Host "VCLibs: $_" }
+          & $appcert reset
+          $informe = Join-Path (Get-Location) 'wack-informe.xml'
+          & $appcert test -appxpackagepath (Resolve-Path firmado.msix) -reportoutputpath $informe
+          Write-Host "appcert: $LASTEXITCODE"
+          if (Test-Path $informe) {
+            $x = [xml](Get-Content $informe -Raw)
+            Write-Host "Resultado global: $($x.REPORT.OVERALL_RESULT)"
+            $x.SelectNodes('//TEST[RESULT="FAIL"]') | ForEach-Object {
+              Write-Host "::warning::WACK falla: $($_.NAME) - $($_.DESCRIPTION)"
+            }
+          }
+
+      - uses: actions/upload-artifact@v4
+        if: inputs.wack
+        with:
+          name: PinDesk-wack-${{ inputs.version }}
+          path: wack-informe.xml
+          if-no-files-found: ignore
+
+      - name: Publicar en Releases (version previa)
+        if: inputs.publicar
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "v$($env:VERSION)-store"
+          $notas = "Paquete MSIX de PinDesk $($env:VERSION) para la Microsoft Store, SIN FIRMAR: se sube tal cual en Partner Center (Paquetes). No se instala con doble clic. Ver docs/tienda.md."
+          gh release view $tag 2>$null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag $env:MSIX --clobber
+          } else {
+            gh release create $tag $env:MSIX --prerelease --target "${{ github.sha }}" --title "PinDesk $($env:VERSION) (Microsoft Store)" --notes $notas
+          }
