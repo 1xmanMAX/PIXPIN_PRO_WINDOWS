@@ -618,7 +618,10 @@ mod pruebas {
         assert!(!m.pendiente(&a), "pedida: no hace falta otro fotograma");
         // La vista se fue: solo queda la «b» en la precarga.
         m.precargar(std::slice::from_ref(&b));
-        assert!(m.pendiente(&a), "cancelada: si vuelve a verse, se pide otra vez");
+        assert!(
+            m.pendiente(&a),
+            "cancelada: si vuelve a verse, se pide otra vez"
+        );
         assert!(!m.pendiente(&b));
         let cola = m.hilo.as_ref().map(|h| h.cola.clone()).expect("hilo");
         let c = cola.0.lock().expect("cola");
