@@ -268,6 +268,11 @@ thread_local! {
     /// Hueco por ventana, en coordenadas del escritorio virtual. Los clics
     /// que caen dentro atraviesan la ventana y llegan a lo que hay debajo.
     static HUECO: RefCell<Vec<(HWND, Rect)>> = const { RefCell::new(Vec::new()) };
+    /// Por donde se arrastra cada ventana (su cabecera vacia), en
+    /// coordenadas del CLIENTE: las zonas y, dentro, los botones que siguen
+    /// siendo botones. `WM_NCHITTEST` contesta `HTCAPTION` ahi y Windows la
+    /// mueve como a cualquier otra (y la deja junto a la de al lado).
+    static ARRASTRE: RefCell<Vec<ZonaArrastre>> = const { RefCell::new(Vec::new()) };
     /// Ventanas que quieren todos los puntos: su historial de raton y el
     /// estado del ultimo WM_POINTERUPDATE de lapiz (el tercer campo). Sin
     /// ese tercer campo, un WM_MOUSEMOVE sintetizado por el tacto (misma
@@ -281,6 +286,9 @@ thread_local! {
     static ENTRADA_FINA: RefCell<Vec<(HWND, crate::puntero::HistorialRaton, crate::puntero::EstadoLapiz)>> =
         const { RefCell::new(Vec::new()) };
 }
+
+/// La ventana, sus zonas de arrastre y los botones dentro de ellas.
+type ZonaArrastre = (HWND, Vec<Rect>, Vec<Rect>);
 
 static REGISTRO: Once = Once::new();
 
@@ -514,6 +522,40 @@ impl VentanaOverlay {
             ancho: ancho as u32,
             alto: alto as u32,
         })
+    }
+
+    /// **El `marco` de la ventana, al dia con donde esta de verdad.** Los
+    /// eventos de raton llegan en el escritorio con el origen de AHORA; quien
+    /// los pasa a la ventana restando un `marco` viejo reparte los clics donde
+    /// estaba (1-nov-2026: «muevo los ajustes con AltSnap y Capturas ya no
+    /// se pulsa»). Cada bucle de ventana lo llama al empezar la vuelta, antes
+    /// de repartir los eventos. Conserva el tamano del `marco`; `true` si lo
+    /// movio. Ver `pixpin_geom::marco_vivo` y docs/ventanas.md.
+    pub fn seguir_sitio(&self, marco: &mut Rect) -> bool {
+        match self
+            .rect_del_sistema()
+            .and_then(|real| pixpin_geom::marco_vivo::al_sitio(*marco, real))
+        {
+            Some(nuevo) => {
+                *marco = nuevo;
+                true
+            }
+            None => false,
+        }
+    }
+
+    /// Por donde se arrastra la ventana con el raton, como por la barra de
+    /// titulo de cualquier otra: dentro de `zonas` y fuera de `botones`, en
+    /// coordenadas del cliente (fisicas). Sin zonas, toda la ventana es
+    /// cliente (lo de siempre).
+    pub fn poner_arrastre(&self, zonas: Vec<Rect>, botones: Vec<Rect>) {
+        ARRASTRE.with(|a| {
+            let mut lista = a.borrow_mut();
+            lista.retain(|(w, _, _)| *w != self.hwnd);
+            if !zonas.is_empty() {
+                lista.push((self.hwnd, zonas, botones));
+            }
+        });
     }
 
     pub fn mostrar(&self) {
@@ -881,6 +923,7 @@ impl Drop for VentanaOverlay {
     fn drop(&mut self) {
         CURSOR.with(|c| c.borrow_mut().retain(|(h, _)| *h != self.hwnd));
         HUECO.with(|h| h.borrow_mut().retain(|(w, _)| *w != self.hwnd));
+        ARRASTRE.with(|a| a.borrow_mut().retain(|(w, _, _)| *w != self.hwnd));
         PENDIENTES_OVERLAY.with(|p| p.borrow_mut().retain(|(h, _)| *h != self.hwnd));
         ENTRADA_FINA.with(|e| e.borrow_mut().retain(|(h, _, _)| *h != self.hwnd));
         // Se saca de la lista ANTES de soltarlo: al soltarse, DirectManipulation
@@ -1275,7 +1318,31 @@ extern "system" fn procedimiento_overlay(
                     .is_some_and(|(_, r)| r.contiene(p))
             });
             if dentro {
-                LRESULT(HTTRANSPARENT as isize)
+                return LRESULT(HTTRANSPARENT as isize);
+            }
+            // La cabecera vacia arrastra la ventana. El origen se pregunta
+            // ahora, nunca se guarda: es el de donde este en este momento.
+            let arrastre = ARRASTRE.with(|a| {
+                let lista = a.borrow();
+                let Some((_, zonas, botones)) = lista.iter().find(|(w, _, _)| *w == hwnd) else {
+                    return false;
+                };
+                let mut r = RECT::default();
+                // SAFETY: GetWindowRect sobre la ventana del propio WndProc.
+                if unsafe { GetWindowRect(hwnd, &mut r) }.is_err() {
+                    return false;
+                }
+                let local = pixpin_geom::marco_vivo::a_cliente(
+                    p,
+                    Punto {
+                        x: r.left,
+                        y: r.top,
+                    },
+                );
+                pixpin_geom::marco_vivo::es_arrastre(local, zonas, botones)
+            });
+            if arrastre {
+                LRESULT(HTCAPTION as isize)
             } else {
                 LRESULT(HTCLIENT as isize)
             }

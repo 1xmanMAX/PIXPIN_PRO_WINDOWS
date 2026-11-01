@@ -8,6 +8,7 @@
 #![forbid(unsafe_code)]
 
 pub mod ajuste;
+pub mod marco_vivo;
 pub mod monitores;
 pub mod parrafos;
 pub mod pin_geometria;
