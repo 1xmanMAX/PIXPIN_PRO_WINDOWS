@@ -258,42 +258,14 @@
             </uap2:SupportedVerbs>
           </uap3:FileTypeAssociation>
         </uap3:Extension>
-      </Extensions>
-    </Application>
 
-    <!-- El servidor MCP (Claude Desktop y otros clientes MCP). Sin entrada en
-         Inicio: solo el alias, para poner `pixpin-mcp.exe` como orden en la
-         configuracion del cliente (la ruta dentro de WindowsApps cambia con
-         cada version; el alias no). -->
-    <Application Id="PinDeskMcp" Executable="pixpin-mcp.exe" EntryPoint="Windows.FullTrustApplication">
-      <uap:VisualElements
-        DisplayName="PinDesk MCP"
-        Description="Servidor MCP de PinDesk"
-        BackgroundColor="transparent"
-        Square150x150Logo="Assets\Square150x150Logo.png"
-        Square44x44Logo="Assets\Square44x44Logo.png"
-        AppListEntry="none" />
-      <Extensions>
+        <!-- El servidor MCP: el alias es la ruta estable para Claude Desktop y otros clientes MCP. -->
         <uap3:Extension Category="windows.appExecutionAlias" Executable="pixpin-mcp.exe" EntryPoint="Windows.FullTrustApplication">
           <uap3:AppExecutionAlias>
             <desktop:ExecutionAlias Alias="pixpin-mcp.exe" />
           </uap3:AppExecutionAlias>
         </uap3:Extension>
-      </Extensions>
-    </Application>
-
-    <!-- El puente del navegador (mensajeria nativa de la extension). Igual:
-         solo el alias, que es la ruta estable que se registra en el
-         navegador (%LOCALAPPDATA%\Microsoft\WindowsApps\pixpin-puente.exe). -->
-    <Application Id="PinDeskPuente" Executable="pixpin-puente.exe" EntryPoint="Windows.FullTrustApplication">
-      <uap:VisualElements
-        DisplayName="PinDesk (puente del navegador)"
-        Description="Puente entre la extension del navegador y PinDesk"
-        BackgroundColor="transparent"
-        Square150x150Logo="Assets\Square150x150Logo.png"
-        Square44x44Logo="Assets\Square44x44Logo.png"
-        AppListEntry="none" />
-      <Extensions>
+        <!-- El puente del navegador (mensajeria nativa): ruta estable %LOCALAPPDATA%\Microsoft\WindowsApps\pixpin-puente.exe. -->
         <uap3:Extension Category="windows.appExecutionAlias" Executable="pixpin-puente.exe" EntryPoint="Windows.FullTrustApplication">
           <uap3:AppExecutionAlias>
             <desktop:ExecutionAlias Alias="pixpin-puente.exe" />
