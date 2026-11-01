@@ -217,6 +217,7 @@ chat-lectura-veloz-chapa = 速読 · { $pct } %
 chat-escaneado = スキャン済み
 chat-sin-origen = そのキャンバスはこのプロジェクトにありません
 chat-sin-proyectos-otros = 送信先となる他のプロジェクトがありません
+chat-ajustes-bandeja = 設定はトレイの PinDesk アイコンから開きます
 chat-proyectos-lista = プロジェクトは左側の一覧です
 chat-no-hay-voz = ボイスメモの録音は Windows 版ではまだ使えません
 chat-no-hay-aligerar = PDF の軽量化は Windows 版ではまだ使えません
@@ -2945,3 +2946,93 @@ clase-acta-propuestas = 承認されなかった提案
 clase-acta-aceptar = 承認
 clase-acta-aceptada = タスクに追加しました
 clase-acta-anadidas = { $n } 件の質問をタスクの受信箱に追加しました
+ia-estado-funciona = 動作中
+ia-estado-sin-clave = キーなし
+ia-estado-desconocido = 未確認
+ia-estado-clave-mala = キーが無効です（{ $codigo }）
+ia-estado-sin-saldo = アカウントの残高がありません
+ia-estado-limite = リクエストが多すぎるか、割り当てを使い切りました
+ia-estado-red = 接続なし
+ia-estado-servidor = サービスに障害があります（{ $codigo }）
+ia-estado-otro = 正しく応答していません（{ $codigo }）
+ia-estado-comprobando = 確認しています…
+ia-estado-hace-nada = たった今
+ia-estado-hace-min = { $n } 分前
+ia-estado-hace-horas = { $n } 時間前
+ia-estado-pista = クリック：今すぐ確認、またはキーの設定へ
+ia-estado-comprobar = 今すぐ確認
+ia-estado-claves = キーは 設定 → アシスタント にあります
+ia-estado-sin-ajustes = 設定はトレイの PinDesk アイコンから開きます
+
+## Live listening with Vosk (1-Nov-2026, what the phone already did)
+ajustes2-voz-en-vivo = 会議をリアルタイムで聞く方法
+ajustes2-voz-en-vivo-sistema = Windows または Whisper
+ajustes2-voz-en-vivo-vosk = Vosk
+ajustes2-ayuda-voz-en-vivo = Jev による会議の議題などに使います。Vosk は話している内容をその場で表示し、話し終えてから 1 秒足らずで各文を確定します（Whisper では約 3 秒）。オフラインで動作します。選ぶと { $megas } MB をダウンロードします（Apache-2.0）。
+ajustes2-ayuda-voz-en-vivo-vosk-listo = Vosk でオフラインで聞いています：話している内容は録音の全画面表示に出ます。読み込めなかったときは Windows または Whisper を使います。
+ajustes2-ayuda-voz-en-vivo-sin-idioma = Vosk はスペイン語と英語用のみダウンロードされます。この言語では Windows または Whisper が聞き取ります。
+ajustes2-voz-en-vivo-bajando = Vosk をダウンロードしています… { $por-ciento } %。その間は Windows または Whisper が聞き取ります。
+ajustes2-voz-en-vivo-fallo = Vosk をダウンロードできませんでした：{ $fallo }。もう一度選ぶと再試行します。
+ajustes2-voz-vosk-borrar = Vosk を削除
+ajustes2-ayuda-voz-vosk-borrar = ダウンロードしたもの（ディスク上で約 100 MB）を解放します。もう一度選ぶと再びダウンロードします。
+clase-temas-bateria = バッテリー残量が少ないため、節約のためリアルタイムの聞き取りを止めています（録音は続きます）
+
+## Dictate to chat: if Jev fails, say so (1-Nov-2026, like the phone)
+chat-anotar-fallo-red = 接続がありません：Jev は別のチャットにメモすべきか確認できませんでした。音声入力した内容は入力欄に残っています。
+chat-anotar-fallo = Jev が応答しませんでした（{ $motivo }）。音声入力した内容は入力欄に残っています。
+
+## Privacy and data (1-Nov-2026, what the phone did for the stores: Settings › General)
+ajustes2-g-privacidad = プライバシーとデータ
+ajustes2-priv-politica = プライバシーポリシー
+ajustes2-ayuda-priv-politica = PinDesk がデータをどう扱うか（スペイン語と英語）：以下に挙げるもの以外はすべてこの PC に残り、それもあなたが使ったときだけです。
+ajustes2-g-privacidad-sale = この PC から送られるものと送り先
+ajustes2-priv-ver-ajustes = その設定
+ajustes2-priv-nada-mas = それ以外はなし
+ajustes2-ayuda-priv-nada-mas = 広告、分析、クラッシュレポート、アカウント、PinDesk のサーバーはありません。音声入力と文字起こしはこの PC 上でオフラインで動作します。
+ajustes2-g-privacidad-datos = あなたのデータ
+ajustes2-priv-carpeta = あなたのデータは、あなたのディスクに
+ajustes2-ayuda-priv-carpeta = キャプチャ、チャット、メモ、録音、設定は { $carpeta } にあります。持ち出すにはフォルダーをコピーし、削除するには PinDesk を閉じてからフォルダーを削除してください。AI のキーはあなたの Windows ユーザーで暗号化されています。
+ajustes2-priv-reportes = AI が書いた内容の報告
+ajustes2-ayuda-priv-reportes = reportes-ia.jsonl（データフォルダー内）に { $n } 件保存済み。
+privacidad-asistente-que = アシスタントへの質問、最近のチャット、添付したもの
+privacidad-asistente-adonde = Anthropic（Claude）または DeepSeek
+privacidad-asistente-cuando = 自分のキーを貼り付けて質問したときだけ。キーはこの PC に暗号化して保存されます。
+privacidad-jev-que = Jev の各機能のテキスト：会議の発言、授業の行、タスク、音声入力や説明した内容
+privacidad-jev-adonde = TypeSafe（api.typesafe.ai）
+privacidad-jev-cuando = TypeSafe のキーがあり、その機能をオンにしているときだけ。音声は送りません。
+privacidad-web-que = アシスタントが検索する内容と、回答のために読むページ
+privacidad-web-adonde = DuckDuckGo または Brave Search と、読み込むサイト
+privacidad-web-cuando = アシスタントがウェブを検索するとき。Cookie も AI のキーも送りません。
+privacidad-google-que = 選んだ Drive のファイルとカレンダーの予定
+privacidad-google-adonde = Google（Drive、Calendar）
+privacidad-google-cuando = 設定 › アシスタント で Google アカウントを接続したときだけ。接続はそこで解除できます。
+privacidad-voces-que = Microsoft の音声で読み上げるテキスト
+privacidad-voces-adonde = Microsoft（Edge の音声）
+privacidad-voces-cuando = リーダーでそれらの音声を選んだときだけ。Windows の音声はオフラインで動作します。
+privacidad-enlace-que = リンクで共有すると選んだファイル
+privacidad-enlace-adonde = litterbox.catbox.moe または temp.sh
+privacidad-enlace-cuando = 共有リンクを求めたときだけ。数時間から数日で自動的に削除されます。
+privacidad-modelos-que = あなたのものは何も送りません：ファイルを要求するだけです
+privacidad-modelos-adonde = huggingface.co、github.com、alphacephei.com（Whisper、Qwen3-ASR、Vosk、Indra）
+privacidad-modelos-cuando = 音声認識や文字認識のモデルを、あなたの指示でダウンロードするとき。
+privacidad-sincro-que = 同期したキャプチャ、メモ、チャット
+privacidad-sincro-adonde = あなた自身のデバイス（スマートフォン）へ、あなたのネットワーク経由で
+privacidad-sincro-cuando = 同期するとき：ネットワーク内で直接、暗号化して送り、サーバーを経由しません。
+
+## Report what the AI writes (1-Nov-2026, like the phone)
+reportar-ia = 回答を報告…
+reportar-ia-motivo-ofensivo = 不快な内容
+reportar-ia-motivo-peligroso = 危険な内容
+reportar-ia-motivo-falso = 誤り・誤解を招く内容
+reportar-ia-motivo-otro = その他の理由
+reportar-ia-hecho = 報告を reportes-ia.jsonl に保存しました。送信用にメールが開きます
+reportar-ia-asunto = AI の回答の報告
+reportar-ia-campo-motivo = 理由
+reportar-ia-campo-funcion = 機能
+reportar-ia-campo-fecha = 日付
+reportar-ia-campo-version = バージョン
+reportar-ia-campo-contenido = AI が書いた内容
+reportar-ia-comentario = （よろしければ、どこがおかしいかここに書いてください。）
+
+## Review aloud: if Jev fails, why (1-Nov-2026, like the phone)
+repaso-jev-fallo-red = 接続がありません。

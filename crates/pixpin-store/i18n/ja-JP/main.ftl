@@ -3269,3 +3269,304 @@ clase-acta-propuestas = 承認されなかった提案
 clase-acta-aceptar = 承認
 clase-acta-aceptada = タスクに追加しました
 clase-acta-anadidas = { $n } 件の質問をタスクの受信箱に追加しました
+
+# --- Lo nuevo de noviembre ---
+# El aviso flotante del asistente
+aviso-ia-abrir = 開く
+aviso-ia-si = はい
+aviso-ia-no = いいえ
+aviso-ia-permiso = 🔐 許可が必要です：{ $pregunta }
+
+    返事がなければ実行しません。
+# Los turnos del asistente que siguen con el chat cerrado
+ia-fondo-titulo = 🤖 アシスタント
+ia-fondo-sigue = 「続けて」
+ia-fondo-sigue-fuera = 「@asistente 続けて」
+ia-fondo-otra-vez = ↻ 終わる前に PinDesk が閉じました。下の返信で最初からやり直します。
+ia-fondo-ya-actuo = いくつかの手順はすでに済んでいるので、自分からは繰り返しません（二重に実行されるため）。{ $sigue } と入力すれば、ここから続けます。
+ia-fondo-ya-se-retomo = 一度再開しましたが、また中断されたので、ここでやめておきます。もう一度試してほしい場合は { $sigue } と入力してください。
+ia-fondo-viejo = 時間が経ちすぎたため、自分からは再開できません。まだ必要なら { $sigue } と入力してください。
+ia-fondo-sin-pregunta = 依頼が見つからない（削除されましたか？）ため、再開できません。
+ia-fondo-no-se-pudo = 再開できませんでした：{ $aviso }
+ia-fondo-no-empezo = 回答を始められませんでした。
+ia-fondo-cortado = ⚠️ これが終わる前に PinDesk が閉じました。{ $porque }
+ia-fondo-sigo-en-el-chat = 💬 チャットで続けます。
+ia-fondo-sigo-de-fondo = ⏳ チャットは閉じましたが、依頼の作業を続けています。終わったらお知らせします。
+ia-fondo-pregunta = ❓ チャットで答えてください：{ $pregunta }
+
+    「開く」を押してください。返事がなければ、最も安全な方法で進めます。
+# La ficha de una leccion
+leccion-ventana = 教訓
+leccion-ventana-nueva = 新しい教訓
+leccion-titulo = 💡 教訓
+leccion-titulo-nueva = 💡 新しい教訓
+leccion-tipo-leccion = 💡 教訓
+leccion-tipo-error = ⚠️ 失敗
+leccion-tipo-acierto = ✅ 成功
+leccion-gravedad-leve = 軽微
+leccion-gravedad-importante = 重要
+leccion-gravedad-grave = 深刻
+leccion-sin-proyecto = プロジェクトなし（一般チャット）
+leccion-foto-ilegible = その写真を読み込めませんでした
+leccion-adjunto-no-esta = そのファイルはまだこの PC にありません
+leccion-galeria = 🖼 ギャラリー
+leccion-guardar = 保存
+leccion-pista-titulo = 何を学びましたか？ 一気に入力するか音声入力してください
+leccion-se-parece = すでにある教訓に似ています
+leccion-paso-otra-vez = 🔁 また起きた
+leccion-area = 分野
+leccion-etiquetas = タグ
+leccion-anadir-etiqueta = + タグ
+leccion-menos-detalle = ▴  詳細を閉じる
+leccion-mas-detalle = ▾  何が起きたか、なぜか、次はどうするか
+leccion-que-paso = 何が起きたか
+leccion-por-que = なぜ起きたか
+leccion-causas = 原因（タップで選択）
+leccion-proxima = 次は…（X が起きたら Y をする）
+leccion-referencias = 検索用のキーワード（カンマ区切り）
+leccion-relacionadas = 関連
+leccion-volvio-a-pasar = 🔁 また起きた
+leccion-volvio-a-pasar-n = 🔁 また起きた（これで { $veces } 回）
+leccion-mic-escuchando = 🎙️ 聞いています… 終えるにはマイクを押してください
+leccion-mic-sin-dictado = この PC では音声入力を使えません：教訓を入力してください
+leccion-mic-sin-texto = 何も聞き取れませんでした
+leccion-mic-no-pasa = 文字に変換できませんでした
+leccion-mic-corto = 短すぎます：もう少し長くマイクをオンにしてください
+leccion-audio = 🎙 音声
+leccion-audio-abriendo = 🎙 開いています…
+leccion-audio-guardando = 🎙 保存しています…
+leccion-audio-parar = ⏹ 停止 { $duracion }
+leccion-audio-sin-microfono = マイクを使えませんでした
+leccion-audio-corto = 短すぎるため保存しませんでした
+leccion-audio-no-guarda = 音声を保存できませんでした
+# El horario
+horario-evaluacion-en = { $dias ->
+        [1] 明日
+       *[other] { $dias } 日後
+    }
+horario-evaluacion-recuerda = リマインダー：{ $que }、{ $en }、{ $cuando }
+horario-evento-en = { $evento }（{ $lugar }）
+horario-dia-0 = 月
+horario-dia-1 = 火
+horario-dia-2 = 水
+horario-dia-3 = 木
+horario-dia-4 = 金
+horario-dia-5 = 土
+horario-dia-6 = 日
+# La Jump List del icono de la barra de tareas
+lista-icono-capturar = キャプチャ
+lista-icono-capturar-largo = 画面の範囲をキャプチャ
+lista-icono-mensajes = 保存したメッセージ
+lista-icono-mensajes-largo = 「保存したメッセージ」を開く
+lista-icono-proyectos = プロジェクト
+lista-icono-proyectos-largo = プロジェクトを表示
+lista-icono-sincronizar = 同期
+lista-icono-sincronizar-largo = デバイスと同期
+lista-icono-recientes = 最近のプロジェクト
+lista-icono-proyecto-largo = プロジェクト { $nombre } を開く
+# Los visores de planos, modelos y croquis 3D
+cad-plano-abriendo = 図面を開いています…
+cad-plano-vacio = 図面に表示するものがありません
+cad-plano-error = 図面を開けませんでした
+cad-plano-pista-acotar = 点をクリックして計測 · ダブルクリックまたは Enter：確定 · Esc：抜ける
+cad-plano-todo = 図面全体を表示
+cad-tema = 明るい背景または暗い背景
+cad-acotar = 計測
+cad-borrar-cotas = 計測を消去
+cad-encima = 常に手前に表示
+cad-cerrar = 閉じる
+cad-tres = 3D で表示
+cad-marcos = 印刷枠
+cad-imprimir = 印刷…
+cad-exportar = エクスポート（HTML、PDF、PNG、DXF…）…
+cad-borrar-marcos = 印刷枠を消去
+cad-plano-pista-marcos = ドラッグして印刷範囲を囲む · Ctrl+P：印刷 · Del：最後の枠を削除 · Esc：抜ける
+cad-plano-marcador = ここにしおり
+cad-anotar = 注釈
+cad-sin-dibujo-civil = { $n } 個の Civil 3D オブジェクトが図形なしで保存されています：PROXYGRAPHICS = 1 で保存するか、LandXML にエクスポートしてください
+cad-letras = 図面のフォント…
+cad-letras-faltan = この図面には、ここにないフォントが必要です。文字は似たフォントで表示されるため、枠に収まらないことがあります：
+cad-letras-no-falta = 図面が名前で指定しているフォントはすべてそろっています。
+cad-letras-donde = SHX フォントは通常 C:\Program Files\Autodesk\AutoCAD 20xx\Fonts か、受け取った図面と同じ場所にあります。
+    TrueType フォントは C:\Windows\Fonts にあります。ここで追加したフォントは AutoCAD、Windows、PinDesk のフォントより優先されます。
+cad-letras-anadir = フォントを追加（SHX、TTF、OTF、TTC）…
+cad-letras-quitar = 自分で追加したものを削除（{ $n }）
+cad-faltan-letras = 図面のフォントが { $n } 個足りません：上の Aa をクリックして追加してください
+cad-releyendo = あなたのフォントで図面を読み込んでいます…
+cad-boton-mover = 移動（ドラッグ）
+cad-boton-marcador = しおり
+cad-boton-anotar = 注釈
+cad-boton-letras = 図面のフォント
+cad-corte = 断面ボックス
+cad-capas = レベルとカテゴリ
+cad-boton-pantalla = 全画面
+cad-boton-guardar = チャットに保存
+cad-modelo-abriendo = モデルを開いています…
+cad-modelo-vacio = モデルに表示するものがありません
+cad-modelo-error = モデルを開けませんでした
+cad-modelo-todo = モデル全体を表示
+cad-aislar = 選択した要素を分離表示
+cad-niveles = レベル
+cad-categorias = カテゴリ
+cad-sin-nivel = レベルなし
+cad-mostrar-todo = すべて表示
+cad-aristas = エッジ
+cad-planta = 平面図
+cad-altura-corte = 断面
+cad-modelo-pista = ドラッグ：回転 · 右ドラッグ：移動 · ホイール：ズーム · クリック：何かを表示 · もう一度クリック：分離表示
+cad-modelo-marcador = ここにしおり（断面と非表示の状態も含む）
+cad-imprimir-marcos = 印刷枠を印刷…
+cad-modelo-pista-marcos = ドラッグして印刷範囲を囲む · Ctrl+P：印刷 · Del：最後の枠を削除 · 数字：そのビューへ · Esc：抜ける
+cad-modelo-pista-anotar = 注釈はこのしおりのビューでのみ表示されます
+cad-modelo-anotar = このビューに注釈
+cad-croquis-abriendo = スケッチを開いています…
+cad-croquis-vacio = スケッチは空です
+cad-croquis-error = スケッチを開けませんでした
+cad-croquis-todo = スケッチ全体を表示
+cad-croquis-capas = レイヤー
+cad-croquis-grupos = グループ
+cad-croquis-tipos = 種類
+cad-croquis-todo-corto = すべて
+cad-croquis-pista = ドラッグ：回転 · 右ドラッグ：移動 · ホイール：ズーム · 1–9：保存したビュー
+# La pagina HTML de un plano exportado
+cad-web-todo = 全体を表示
+cad-web-tema = 明るい / 暗い
+cad-web-capas = レイヤー
+cad-web-grosores = 線の太さ
+cad-web-anotaciones = 注釈
+cad-web-todas = すべて
+cad-web-ninguna = なし
+cad-web-sin-soporte = このブラウザーでは図面を展開できません：最新の Edge、Chrome、Firefox、Safari で開いてください。
+cad-web-pista = ホイール：ズーム · ドラッグ：移動 · ダブルクリック：全体表示 · F、B、L
+# El membrete de un plano impreso
+lamina-proyecto = プロジェクト
+lamina-lamina = 図面番号
+lamina-titulo = 図面名
+lamina-dibujo = 作図
+lamina-escala = 縮尺
+lamina-sin-escala = 縮尺なし
+lamina-fecha = 日付
+lamina-unidades = 単位
+lamina-opcion = 図面枠
+lamina-con-membrete = 枠と表題欄あり
+lamina-sin-marco = 枠なし
+# Sincronizar en segundo plano
+sinc-fondo-solo = この PC のグループには他に誰もいません：「同期」でグループに参加してください
+sinc-fondo-no-es-del-grupo = そのデバイスはもうグループにありません
+sinc-fondo-aparatos = { $n } 台のデバイス
+sinc-fondo-sincronizando = { $quien } と同期しています…
+sinc-fondo-ya-en-marcha = すでに同期中です：終わるまでお待ちください
+sinc-fondo-fallo = 同期できませんでした：{ $error }
+# Leer en voz
+lector-voz-en-linea = オンライン
+# Automatizaciones
+auto-origen = 自動化
+# El asistente de la nube sin clave
+ia-nube-falta-la-clave = { $proveedor } のキーがありません：設定 → アシスタント に貼り付けてください（{ $pagina } で取得できます）。
+# Los campos de una figura que se alarga
+figuras-ventana-no-es-numero = 「{ $texto }」は数値ではありません
+figuras-ventana-mes-mal = 「{ $texto }」：月は 2026-11 のように書いてください
+# Las teclas
+tecla-intro = Enter
+tecla-supr = Del
+ia-fondo-hecho = ✅ 完了しました。
+ia-hecho = 完了しました。
+croquis-titulo = スケッチ { $id }
+chat-ajustes-bandeja = 設定はトレイの PinDesk アイコンから開きます
+# El estado de la IA
+ia-estado-funciona = 動作中
+ia-estado-sin-clave = キーなし
+ia-estado-desconocido = 未確認
+ia-estado-clave-mala = キーが無効です（{ $codigo }）
+ia-estado-sin-saldo = アカウントの残高がありません
+ia-estado-limite = リクエストが多すぎるか、割り当てを使い切りました
+ia-estado-red = 接続なし
+ia-estado-servidor = サービスに障害があります（{ $codigo }）
+ia-estado-otro = 正しく応答していません（{ $codigo }）
+ia-estado-comprobando = 確認しています…
+ia-estado-hace-nada = たった今
+ia-estado-hace-min = { $n } 分前
+ia-estado-hace-horas = { $n } 時間前
+ia-estado-pista = クリック：今すぐ確認、またはキーの設定へ
+ia-estado-comprobar = 今すぐ確認
+ia-estado-claves = キーは 設定 → アシスタント にあります
+ia-estado-sin-ajustes = 設定はトレイの PinDesk アイコンから開きます
+# El mes dentro de una fecha
+chat-mes-dia-1 = 1月
+chat-mes-dia-2 = 2月
+chat-mes-dia-3 = 3月
+chat-mes-dia-4 = 4月
+chat-mes-dia-5 = 5月
+chat-mes-dia-6 = 6月
+chat-mes-dia-7 = 7月
+chat-mes-dia-8 = 8月
+chat-mes-dia-9 = 9月
+chat-mes-dia-10 = 10月
+chat-mes-dia-11 = 11月
+chat-mes-dia-12 = 12月
+# Escuchar la reunion en vivo
+ajustes2-voz-en-vivo = 会議をリアルタイムで聞く方法
+ajustes2-voz-en-vivo-sistema = Windows または Whisper
+ajustes2-voz-en-vivo-vosk = Vosk
+ajustes2-ayuda-voz-en-vivo = Jev による会議の議題などに使います。Vosk は話している内容をその場で表示し、話し終えてから 1 秒足らずで各文を確定します（Whisper では約 3 秒）。オフラインで動作します。選ぶと { $megas } MB をダウンロードします（Apache-2.0）。
+ajustes2-ayuda-voz-en-vivo-vosk-listo = Vosk でオフラインで聞いています：話している内容は録音の全画面表示に出ます。読み込めなかったときは Windows または Whisper を使います。
+ajustes2-ayuda-voz-en-vivo-sin-idioma = Vosk はスペイン語と英語用のみダウンロードされます。この言語では Windows または Whisper が聞き取ります。
+ajustes2-voz-en-vivo-bajando = Vosk をダウンロードしています… { $por-ciento } %。その間は Windows または Whisper が聞き取ります。
+ajustes2-voz-en-vivo-fallo = Vosk をダウンロードできませんでした：{ $fallo }。もう一度選ぶと再試行します。
+ajustes2-voz-vosk-borrar = Vosk を削除
+ajustes2-ayuda-voz-vosk-borrar = ダウンロードしたもの（ディスク上で約 100 MB）を解放します。もう一度選ぶと再びダウンロードします。
+clase-temas-bateria = バッテリー残量が少ないため、節約のためリアルタイムの聞き取りを止めています（録音は続きます）
+chat-anotar-fallo-red = 接続がありません：Jev は別のチャットにメモすべきか確認できませんでした。音声入力した内容は入力欄に残っています。
+chat-anotar-fallo = Jev が応答しませんでした（{ $motivo }）。音声入力した内容は入力欄に残っています。
+# Privacidad y datos
+ajustes2-g-privacidad = プライバシーとデータ
+ajustes2-priv-politica = プライバシーポリシー
+ajustes2-ayuda-priv-politica = PinDesk がデータをどう扱うか（スペイン語と英語）：以下に挙げるもの以外はすべてこの PC に残り、それもあなたが使ったときだけです。
+ajustes2-g-privacidad-sale = この PC から送られるものと送り先
+ajustes2-priv-ver-ajustes = その設定
+ajustes2-priv-nada-mas = それ以外はなし
+ajustes2-ayuda-priv-nada-mas = 広告、分析、クラッシュレポート、アカウント、PinDesk のサーバーはありません。音声入力と文字起こしはこの PC 上でオフラインで動作します。
+ajustes2-g-privacidad-datos = あなたのデータ
+ajustes2-priv-carpeta = あなたのデータは、あなたのディスクに
+ajustes2-ayuda-priv-carpeta = キャプチャ、チャット、メモ、録音、設定は { $carpeta } にあります。持ち出すにはフォルダーをコピーし、削除するには PinDesk を閉じてからフォルダーを削除してください。AI のキーはあなたの Windows ユーザーで暗号化されています。
+ajustes2-priv-reportes = AI が書いた内容の報告
+ajustes2-ayuda-priv-reportes = reportes-ia.jsonl（データフォルダー内）に { $n } 件保存済み。
+privacidad-asistente-que = アシスタントへの質問、最近のチャット、添付したもの
+privacidad-asistente-adonde = Anthropic（Claude）または DeepSeek
+privacidad-asistente-cuando = 自分のキーを貼り付けて質問したときだけ。キーはこの PC に暗号化して保存されます。
+privacidad-jev-que = Jev の各機能のテキスト：会議の発言、授業の行、タスク、音声入力や説明した内容
+privacidad-jev-adonde = TypeSafe（api.typesafe.ai）
+privacidad-jev-cuando = TypeSafe のキーがあり、その機能をオンにしているときだけ。音声は送りません。
+privacidad-web-que = アシスタントが検索する内容と、回答のために読むページ
+privacidad-web-adonde = DuckDuckGo または Brave Search と、読み込むサイト
+privacidad-web-cuando = アシスタントがウェブを検索するとき。Cookie も AI のキーも送りません。
+privacidad-google-que = 選んだ Drive のファイルとカレンダーの予定
+privacidad-google-adonde = Google（Drive、Calendar）
+privacidad-google-cuando = 設定 › アシスタント で Google アカウントを接続したときだけ。接続はそこで解除できます。
+privacidad-voces-que = Microsoft の音声で読み上げるテキスト
+privacidad-voces-adonde = Microsoft（Edge の音声）
+privacidad-voces-cuando = リーダーでそれらの音声を選んだときだけ。Windows の音声はオフラインで動作します。
+privacidad-enlace-que = リンクで共有すると選んだファイル
+privacidad-enlace-adonde = litterbox.catbox.moe または temp.sh
+privacidad-enlace-cuando = 共有リンクを求めたときだけ。数時間から数日で自動的に削除されます。
+privacidad-modelos-que = あなたのものは何も送りません：ファイルを要求するだけです
+privacidad-modelos-adonde = huggingface.co、github.com、alphacephei.com（Whisper、Qwen3-ASR、Vosk、Indra）
+privacidad-modelos-cuando = 音声認識や文字認識のモデルを、あなたの指示でダウンロードするとき。
+privacidad-sincro-que = 同期したキャプチャ、メモ、チャット
+privacidad-sincro-adonde = あなた自身のデバイス（スマートフォン）へ、あなたのネットワーク経由で
+privacidad-sincro-cuando = 同期するとき：ネットワーク内で直接、暗号化して送り、サーバーを経由しません。
+# Reportar lo que escribe la IA
+reportar-ia = 回答を報告…
+reportar-ia-motivo-ofensivo = 不快な内容
+reportar-ia-motivo-peligroso = 危険な内容
+reportar-ia-motivo-falso = 誤り・誤解を招く内容
+reportar-ia-motivo-otro = その他の理由
+reportar-ia-hecho = 報告を reportes-ia.jsonl に保存しました。送信用にメールが開きます
+reportar-ia-asunto = AI の回答の報告
+reportar-ia-campo-motivo = 理由
+reportar-ia-campo-funcion = 機能
+reportar-ia-campo-fecha = 日付
+reportar-ia-campo-version = バージョン
+reportar-ia-campo-contenido = AI が書いた内容
+reportar-ia-comentario = （よろしければ、どこがおかしいかここに書いてください。）
+repaso-jev-fallo-red = 接続がありません。

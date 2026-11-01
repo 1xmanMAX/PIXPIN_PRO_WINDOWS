@@ -217,6 +217,7 @@ chat-lectura-veloz-chapa = 속독 · { $pct }%
 chat-escaneado = 스캔됨
 chat-sin-origen = 해당 캔버스가 이 프로젝트에 없습니다
 chat-sin-proyectos-otros = 보낼 다른 프로젝트가 없습니다
+chat-ajustes-bandeja = 설정은 트레이의 PinDesk 아이콘에서 엽니다
 chat-proyectos-lista = 프로젝트는 왼쪽 목록에 있습니다
 chat-no-hay-voz = Windows에서는 아직 음성 메모 녹음을 지원하지 않습니다
 chat-no-hay-aligerar = Windows에서는 아직 PDF 용량 줄이기를 지원하지 않습니다
@@ -2945,3 +2946,93 @@ clase-acta-propuestas = 수락하지 않은 제안
 clase-acta-aceptar = 수락
 clase-acta-aceptada = 작업에 추가함
 clase-acta-anadidas = 작업 받은 편지함에 질문 { $n }개를 추가했습니다
+ia-estado-funciona = 작동 중
+ia-estado-sin-clave = 키 없음
+ia-estado-desconocido = 아직 확인 안 함
+ia-estado-clave-mala = 키가 유효하지 않습니다({ $codigo })
+ia-estado-sin-saldo = 계정에 잔액이 없습니다
+ia-estado-limite = 요청이 너무 많거나 할당량을 다 썼습니다
+ia-estado-red = 연결 없음
+ia-estado-servidor = 서비스에 오류가 있습니다({ $codigo })
+ia-estado-otro = 제대로 응답하지 않습니다({ $codigo })
+ia-estado-comprobando = 확인 중…
+ia-estado-hace-nada = 방금
+ia-estado-hace-min = { $n }분 전
+ia-estado-hace-horas = { $n }시간 전
+ia-estado-pista = 클릭: 지금 확인하거나 키 설정으로 이동
+ia-estado-comprobar = 지금 확인
+ia-estado-claves = 키는 설정 → 어시스턴트에 있습니다
+ia-estado-sin-ajustes = 설정은 트레이의 PinDesk 아이콘에서 엽니다
+
+## Live listening with Vosk (1-Nov-2026, what the phone already did)
+ajustes2-voz-en-vivo = 회의를 실시간으로 들을 엔진
+ajustes2-voz-en-vivo-sistema = Windows 또는 Whisper
+ajustes2-voz-en-vivo-vosk = Vosk
+ajustes2-ayuda-voz-en-vivo = Jev의 회의 주제 등 회의 기능에 사용합니다. Vosk는 말하는 내용을 바로 보여 주고, 말을 멈추면 1초도 안 되어 각 문장을 마무리합니다(Whisper는 약 3초). 오프라인으로 작동합니다. 선택하면 { $megas }MB를 다운로드합니다(Apache-2.0).
+ajustes2-ayuda-voz-en-vivo-vosk-listo = Vosk로 오프라인에서 듣고 있습니다: 말하는 내용은 녹음 전체 화면에 표시됩니다. 불러오지 못할 때는 Windows 또는 Whisper를 사용합니다.
+ajustes2-ayuda-voz-en-vivo-sin-idioma = Vosk는 스페인어와 영어용만 다운로드됩니다. 이 언어에서는 Windows 또는 Whisper가 듣습니다.
+ajustes2-voz-en-vivo-bajando = Vosk 다운로드 중… { $por-ciento } %. 그동안 Windows 또는 Whisper가 듣습니다.
+ajustes2-voz-en-vivo-fallo = Vosk를 다운로드할 수 없습니다: { $fallo }. 다시 시도하려면 다시 선택하세요.
+ajustes2-voz-vosk-borrar = Vosk 삭제
+ajustes2-ayuda-voz-vosk-borrar = 다운로드한 것을 지웁니다(디스크에서 약 100MB). 다시 선택하면 다시 다운로드합니다.
+clase-temas-bateria = 배터리 부족: 절약을 위해 실시간으로 듣지 않습니다(녹음은 계속됩니다)
+
+## Dictate to chat: if Jev fails, say so (1-Nov-2026, like the phone)
+chat-anotar-fallo-red = 연결 없음: Jev가 다른 채팅에 기록할지 확인하지 못했습니다. 받아쓴 내용은 입력란에 그대로 있습니다.
+chat-anotar-fallo = Jev가 응답하지 않았습니다({ $motivo }). 받아쓴 내용은 입력란에 그대로 있습니다.
+
+## Privacy and data (1-Nov-2026, what the phone did for the stores: Settings › General)
+ajustes2-g-privacidad = 개인 정보 및 데이터
+ajustes2-priv-politica = 개인정보 처리방침
+ajustes2-ayuda-priv-politica = PinDesk가 데이터를 어떻게 다루는지(스페인어와 영어): 아래에 적힌 것 외에는 모두 이 PC에 남으며, 그것도 사용할 때만 해당됩니다.
+ajustes2-g-privacidad-sale = 이 PC에서 나가는 것과 그 목적지
+ajustes2-priv-ver-ajustes = 해당 설정
+ajustes2-priv-nada-mas = 그 밖에는 없음
+ajustes2-ayuda-priv-nada-mas = 광고, 분석, 오류 보고서, 계정, PinDesk 서버가 없습니다. 받아쓰기와 텍스트 변환은 이 PC에서 오프라인으로 실행됩니다.
+ajustes2-g-privacidad-datos = 내 데이터
+ajustes2-priv-carpeta = 내 데이터는 내 디스크에
+ajustes2-ayuda-priv-carpeta = 캡처, 채팅, 메모, 녹음, 설정은 { $carpeta }에 있습니다. 가져가려면 폴더를 복사하고, 삭제하려면 PinDesk를 닫은 뒤 폴더를 삭제하세요. AI 키는 Windows 사용자 계정으로 암호화됩니다.
+ajustes2-priv-reportes = AI가 쓴 내용 신고
+ajustes2-ayuda-priv-reportes = reportes-ia.jsonl(데이터 폴더 안)에 { $n }건 저장됨.
+privacidad-asistente-que = 어시스턴트에게 묻는 내용, 최근 채팅, 첨부한 항목
+privacidad-asistente-adonde = Anthropic(Claude) 또는 DeepSeek
+privacidad-asistente-cuando = 직접 키를 붙여 넣고 질문할 때만. 키는 이 PC에 암호화되어 저장됩니다.
+privacidad-jev-que = Jev 각 기능의 텍스트: 회의 문장, 수업 내용, 작업, 받아쓰거나 설명한 내용
+privacidad-jev-adonde = TypeSafe(api.typesafe.ai)
+privacidad-jev-cuando = TypeSafe 키가 있고 그 기능을 켰을 때만. 오디오는 절대 보내지 않습니다.
+privacidad-web-que = 어시스턴트가 검색하는 내용과 답변을 위해 읽는 페이지
+privacidad-web-adonde = DuckDuckGo 또는 Brave Search, 그리고 읽는 사이트
+privacidad-web-cuando = 어시스턴트가 웹을 검색할 때. 쿠키도 AI 키도 보내지 않습니다.
+privacidad-google-que = 선택한 Drive 파일과 캘린더 일정
+privacidad-google-adonde = Google(Drive, Calendar)
+privacidad-google-cuando = 설정 › 어시스턴트에서 Google 계정을 연결한 경우에만. 연결 해제도 그곳에서 합니다.
+privacidad-voces-que = Microsoft 음성으로 소리 내어 읽는 텍스트
+privacidad-voces-adonde = Microsoft(Edge 음성)
+privacidad-voces-cuando = 리더에서 그 음성 중 하나를 선택한 경우에만. Windows 음성은 오프라인으로 작동합니다.
+privacidad-enlace-que = 링크로 공유하기로 선택한 파일
+privacidad-enlace-adonde = litterbox.catbox.moe 또는 temp.sh
+privacidad-enlace-cuando = 공유 링크를 요청할 때만. 몇 시간에서 며칠 안에 저절로 삭제됩니다.
+privacidad-modelos-que = 내 것은 아무것도 없음: 파일만 요청합니다
+privacidad-modelos-adonde = huggingface.co, github.com, alphacephei.com(Whisper, Qwen3-ASR, Vosk, Indra)
+privacidad-modelos-cuando = 요청에 따라 음성 인식이나 텍스트 인식 모델을 다운로드할 때.
+privacidad-sincro-que = 동기화한 캡처, 메모, 채팅
+privacidad-sincro-adonde = 내 장치(휴대폰)로, 내 네트워크를 통해
+privacidad-sincro-cuando = 동기화할 때: 네트워크 안에서 직접, 암호화하여, 서버를 거치지 않습니다.
+
+## Report what the AI writes (1-Nov-2026, like the phone)
+reportar-ia = 답변 신고…
+reportar-ia-motivo-ofensivo = 불쾌함
+reportar-ia-motivo-peligroso = 위험함
+reportar-ia-motivo-falso = 거짓이거나 오해의 소지가 있음
+reportar-ia-motivo-otro = 기타 이유
+reportar-ia-hecho = 신고를 reportes-ia.jsonl에 저장했습니다. 보내기 위해 이메일이 열립니다
+reportar-ia-asunto = AI 답변 신고
+reportar-ia-campo-motivo = 이유
+reportar-ia-campo-funcion = 기능
+reportar-ia-campo-fecha = 날짜
+reportar-ia-campo-version = 버전
+reportar-ia-campo-contenido = AI가 쓴 내용
+reportar-ia-comentario = (원하면 무엇이 잘못되었는지 여기에 적어 주세요.)
+
+## Review aloud: if Jev fails, why (1-Nov-2026, like the phone)
+repaso-jev-fallo-red = 연결 없음.

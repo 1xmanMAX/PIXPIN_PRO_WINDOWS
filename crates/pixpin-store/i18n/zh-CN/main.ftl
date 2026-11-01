@@ -3269,3 +3269,304 @@ clase-acta-propuestas = 未接受的建议
 clase-acta-aceptar = 接受
 clase-acta-aceptada = 已添加到“任务”
 clase-acta-anadidas = 已将 { $n } 个问题添加到“任务”收件箱
+
+# --- Lo nuevo de noviembre ---
+# El aviso flotante del asistente
+aviso-ia-abrir = 打开
+aviso-ia-si = 是
+aviso-ia-no = 否
+aviso-ia-permiso = 🔐 我需要你的许可：{ $pregunta }
+
+    如果你不回答，我就不做。
+# Los turnos del asistente que siguen con el chat cerrado
+ia-fondo-titulo = 🤖 助手
+ia-fondo-sigue = “继续”
+ia-fondo-sigue-fuera = “@asistente 继续”
+ia-fondo-otra-vez = ↻ PinDesk 在我完成之前关闭了。我会在下方的回复中从头重新开始。
+ia-fondo-ya-actuo = 有些步骤已经完成，所以我不会自行重复（否则会做两次）。输入 { $sigue }，我就从这里继续。
+ia-fondo-ya-se-retomo = 我已经重新开始过一次，但又被中断了，所以就到此为止。如果想让我再试一次，请输入 { $sigue }。
+ia-fondo-viejo = 时间过去太久，无法自行继续。如果你仍然需要，请输入 { $sigue }。
+ia-fondo-sin-pregunta = 找不到你的请求（是否已被删除？），所以无法继续。
+ia-fondo-no-se-pudo = 无法继续：{ $aviso }
+ia-fondo-no-empezo = 我没能开始回答。
+ia-fondo-cortado = ⚠️ PinDesk 在此完成之前关闭了。{ $porque }
+ia-fondo-sigo-en-el-chat = 💬 我会在聊天中继续。
+ia-fondo-sigo-de-fondo = ⏳ 虽然聊天已关闭，我仍在处理你的请求。完成后会通知你。
+ia-fondo-pregunta = ❓ 需要你在聊天中回答：{ $pregunta }
+
+    请点击“打开”。如果你不回答，我会选择最稳妥的做法。
+# La ficha de una leccion
+leccion-ventana = 心得
+leccion-ventana-nueva = 新建心得
+leccion-titulo = 💡 心得
+leccion-titulo-nueva = 💡 新建心得
+leccion-tipo-leccion = 💡 心得
+leccion-tipo-error = ⚠️ 失误
+leccion-tipo-acierto = ✅ 成功
+leccion-gravedad-leve = 轻微
+leccion-gravedad-importante = 重要
+leccion-gravedad-grave = 严重
+leccion-sin-proyecto = 无项目（通用聊天）
+leccion-foto-ilegible = 无法读取该照片
+leccion-adjunto-no-esta = 该文件尚未在这台电脑上
+leccion-galeria = 🖼 图库
+leccion-guardar = 保存
+leccion-pista-titulo = 你学到了什么？一口气输入或口述出来
+leccion-se-parece = 这条和你已有的一条很相似
+leccion-paso-otra-vez = 🔁 又发生了
+leccion-area = 领域
+leccion-etiquetas = 标签
+leccion-anadir-etiqueta = + 标签
+leccion-menos-detalle = ▴  收起详情
+leccion-mas-detalle = ▾  发生了什么、为什么，以及我下次会怎么做
+leccion-que-paso = 发生了什么
+leccion-por-que = 为什么会发生
+leccion-causas = 原因（点一下即可）
+leccion-proxima = 下次……（如果发生 X，我就做 Y）
+leccion-referencias = 用于查找的关键词（用逗号分隔）
+leccion-relacionadas = 相关
+leccion-volvio-a-pasar = 🔁 我又遇到了
+leccion-volvio-a-pasar-n = 🔁 我又遇到了（已 { $veces } 次）
+leccion-mic-escuchando = 🎙️ 正在听……点击麦克风结束
+leccion-mic-sin-dictado = 这台电脑上没有听写功能：请输入心得
+leccion-mic-sin-texto = 什么也没听懂
+leccion-mic-no-pasa = 无法转为文字
+leccion-mic-corto = 太短了：请让麦克风多开一会儿
+leccion-audio = 🎙 音频
+leccion-audio-abriendo = 🎙 正在打开…
+leccion-audio-guardando = 🎙 正在保存…
+leccion-audio-parar = ⏹ 停止 { $duracion }
+leccion-audio-sin-microfono = 无法使用麦克风
+leccion-audio-corto = 太短：未保存
+leccion-audio-no-guarda = 无法保存音频
+# El horario
+horario-evaluacion-en = { $dias ->
+        [1] 明天
+       *[other] { $dias } 天后
+    }
+horario-evaluacion-recuerda = 提醒：{ $que }，{ $en }，{ $cuando }
+horario-evento-en = { $evento }，地点：{ $lugar }
+horario-dia-0 = 周一
+horario-dia-1 = 周二
+horario-dia-2 = 周三
+horario-dia-3 = 周四
+horario-dia-4 = 周五
+horario-dia-5 = 周六
+horario-dia-6 = 周日
+# La Jump List del icono de la barra de tareas
+lista-icono-capturar = 截图
+lista-icono-capturar-largo = 截取屏幕的一个区域
+lista-icono-mensajes = 收藏的消息
+lista-icono-mensajes-largo = 打开“收藏的消息”
+lista-icono-proyectos = 项目
+lista-icono-proyectos-largo = 查看你的项目
+lista-icono-sincronizar = 同步
+lista-icono-sincronizar-largo = 与你的设备同步
+lista-icono-recientes = 最近的项目
+lista-icono-proyecto-largo = 打开项目 { $nombre }
+# Los visores de planos, modelos y croquis 3D
+cad-plano-abriendo = 正在打开图纸…
+cad-plano-vacio = 图纸中没有可显示的内容
+cad-plano-error = 无法打开图纸
+cad-plano-pista-acotar = 点击各点进行测量 · 双击或 Enter：完成 · Esc：退出
+cad-plano-todo = 显示整张图纸
+cad-tema = 浅色或深色背景
+cad-acotar = 测量
+cad-borrar-cotas = 清除测量
+cad-encima = 始终置顶
+cad-cerrar = 关闭
+cad-tres = 以 3D 查看
+cad-marcos = 打印框
+cad-imprimir = 打印…
+cad-exportar = 导出（HTML、PDF、PNG、DXF…）…
+cad-borrar-marcos = 清除打印框
+cad-plano-pista-marcos = 拖动框选要打印的内容 · Ctrl+P：打印 · Del：删除最后一个 · Esc：退出
+cad-plano-marcador = 在此添加书签
+cad-anotar = 批注
+cad-sin-dibujo-civil = 有 { $n } 个 Civil 3D 对象保存时没有图形：请用 PROXYGRAPHICS = 1 保存，或导出为 LandXML
+cad-letras = 图纸字体…
+cad-letras-faltan = 此图纸需要的字体不在本机；其文字会改用相似字体显示，可能放不进原来的框里：
+cad-letras-no-falta = 图纸按名称指定的字体都没有缺失。
+cad-letras-donde = SHX 字体通常位于 C:\Program Files\Autodesk\AutoCAD 20xx\Fonts，或在别人发给你的图纸旁边；
+    TrueType 字体位于 C:\Windows\Fonts。你在这里添加的字体优先于 AutoCAD、Windows 和 PinDesk 的字体。
+cad-letras-anadir = 添加字体（SHX、TTF、OTF、TTC）…
+cad-letras-quitar = 移除我添加的（{ $n }）
+cad-faltan-letras = 图纸缺少 { $n } 种字体：点击上方的 Aa 添加
+cad-releyendo = 正在用你的字体读取图纸…
+cad-boton-mover = 移动（拖动）
+cad-boton-marcador = 书签
+cad-boton-anotar = 批注
+cad-boton-letras = 图纸字体
+cad-corte = 剖切框
+cad-capas = 楼层和类别
+cad-boton-pantalla = 全屏
+cad-boton-guardar = 保存到聊天
+cad-modelo-abriendo = 正在打开模型…
+cad-modelo-vacio = 模型中没有可显示的内容
+cad-modelo-error = 无法打开模型
+cad-modelo-todo = 显示整个模型
+cad-aislar = 隔离所选元素
+cad-niveles = 楼层
+cad-categorias = 类别
+cad-sin-nivel = 无楼层
+cad-mostrar-todo = 全部显示
+cad-aristas = 边线
+cad-planta = 平面视图
+cad-altura-corte = 剖切
+cad-modelo-pista = 拖动：旋转 · 右键拖动：平移 · 滚轮：缩放 · 单击：查看是什么 · 再次单击：隔离
+cad-modelo-marcador = 在此添加书签（含剖切和隐藏的内容）
+cad-imprimir-marcos = 打印这些框…
+cad-modelo-pista-marcos = 拖动框选要打印的内容 · Ctrl+P：打印 · Del：删除最后一个 · 数字：转到其视图 · Esc：退出
+cad-modelo-pista-anotar = 你的批注只在此书签的视图中可见
+cad-modelo-anotar = 在此视图上批注
+cad-croquis-abriendo = 正在打开草图…
+cad-croquis-vacio = 草图是空的
+cad-croquis-error = 无法打开草图
+cad-croquis-todo = 显示整个草图
+cad-croquis-capas = 图层
+cad-croquis-grupos = 组
+cad-croquis-tipos = 类型
+cad-croquis-todo-corto = 全部
+cad-croquis-pista = 拖动：旋转 · 右键拖动：平移 · 滚轮：缩放 · 1–9：保存的视图
+# La pagina HTML de un plano exportado
+cad-web-todo = 全部显示
+cad-web-tema = 浅色 / 深色
+cad-web-capas = 图层
+cad-web-grosores = 线宽
+cad-web-anotaciones = 批注
+cad-web-todas = 全部
+cad-web-ninguna = 无
+cad-web-sin-soporte = 此浏览器无法解压图纸：请用较新版本的 Edge、Chrome、Firefox 或 Safari 打开。
+cad-web-pista = 滚轮：缩放 · 拖动：平移 · 双击：全部显示 · F、B、L
+# El membrete de un plano impreso
+lamina-proyecto = 项目
+lamina-lamina = 图号
+lamina-titulo = 图名
+lamina-dibujo = 绘图
+lamina-escala = 比例
+lamina-sin-escala = 不按比例
+lamina-fecha = 日期
+lamina-unidades = 单位
+lamina-opcion = 图幅
+lamina-con-membrete = 带图框和标题栏
+lamina-sin-marco = 无图框
+# Sincronizar en segundo plano
+sinc-fondo-solo = 这台电脑的群组里没有其他设备：请在“同步”中加入一个
+sinc-fondo-no-es-del-grupo = 该设备已不在群组中
+sinc-fondo-aparatos = { $n } 台设备
+sinc-fondo-sincronizando = 正在与 { $quien } 同步…
+sinc-fondo-ya-en-marcha = 已经在同步：请等待完成
+sinc-fondo-fallo = 无法同步：{ $error }
+# Leer en voz
+lector-voz-en-linea = 在线
+# Automatizaciones
+auto-origen = 自动化
+# El asistente de la nube sin clave
+ia-nube-falta-la-clave = 缺少 { $proveedor } 的密钥：请在“设置 → 助手”中粘贴（可在 { $pagina } 获取）。
+# Los campos de una figura que se alarga
+figuras-ventana-no-es-numero = “{ $texto }”不是数字
+figuras-ventana-mes-mal = “{ $texto }”：月份请写成 2026-11
+# Las teclas
+tecla-intro = Enter
+tecla-supr = Del
+ia-fondo-hecho = ✅ 完成。
+ia-hecho = 完成。
+croquis-titulo = 草图 { $id }
+chat-ajustes-bandeja = 设置可从系统托盘中的 PinDesk 图标打开
+# El estado de la IA
+ia-estado-funciona = 正常
+ia-estado-sin-clave = 无密钥
+ia-estado-desconocido = 尚未检查
+ia-estado-clave-mala = 密钥无效（{ $codigo }）
+ia-estado-sin-saldo = 账户余额不足
+ia-estado-limite = 请求过多或配额已用完
+ia-estado-red = 无网络连接
+ia-estado-servidor = 服务出错（{ $codigo }）
+ia-estado-otro = 响应异常（{ $codigo }）
+ia-estado-comprobando = 正在检查…
+ia-estado-hace-nada = 刚刚
+ia-estado-hace-min = { $n } 分钟前
+ia-estado-hace-horas = { $n } 小时前
+ia-estado-pista = 单击：立即检查或前往密钥设置
+ia-estado-comprobar = 立即检查
+ia-estado-claves = 密钥在“设置 → 助手”中
+ia-estado-sin-ajustes = 设置可从系统托盘中的 PinDesk 图标打开
+# El mes dentro de una fecha
+chat-mes-dia-1 = 1月
+chat-mes-dia-2 = 2月
+chat-mes-dia-3 = 3月
+chat-mes-dia-4 = 4月
+chat-mes-dia-5 = 5月
+chat-mes-dia-6 = 6月
+chat-mes-dia-7 = 7月
+chat-mes-dia-8 = 8月
+chat-mes-dia-9 = 9月
+chat-mes-dia-10 = 10月
+chat-mes-dia-11 = 11月
+chat-mes-dia-12 = 12月
+# Escuchar la reunion en vivo
+ajustes2-voz-en-vivo = 实时收听会议所用引擎
+ajustes2-voz-en-vivo-sistema = Windows 或 Whisper
+ajustes2-voz-en-vivo-vosk = Vosk
+ajustes2-ayuda-voz-en-vivo = 用于 Jev 的会议议题等会议功能。Vosk 会实时显示正在说的话，并在你停顿后零点几秒内结束每句话（Whisper 约需 3 秒），无需联网。选择它将下载 { $megas } MB（Apache-2.0）。
+ajustes2-ayuda-voz-en-vivo-vosk-listo = 正在用 Vosk 离线收听：正在说的话会显示在录音的全屏界面中。如果某次加载失败，则改用 Windows 或 Whisper。
+ajustes2-ayuda-voz-en-vivo-sin-idioma = Vosk 只下载西班牙语和英语版本；在此语言下由 Windows 或 Whisper 收听。
+ajustes2-voz-en-vivo-bajando = 正在下载 Vosk… { $por-ciento } %。在此期间由 Windows 或 Whisper 收听。
+ajustes2-voz-en-vivo-fallo = 无法下载 Vosk：{ $fallo }。再次选择它即可重试。
+ajustes2-voz-vosk-borrar = 删除 Vosk
+ajustes2-ayuda-voz-vosk-borrar = 释放已下载的内容（约占 100 MB 磁盘空间）。再次选择时会重新下载。
+clase-temas-bateria = 电量低：为节省电量暂停实时收听（录音继续）
+chat-anotar-fallo-red = 无网络连接：Jev 无法判断是否要记到另一个聊天中。你口述的内容仍在输入框里。
+chat-anotar-fallo = Jev 没有响应（{ $motivo }）。你口述的内容仍在输入框里。
+# Privacidad y datos
+ajustes2-g-privacidad = 隐私与数据
+ajustes2-priv-politica = 隐私政策
+ajustes2-ayuda-priv-politica = PinDesk 如何处理你的数据（西班牙语和英语）：除下方所列内容外，一切都留在这台电脑上，而且只在你使用时才会发生。
+ajustes2-g-privacidad-sale = 哪些内容会离开这台电脑、去往何处
+ajustes2-priv-ver-ajustes = 相关设置
+ajustes2-priv-nada-mas = 没有别的
+ajustes2-ayuda-priv-nada-mas = 没有广告、没有统计分析、没有崩溃报告、没有账户，也没有 PinDesk 服务器。听写和转写都在这台电脑上离线运行。
+ajustes2-g-privacidad-datos = 你的数据
+ajustes2-priv-carpeta = 你的数据，在你的磁盘上
+ajustes2-ayuda-priv-carpeta = 截图、聊天、笔记、录音和设置都存放在 { $carpeta }。要带走它们，复制该文件夹即可；要删除它们，先关闭 PinDesk 再删除该文件夹。AI 密钥使用你的 Windows 用户加密。
+ajustes2-priv-reportes = AI 所写内容的举报
+ajustes2-ayuda-priv-reportes = 已保存 { $n } 条，位于 reportes-ia.jsonl（在数据文件夹中）。
+privacidad-asistente-que = 你问助手的问题、最近的聊天内容以及你附加的内容
+privacidad-asistente-adonde = Anthropic（Claude）或 DeepSeek
+privacidad-asistente-cuando = 仅当你粘贴自己的密钥并提问时。密钥加密保存在这台电脑上。
+privacidad-jev-que = Jev 各项功能的文本：会议中的句子、课堂的文字、任务、你口述或讲解的内容
+privacidad-jev-adonde = TypeSafe（api.typesafe.ai）
+privacidad-jev-cuando = 仅当你有 TypeSafe 密钥并开启了该功能时。从不发送音频。
+privacidad-web-que = 助手搜索的内容，以及它为回答你而阅读的网页
+privacidad-web-adonde = DuckDuckGo 或 Brave Search，以及它阅读的网站
+privacidad-web-cuando = 当助手在网上搜索时。不带 Cookie，也不带你的 AI 密钥。
+privacidad-google-que = 你选择的 Drive 文件和日历事件
+privacidad-google-adonde = Google（Drive、Calendar）
+privacidad-google-cuando = 仅当你在“设置 › 助手”中连接了 Google 账户时；也可在那里断开。
+privacidad-voces-que = 用 Microsoft 语音朗读的文本
+privacidad-voces-adonde = Microsoft（Edge 语音）
+privacidad-voces-cuando = 仅当你在阅读器中选择这些语音之一时；Windows 语音离线工作。
+privacidad-enlace-que = 你选择通过链接分享的文件
+privacidad-enlace-adonde = litterbox.catbox.moe 或 temp.sh
+privacidad-enlace-cuando = 仅当你请求分享链接时；它会在几小时或几天内自动删除。
+privacidad-modelos-que = 不含你的任何内容：只请求下载文件
+privacidad-modelos-adonde = huggingface.co、github.com 和 alphacephei.com（Whisper、Qwen3-ASR、Vosk、Indra）
+privacidad-modelos-cuando = 在你要求下载语音或文字识别模型时。
+privacidad-sincro-que = 你同步的截图、笔记和聊天
+privacidad-sincro-adonde = 你自己的设备（手机），通过你的网络
+privacidad-sincro-cuando = 同步时：直接在你的网络内加密传输，不经过任何服务器。
+# Reportar lo que escribe la IA
+reportar-ia = 举报回答…
+reportar-ia-motivo-ofensivo = 冒犯性内容
+reportar-ia-motivo-peligroso = 危险内容
+reportar-ia-motivo-falso = 虚假或误导
+reportar-ia-motivo-otro = 其他原因
+reportar-ia-hecho = 举报已保存到 reportes-ia.jsonl；将打开你的邮件以便发送
+reportar-ia-asunto = 举报一条 AI 回答
+reportar-ia-campo-motivo = 原因
+reportar-ia-campo-funcion = 功能
+reportar-ia-campo-fecha = 日期
+reportar-ia-campo-version = 版本
+reportar-ia-campo-contenido = AI 所写的内容
+reportar-ia-comentario = （如果愿意，请在这里说明哪里有问题。）
+repaso-jev-fallo-red = 无网络连接。
