@@ -217,6 +217,7 @@ chat-lectura-veloz-chapa = 速读 · { $pct } %
 chat-escaneado = 已扫描
 chat-sin-origen = 该画布不在此项目中
 chat-sin-proyectos-otros = 没有其他项目可发送
+chat-ajustes-bandeja = 设置可从系统托盘中的 PinDesk 图标打开
 chat-proyectos-lista = 项目列表在左侧
 chat-no-hay-voz = Windows 版暂不支持录制语音消息
 chat-no-hay-aligerar = Windows 版暂不支持压缩 PDF
@@ -2945,3 +2946,93 @@ clase-acta-propuestas = 未接受的建议
 clase-acta-aceptar = 接受
 clase-acta-aceptada = 已添加到“任务”
 clase-acta-anadidas = 已将 { $n } 个问题添加到“任务”收件箱
+ia-estado-funciona = 正常
+ia-estado-sin-clave = 无密钥
+ia-estado-desconocido = 尚未检查
+ia-estado-clave-mala = 密钥无效（{ $codigo }）
+ia-estado-sin-saldo = 账户余额不足
+ia-estado-limite = 请求过多或配额已用完
+ia-estado-red = 无网络连接
+ia-estado-servidor = 服务出错（{ $codigo }）
+ia-estado-otro = 响应异常（{ $codigo }）
+ia-estado-comprobando = 正在检查…
+ia-estado-hace-nada = 刚刚
+ia-estado-hace-min = { $n } 分钟前
+ia-estado-hace-horas = { $n } 小时前
+ia-estado-pista = 单击：立即检查或前往密钥设置
+ia-estado-comprobar = 立即检查
+ia-estado-claves = 密钥在“设置 → 助手”中
+ia-estado-sin-ajustes = 设置可从系统托盘中的 PinDesk 图标打开
+
+## Live listening with Vosk (1-Nov-2026, what the phone already did)
+ajustes2-voz-en-vivo = 实时收听会议所用引擎
+ajustes2-voz-en-vivo-sistema = Windows 或 Whisper
+ajustes2-voz-en-vivo-vosk = Vosk
+ajustes2-ayuda-voz-en-vivo = 用于 Jev 的会议议题等会议功能。Vosk 会实时显示正在说的话，并在你停顿后零点几秒内结束每句话（Whisper 约需 3 秒），无需联网。选择它将下载 { $megas } MB（Apache-2.0）。
+ajustes2-ayuda-voz-en-vivo-vosk-listo = 正在用 Vosk 离线收听：正在说的话会显示在录音的全屏界面中。如果某次加载失败，则改用 Windows 或 Whisper。
+ajustes2-ayuda-voz-en-vivo-sin-idioma = Vosk 只下载西班牙语和英语版本；在此语言下由 Windows 或 Whisper 收听。
+ajustes2-voz-en-vivo-bajando = 正在下载 Vosk… { $por-ciento } %。在此期间由 Windows 或 Whisper 收听。
+ajustes2-voz-en-vivo-fallo = 无法下载 Vosk：{ $fallo }。再次选择它即可重试。
+ajustes2-voz-vosk-borrar = 删除 Vosk
+ajustes2-ayuda-voz-vosk-borrar = 释放已下载的内容（约占 100 MB 磁盘空间）。再次选择时会重新下载。
+clase-temas-bateria = 电量低：为节省电量暂停实时收听（录音继续）
+
+## Dictate to chat: if Jev fails, say so (1-Nov-2026, like the phone)
+chat-anotar-fallo-red = 无网络连接：Jev 无法判断是否要记到另一个聊天中。你口述的内容仍在输入框里。
+chat-anotar-fallo = Jev 没有响应（{ $motivo }）。你口述的内容仍在输入框里。
+
+## Privacy and data (1-Nov-2026, what the phone did for the stores: Settings › General)
+ajustes2-g-privacidad = 隐私与数据
+ajustes2-priv-politica = 隐私政策
+ajustes2-ayuda-priv-politica = PinDesk 如何处理你的数据（西班牙语和英语）：除下方所列内容外，一切都留在这台电脑上，而且只在你使用时才会发生。
+ajustes2-g-privacidad-sale = 哪些内容会离开这台电脑、去往何处
+ajustes2-priv-ver-ajustes = 相关设置
+ajustes2-priv-nada-mas = 没有别的
+ajustes2-ayuda-priv-nada-mas = 没有广告、没有统计分析、没有崩溃报告、没有账户，也没有 PinDesk 服务器。听写和转写都在这台电脑上离线运行。
+ajustes2-g-privacidad-datos = 你的数据
+ajustes2-priv-carpeta = 你的数据，在你的磁盘上
+ajustes2-ayuda-priv-carpeta = 截图、聊天、笔记、录音和设置都存放在 { $carpeta }。要带走它们，复制该文件夹即可；要删除它们，先关闭 PinDesk 再删除该文件夹。AI 密钥使用你的 Windows 用户加密。
+ajustes2-priv-reportes = AI 所写内容的举报
+ajustes2-ayuda-priv-reportes = 已保存 { $n } 条，位于 reportes-ia.jsonl（在数据文件夹中）。
+privacidad-asistente-que = 你问助手的问题、最近的聊天内容以及你附加的内容
+privacidad-asistente-adonde = Anthropic（Claude）或 DeepSeek
+privacidad-asistente-cuando = 仅当你粘贴自己的密钥并提问时。密钥加密保存在这台电脑上。
+privacidad-jev-que = Jev 各项功能的文本：会议中的句子、课堂的文字、任务、你口述或讲解的内容
+privacidad-jev-adonde = TypeSafe（api.typesafe.ai）
+privacidad-jev-cuando = 仅当你有 TypeSafe 密钥并开启了该功能时。从不发送音频。
+privacidad-web-que = 助手搜索的内容，以及它为回答你而阅读的网页
+privacidad-web-adonde = DuckDuckGo 或 Brave Search，以及它阅读的网站
+privacidad-web-cuando = 当助手在网上搜索时。不带 Cookie，也不带你的 AI 密钥。
+privacidad-google-que = 你选择的 Drive 文件和日历事件
+privacidad-google-adonde = Google（Drive、Calendar）
+privacidad-google-cuando = 仅当你在“设置 › 助手”中连接了 Google 账户时；也可在那里断开。
+privacidad-voces-que = 用 Microsoft 语音朗读的文本
+privacidad-voces-adonde = Microsoft（Edge 语音）
+privacidad-voces-cuando = 仅当你在阅读器中选择这些语音之一时；Windows 语音离线工作。
+privacidad-enlace-que = 你选择通过链接分享的文件
+privacidad-enlace-adonde = litterbox.catbox.moe 或 temp.sh
+privacidad-enlace-cuando = 仅当你请求分享链接时；它会在几小时或几天内自动删除。
+privacidad-modelos-que = 不含你的任何内容：只请求下载文件
+privacidad-modelos-adonde = huggingface.co、github.com 和 alphacephei.com（Whisper、Qwen3-ASR、Vosk、Indra）
+privacidad-modelos-cuando = 在你要求下载语音或文字识别模型时。
+privacidad-sincro-que = 你同步的截图、笔记和聊天
+privacidad-sincro-adonde = 你自己的设备（手机），通过你的网络
+privacidad-sincro-cuando = 同步时：直接在你的网络内加密传输，不经过任何服务器。
+
+## Report what the AI writes (1-Nov-2026, like the phone)
+reportar-ia = 举报回答…
+reportar-ia-motivo-ofensivo = 冒犯性内容
+reportar-ia-motivo-peligroso = 危险内容
+reportar-ia-motivo-falso = 虚假或误导
+reportar-ia-motivo-otro = 其他原因
+reportar-ia-hecho = 举报已保存到 reportes-ia.jsonl；将打开你的邮件以便发送
+reportar-ia-asunto = 举报一条 AI 回答
+reportar-ia-campo-motivo = 原因
+reportar-ia-campo-funcion = 功能
+reportar-ia-campo-fecha = 日期
+reportar-ia-campo-version = 版本
+reportar-ia-campo-contenido = AI 所写的内容
+reportar-ia-comentario = （如果愿意，请在这里说明哪里有问题。）
+
+## Review aloud: if Jev fails, why (1-Nov-2026, like the phone)
+repaso-jev-fallo-red = 无网络连接。

@@ -217,6 +217,7 @@ chat-lectura-veloz-chapa = Baca cepat · { $pct } %
 chat-escaneado = Dipindai
 chat-sin-origen = Kanvas itu tidak ada di proyek ini
 chat-sin-proyectos-otros = Tidak ada proyek lain untuk tujuan pengiriman
+chat-ajustes-bandeja = Pengaturan dibuka dari ikon PinDesk di baki sistem
 chat-proyectos-lista = Proyek adalah daftar di sebelah kiri
 chat-no-hay-voz = Merekam catatan suara belum tersedia di Windows
 chat-no-hay-aligerar = Memperkecil PDF belum tersedia di Windows
@@ -2950,3 +2951,93 @@ clase-acta-propuestas = Usulan yang tidak diterima
 clase-acta-aceptar = Terima
 clase-acta-aceptada = Ditambahkan ke Tugas
 clase-acta-anadidas = { $n } pertanyaan ditambahkan ke kotak masuk Tugas
+ia-estado-funciona = berfungsi
+ia-estado-sin-clave = tanpa kunci
+ia-estado-desconocido = belum diperiksa
+ia-estado-clave-mala = kunci tidak valid ({ $codigo })
+ia-estado-sin-saldo = akun tidak punya saldo
+ia-estado-limite = terlalu banyak permintaan atau kuota habis
+ia-estado-red = tidak ada koneksi
+ia-estado-servidor = layanan sedang gagal ({ $codigo })
+ia-estado-otro = tidak menjawab dengan benar ({ $codigo })
+ia-estado-comprobando = memeriksa…
+ia-estado-hace-nada = baru saja
+ia-estado-hace-min = { $n } mnt lalu
+ia-estado-hace-horas = { $n } jam lalu
+ia-estado-pista = Klik: periksa sekarang atau buka kunci
+ia-estado-comprobar = Periksa sekarang
+ia-estado-claves = Kunci di Pengaturan → Asisten
+ia-estado-sin-ajustes = Pengaturan dibuka dari ikon PinDesk di baki sistem
+
+## Live listening with Vosk (1-Nov-2026, what the phone already did)
+ajustes2-voz-en-vivo = Dengarkan rapat secara langsung dengan
+ajustes2-voz-en-vivo-sistema = Windows atau Whisper
+ajustes2-voz-en-vivo-vosk = Vosk
+ajustes2-ayuda-voz-en-vivo = Untuk topik dan bagian lain rapat dengan Jev. Vosk menampilkan apa yang sedang diucapkan dan menutup setiap kalimat sepersekian detik setelah Anda diam (dengan Whisper, sekitar 3 dtk), tanpa jaringan. Memilihnya mengunduh { $megas } MB (Apache-2.0).
+ajustes2-ayuda-voz-en-vivo-vosk-listo = Mendengarkan dengan Vosk, tanpa jaringan: apa yang sedang diucapkan muncul di layar penuh rekaman. Jika suatu saat gagal dimuat, Windows atau Whisper yang dipakai.
+ajustes2-ayuda-voz-en-vivo-sin-idioma = Vosk diunduh untuk bahasa Spanyol dan Inggris; dalam bahasa ini, Windows atau Whisper yang mendengarkan.
+ajustes2-voz-en-vivo-bajando = Mengunduh Vosk… { $por-ciento } %. Sementara itu Windows atau Whisper yang mendengarkan.
+ajustes2-voz-en-vivo-fallo = Vosk tidak dapat diunduh: { $fallo }. Pilih lagi untuk mencoba ulang.
+ajustes2-voz-vosk-borrar = Hapus Vosk
+ajustes2-ayuda-voz-vosk-borrar = Mengosongkan yang sudah diunduh (sekitar 100 MB di disk). Diunduh lagi saat Anda memilihnya.
+clase-temas-bateria = Baterai lemah: tidak mendengarkan langsung agar hemat (rekaman tetap berjalan)
+
+## Dictate to chat: if Jev fails, say so (1-Nov-2026, like the phone)
+chat-anotar-fallo-red = Tidak ada koneksi: Jev tidak dapat memeriksa apakah perlu dicatat di obrolan lain. Yang Anda diktekan masih ada di kotak.
+chat-anotar-fallo = Jev tidak menjawab ({ $motivo }). Yang Anda diktekan masih ada di kotak.
+
+## Privacy and data (1-Nov-2026, what the phone did for the stores: Settings › General)
+ajustes2-g-privacidad = Privasi dan data
+ajustes2-priv-politica = Kebijakan privasi
+ajustes2-ayuda-priv-politica = Apa yang dilakukan PinDesk dengan data Anda (dalam bahasa Spanyol dan Inggris): semuanya tetap di PC ini kecuali yang tercantum di bawah, dan hanya saat Anda menggunakannya.
+ajustes2-g-privacidad-sale = Apa yang keluar dari PC ini dan ke mana
+ajustes2-priv-ver-ajustes = Lihat pengaturannya
+ajustes2-priv-nada-mas = Tidak ada lagi
+ajustes2-ayuda-priv-nada-mas = Tanpa iklan, tanpa analitik, tanpa laporan kerusakan, tanpa akun, dan tanpa server PinDesk. Dikte dan transkripsi berjalan di PC ini, tanpa jaringan.
+ajustes2-g-privacidad-datos = Data Anda
+ajustes2-priv-carpeta = Data Anda, di disk Anda
+ajustes2-ayuda-priv-carpeta = Tangkapan, obrolan, catatan, rekaman, dan pengaturan tersimpan di { $carpeta }. Untuk membawanya, salin foldernya; untuk menghapusnya, tutup PinDesk lalu hapus folder itu. Kunci AI dienkripsi dengan pengguna Windows Anda.
+ajustes2-priv-reportes = Laporan tentang tulisan AI
+ajustes2-ayuda-priv-reportes = { $n } tersimpan di reportes-ia.jsonl (di folder data).
+privacidad-asistente-que = Yang Anda tanyakan kepada asisten, bagian terbaru obrolan, dan yang Anda lampirkan
+privacidad-asistente-adonde = Anthropic (Claude) atau DeepSeek
+privacidad-asistente-cuando = Hanya jika Anda menempelkan kunci Anda sendiri dan bertanya. Kunci disimpan terenkripsi di PC ini.
+privacidad-jev-que = Teks untuk setiap fitur Jev: kalimat rapat, baris kelas, tugas, yang Anda diktekan atau jelaskan
+privacidad-jev-adonde = TypeSafe (api.typesafe.ai)
+privacidad-jev-cuando = Hanya dengan kunci TypeSafe Anda dan fitur itu dinyalakan. Tidak pernah audionya.
+privacidad-web-que = Yang dicari asisten dan halaman yang dibacanya untuk menjawab Anda
+privacidad-web-adonde = DuckDuckGo atau Brave Search, dan situs yang dibacanya
+privacidad-web-cuando = Saat asisten mencari di web. Tanpa cookie dan tanpa kunci AI Anda.
+privacidad-google-que = File Drive yang Anda pilih dan acara kalender
+privacidad-google-adonde = Google (Drive, Calendar)
+privacidad-google-cuando = Hanya jika Anda menghubungkan akun Google di Pengaturan › Asisten; putuskan dari sana.
+privacidad-voces-que = Teks yang dibacakan dengan suara Microsoft
+privacidad-voces-adonde = Microsoft (suara Edge)
+privacidad-voces-cuando = Hanya jika Anda memilih salah satu suara itu di pembaca; suara Windows berfungsi tanpa jaringan.
+privacidad-enlace-que = File yang Anda pilih untuk dibagikan lewat tautan
+privacidad-enlace-adonde = litterbox.catbox.moe atau temp.sh
+privacidad-enlace-cuando = Hanya saat Anda meminta tautan berbagi; tautan terhapus sendiri dalam hitungan jam atau hari.
+privacidad-modelos-que = Tidak ada data Anda: hanya file yang diminta
+privacidad-modelos-adonde = huggingface.co, github.com, dan alphacephei.com (Whisper, Qwen3-ASR, Vosk, Indra)
+privacidad-modelos-cuando = Saat mengunduh model suara atau pembaca teks, ketika Anda memintanya.
+privacidad-sincro-que = Tangkapan, catatan, dan obrolan Anda yang tersinkron
+privacidad-sincro-adonde = Perangkat Anda sendiri (ponsel), lewat jaringan Anda
+privacidad-sincro-cuando = Saat menyinkronkan: langsung di jaringan Anda, terenkripsi, tanpa melewati server.
+
+## Report what the AI writes (1-Nov-2026, like the phone)
+reportar-ia = Laporkan respons…
+reportar-ia-motivo-ofensivo = Menyinggung
+reportar-ia-motivo-peligroso = Berbahaya
+reportar-ia-motivo-falso = Salah atau menyesatkan
+reportar-ia-motivo-otro = Alasan lain
+reportar-ia-hecho = Laporan disimpan di reportes-ia.jsonl; email Anda terbuka untuk mengirimnya
+reportar-ia-asunto = Laporan respons AI
+reportar-ia-campo-motivo = Alasan
+reportar-ia-campo-funcion = Fitur
+reportar-ia-campo-fecha = Tanggal
+reportar-ia-campo-version = Versi
+reportar-ia-campo-contenido = Yang ditulis AI
+reportar-ia-comentario = (Jika mau, ceritakan di sini apa yang salah.)
+
+## Review aloud: if Jev fails, why (1-Nov-2026, like the phone)
+repaso-jev-fallo-red = Tidak ada koneksi.

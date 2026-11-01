@@ -3269,3 +3269,304 @@ clase-acta-propuestas = 수락하지 않은 제안
 clase-acta-aceptar = 수락
 clase-acta-aceptada = 작업에 추가함
 clase-acta-anadidas = 작업 받은 편지함에 질문 { $n }개를 추가했습니다
+
+# --- Lo nuevo de noviembre ---
+# El aviso flotante del asistente
+aviso-ia-abrir = 열기
+aviso-ia-si = 예
+aviso-ia-no = 아니요
+aviso-ia-permiso = 🔐 허락이 필요합니다: { $pregunta }
+
+    답하지 않으면 하지 않겠습니다.
+# Los turnos del asistente que siguen con el chat cerrado
+ia-fondo-titulo = 🤖 어시스턴트
+ia-fondo-sigue = “계속”
+ia-fondo-sigue-fuera = “@asistente 계속”
+ia-fondo-otra-vez = ↻ 끝내기 전에 PinDesk가 닫혔습니다. 아래 답변에서 처음부터 다시 시작합니다.
+ia-fondo-ya-actuo = 일부 단계는 이미 끝났기 때문에 혼자서 다시 하지는 않겠습니다(두 번 실행되므로). { $sigue }(이)라고 입력하면 여기서부터 이어 가겠습니다.
+ia-fondo-ya-se-retomo = 이미 한 번 다시 시작했는데 또 중단되어서 여기서 멈추겠습니다. 다시 시도하길 원하면 { $sigue }(이)라고 입력하세요.
+ia-fondo-viejo = 시간이 너무 지나서 혼자서 이어 갈 수 없습니다. 아직 필요하면 { $sigue }(이)라고 입력하세요.
+ia-fondo-sin-pregunta = 요청을 찾을 수 없어서(삭제되었나요?) 이어 갈 수 없습니다.
+ia-fondo-no-se-pudo = 이어 가지 못했습니다: { $aviso }
+ia-fondo-no-empezo = 답변을 시작하지 못했습니다.
+ia-fondo-cortado = ⚠️ 이 작업이 끝나기 전에 PinDesk가 닫혔습니다. { $porque }
+ia-fondo-sigo-en-el-chat = 💬 채팅에서 이어 가겠습니다.
+ia-fondo-sigo-de-fondo = ⏳ 채팅이 닫혔지만 요청을 계속 처리하고 있습니다. 끝나면 알려 드리겠습니다.
+ia-fondo-pregunta = ❓ 채팅에서 답해 주세요: { $pregunta }
+
+    “열기”를 누르세요. 답하지 않으면 가장 안전한 방법으로 진행합니다.
+# La ficha de una leccion
+leccion-ventana = 교훈
+leccion-ventana-nueva = 새 교훈
+leccion-titulo = 💡 교훈
+leccion-titulo-nueva = 💡 새 교훈
+leccion-tipo-leccion = 💡 교훈
+leccion-tipo-error = ⚠️ 실수
+leccion-tipo-acierto = ✅ 성공
+leccion-gravedad-leve = 경미
+leccion-gravedad-importante = 중요
+leccion-gravedad-grave = 심각
+leccion-sin-proyecto = 프로젝트 없음(일반 채팅)
+leccion-foto-ilegible = 그 사진을 읽을 수 없습니다
+leccion-adjunto-no-esta = 그 파일은 아직 이 컴퓨터에 없습니다
+leccion-galeria = 🖼 갤러리
+leccion-guardar = 저장
+leccion-pista-titulo = 무엇을 배웠나요? 한 번에 입력하거나 받아쓰기로 말하세요
+leccion-se-parece = 이미 있는 교훈과 비슷합니다
+leccion-paso-otra-vez = 🔁 또 일어났습니다
+leccion-area = 분야
+leccion-etiquetas = 태그
+leccion-anadir-etiqueta = + 태그
+leccion-menos-detalle = ▴  간단히
+leccion-mas-detalle = ▾  무슨 일이 있었는지, 왜인지, 다음엔 어떻게 할지
+leccion-que-paso = 무슨 일이 있었나
+leccion-por-que = 왜 일어났나
+leccion-causas = 원인(한 번 탭)
+leccion-proxima = 다음에는…(X가 일어나면 Y를 하겠다)
+leccion-referencias = 찾기 위한 단어(쉼표로 구분)
+leccion-relacionadas = 관련 항목
+leccion-volvio-a-pasar = 🔁 또 겪었습니다
+leccion-volvio-a-pasar-n = 🔁 또 겪었습니다(지금까지 { $veces }번)
+leccion-mic-escuchando = 🎙️ 듣고 있습니다… 끝내려면 마이크를 누르세요
+leccion-mic-sin-dictado = 이 컴퓨터에서는 받아쓰기를 사용할 수 없습니다: 교훈을 입력하세요
+leccion-mic-sin-texto = 아무것도 알아듣지 못했습니다
+leccion-mic-no-pasa = 텍스트로 변환하지 못했습니다
+leccion-mic-corto = 너무 짧습니다: 마이크를 조금 더 오래 켜 두세요
+leccion-audio = 🎙 오디오
+leccion-audio-abriendo = 🎙 여는 중…
+leccion-audio-guardando = 🎙 저장 중…
+leccion-audio-parar = ⏹ 정지 { $duracion }
+leccion-audio-sin-microfono = 마이크를 사용할 수 없습니다
+leccion-audio-corto = 너무 짧아서 저장하지 않았습니다
+leccion-audio-no-guarda = 오디오를 저장할 수 없습니다
+# El horario
+horario-evaluacion-en = { $dias ->
+        [1] 내일
+       *[other] { $dias }일 후
+    }
+horario-evaluacion-recuerda = 기억하세요: { $que }, { $en }, { $cuando }
+horario-evento-en = { $evento }, 장소: { $lugar }
+horario-dia-0 = 월
+horario-dia-1 = 화
+horario-dia-2 = 수
+horario-dia-3 = 목
+horario-dia-4 = 금
+horario-dia-5 = 토
+horario-dia-6 = 일
+# La Jump List del icono de la barra de tareas
+lista-icono-capturar = 캡처
+lista-icono-capturar-largo = 화면의 영역 캡처
+lista-icono-mensajes = 저장된 메시지
+lista-icono-mensajes-largo = 저장된 메시지 열기
+lista-icono-proyectos = 프로젝트
+lista-icono-proyectos-largo = 프로젝트 보기
+lista-icono-sincronizar = 동기화
+lista-icono-sincronizar-largo = 내 장치와 동기화
+lista-icono-recientes = 최근 프로젝트
+lista-icono-proyecto-largo = 프로젝트 { $nombre } 열기
+# Los visores de planos, modelos y croquis 3D
+cad-plano-abriendo = 도면을 여는 중…
+cad-plano-vacio = 도면에 표시할 것이 없습니다
+cad-plano-error = 도면을 열 수 없습니다
+cad-plano-pista-acotar = 점을 클릭해 측정 · 더블클릭 또는 Enter: 완료 · Esc: 나가기
+cad-plano-todo = 도면 전체 보기
+cad-tema = 밝은 배경 또는 어두운 배경
+cad-acotar = 측정
+cad-borrar-cotas = 측정 지우기
+cad-encima = 항상 위에
+cad-cerrar = 닫기
+cad-tres = 3D로 보기
+cad-marcos = 인쇄 영역
+cad-imprimir = 인쇄…
+cad-exportar = 내보내기(HTML, PDF, PNG, DXF…)…
+cad-borrar-marcos = 인쇄 영역 지우기
+cad-plano-pista-marcos = 드래그해 인쇄할 영역 지정 · Ctrl+P: 인쇄 · Del: 마지막 영역 제거 · Esc: 나가기
+cad-plano-marcador = 여기에 책갈피
+cad-anotar = 주석
+cad-sin-dibujo-civil = Civil 3D 개체 { $n }개가 그래픽 없이 저장되었습니다: PROXYGRAPHICS = 1로 저장하거나 LandXML로 내보내세요
+cad-letras = 도면 글꼴…
+cad-letras-faltan = 이 도면에 필요한 글꼴이 여기에 없습니다. 텍스트는 비슷한 글꼴로 표시되며 상자에 맞지 않을 수 있습니다:
+cad-letras-no-falta = 도면이 이름으로 지정한 글꼴 중 빠진 것이 없습니다.
+cad-letras-donde = SHX 글꼴은 보통 C:\Program Files\Autodesk\AutoCAD 20xx\Fonts 또는 받은 도면 옆에 있습니다.
+    TrueType 글꼴은 C:\Windows\Fonts에 있습니다. 여기에 추가한 글꼴이 AutoCAD, Windows, PinDesk의 글꼴보다 우선합니다.
+cad-letras-anadir = 글꼴 추가(SHX, TTF, OTF, TTC)…
+cad-letras-quitar = 내가 추가한 글꼴 제거({ $n })
+cad-faltan-letras = 도면 글꼴 { $n }개가 없습니다: 위의 Aa를 클릭해 추가하세요
+cad-releyendo = 내 글꼴로 도면을 읽는 중…
+cad-boton-mover = 이동(드래그)
+cad-boton-marcador = 책갈피
+cad-boton-anotar = 주석
+cad-boton-letras = 도면 글꼴
+cad-corte = 단면 상자
+cad-capas = 레벨 및 카테고리
+cad-boton-pantalla = 전체 화면
+cad-boton-guardar = 채팅에 저장
+cad-modelo-abriendo = 모델을 여는 중…
+cad-modelo-vacio = 모델에 표시할 것이 없습니다
+cad-modelo-error = 모델을 열 수 없습니다
+cad-modelo-todo = 모델 전체 보기
+cad-aislar = 선택한 요소 분리
+cad-niveles = 레벨
+cad-categorias = 카테고리
+cad-sin-nivel = 레벨 없음
+cad-mostrar-todo = 모두 표시
+cad-aristas = 모서리
+cad-planta = 평면도
+cad-altura-corte = 단면
+cad-modelo-pista = 드래그: 회전 · 오른쪽 드래그: 이동 · 휠: 확대/축소 · 클릭: 무엇인지 보기 · 다시 클릭: 분리
+cad-modelo-marcador = 여기에 책갈피(단면과 숨긴 항목 포함)
+cad-imprimir-marcos = 인쇄 영역 인쇄…
+cad-modelo-pista-marcos = 드래그해 인쇄할 영역 지정 · Ctrl+P: 인쇄 · Del: 마지막 영역 제거 · 숫자: 해당 뷰로 이동 · Esc: 나가기
+cad-modelo-pista-anotar = 주석은 이 책갈피의 뷰에서만 보입니다
+cad-modelo-anotar = 이 뷰에 주석 달기
+cad-croquis-abriendo = 스케치를 여는 중…
+cad-croquis-vacio = 스케치가 비어 있습니다
+cad-croquis-error = 스케치를 열 수 없습니다
+cad-croquis-todo = 스케치 전체 보기
+cad-croquis-capas = 레이어
+cad-croquis-grupos = 그룹
+cad-croquis-tipos = 종류
+cad-croquis-todo-corto = 전체
+cad-croquis-pista = 드래그: 회전 · 오른쪽 드래그: 이동 · 휠: 확대/축소 · 1–9: 저장된 뷰
+# La pagina HTML de un plano exportado
+cad-web-todo = 전체 보기
+cad-web-tema = 밝게 / 어둡게
+cad-web-capas = 레이어
+cad-web-grosores = 선 두께
+cad-web-anotaciones = 주석
+cad-web-todas = 모두
+cad-web-ninguna = 없음
+cad-web-sin-soporte = 이 브라우저는 도면의 압축을 풀 수 없습니다: 최신 Edge, Chrome, Firefox 또는 Safari로 여세요.
+cad-web-pista = 휠: 확대/축소 · 드래그: 이동 · 더블클릭: 전체 보기 · F, B, L
+# El membrete de un plano impreso
+lamina-proyecto = 프로젝트
+lamina-lamina = 도면 번호
+lamina-titulo = 도면명
+lamina-dibujo = 작성
+lamina-escala = 축척
+lamina-sin-escala = 축척 없음
+lamina-fecha = 날짜
+lamina-unidades = 단위
+lamina-opcion = 도면 양식
+lamina-con-membrete = 테두리와 표제란 포함
+lamina-sin-marco = 테두리 없음
+# Sincronizar en segundo plano
+sinc-fondo-solo = 이 PC의 그룹에는 다른 장치가 없습니다: 동기화에서 그룹에 참가하세요
+sinc-fondo-no-es-del-grupo = 그 장치는 더 이상 그룹에 없습니다
+sinc-fondo-aparatos = 장치 { $n }대
+sinc-fondo-sincronizando = { $quien }와(과) 동기화 중…
+sinc-fondo-ya-en-marcha = 이미 동기화 중입니다: 끝날 때까지 기다리세요
+sinc-fondo-fallo = 동기화할 수 없습니다: { $error }
+# Leer en voz
+lector-voz-en-linea = 온라인
+# Automatizaciones
+auto-origen = 자동화
+# El asistente de la nube sin clave
+ia-nube-falta-la-clave = { $proveedor } 키가 없습니다: 설정 → 어시스턴트에 붙여 넣으세요({ $pagina }에서 받을 수 있습니다).
+# Los campos de una figura que se alarga
+figuras-ventana-no-es-numero = “{ $texto }”은(는) 숫자가 아닙니다
+figuras-ventana-mes-mal = “{ $texto }”: 월은 2026-11 형식으로 쓰세요
+# Las teclas
+tecla-intro = Enter
+tecla-supr = Del
+ia-fondo-hecho = ✅ 완료했습니다.
+ia-hecho = 완료했습니다.
+croquis-titulo = 스케치 { $id }
+chat-ajustes-bandeja = 설정은 트레이의 PinDesk 아이콘에서 엽니다
+# El estado de la IA
+ia-estado-funciona = 작동 중
+ia-estado-sin-clave = 키 없음
+ia-estado-desconocido = 아직 확인 안 함
+ia-estado-clave-mala = 키가 유효하지 않습니다({ $codigo })
+ia-estado-sin-saldo = 계정에 잔액이 없습니다
+ia-estado-limite = 요청이 너무 많거나 할당량을 다 썼습니다
+ia-estado-red = 연결 없음
+ia-estado-servidor = 서비스에 오류가 있습니다({ $codigo })
+ia-estado-otro = 제대로 응답하지 않습니다({ $codigo })
+ia-estado-comprobando = 확인 중…
+ia-estado-hace-nada = 방금
+ia-estado-hace-min = { $n }분 전
+ia-estado-hace-horas = { $n }시간 전
+ia-estado-pista = 클릭: 지금 확인하거나 키 설정으로 이동
+ia-estado-comprobar = 지금 확인
+ia-estado-claves = 키는 설정 → 어시스턴트에 있습니다
+ia-estado-sin-ajustes = 설정은 트레이의 PinDesk 아이콘에서 엽니다
+# El mes dentro de una fecha
+chat-mes-dia-1 = 1월
+chat-mes-dia-2 = 2월
+chat-mes-dia-3 = 3월
+chat-mes-dia-4 = 4월
+chat-mes-dia-5 = 5월
+chat-mes-dia-6 = 6월
+chat-mes-dia-7 = 7월
+chat-mes-dia-8 = 8월
+chat-mes-dia-9 = 9월
+chat-mes-dia-10 = 10월
+chat-mes-dia-11 = 11월
+chat-mes-dia-12 = 12월
+# Escuchar la reunion en vivo
+ajustes2-voz-en-vivo = 회의를 실시간으로 들을 엔진
+ajustes2-voz-en-vivo-sistema = Windows 또는 Whisper
+ajustes2-voz-en-vivo-vosk = Vosk
+ajustes2-ayuda-voz-en-vivo = Jev의 회의 주제 등 회의 기능에 사용합니다. Vosk는 말하는 내용을 바로 보여 주고, 말을 멈추면 1초도 안 되어 각 문장을 마무리합니다(Whisper는 약 3초). 오프라인으로 작동합니다. 선택하면 { $megas }MB를 다운로드합니다(Apache-2.0).
+ajustes2-ayuda-voz-en-vivo-vosk-listo = Vosk로 오프라인에서 듣고 있습니다: 말하는 내용은 녹음 전체 화면에 표시됩니다. 불러오지 못할 때는 Windows 또는 Whisper를 사용합니다.
+ajustes2-ayuda-voz-en-vivo-sin-idioma = Vosk는 스페인어와 영어용만 다운로드됩니다. 이 언어에서는 Windows 또는 Whisper가 듣습니다.
+ajustes2-voz-en-vivo-bajando = Vosk 다운로드 중… { $por-ciento } %. 그동안 Windows 또는 Whisper가 듣습니다.
+ajustes2-voz-en-vivo-fallo = Vosk를 다운로드할 수 없습니다: { $fallo }. 다시 시도하려면 다시 선택하세요.
+ajustes2-voz-vosk-borrar = Vosk 삭제
+ajustes2-ayuda-voz-vosk-borrar = 다운로드한 것을 지웁니다(디스크에서 약 100MB). 다시 선택하면 다시 다운로드합니다.
+clase-temas-bateria = 배터리 부족: 절약을 위해 실시간으로 듣지 않습니다(녹음은 계속됩니다)
+chat-anotar-fallo-red = 연결 없음: Jev가 다른 채팅에 기록할지 확인하지 못했습니다. 받아쓴 내용은 입력란에 그대로 있습니다.
+chat-anotar-fallo = Jev가 응답하지 않았습니다({ $motivo }). 받아쓴 내용은 입력란에 그대로 있습니다.
+# Privacidad y datos
+ajustes2-g-privacidad = 개인 정보 및 데이터
+ajustes2-priv-politica = 개인정보 처리방침
+ajustes2-ayuda-priv-politica = PinDesk가 데이터를 어떻게 다루는지(스페인어와 영어): 아래에 적힌 것 외에는 모두 이 PC에 남으며, 그것도 사용할 때만 해당됩니다.
+ajustes2-g-privacidad-sale = 이 PC에서 나가는 것과 그 목적지
+ajustes2-priv-ver-ajustes = 해당 설정
+ajustes2-priv-nada-mas = 그 밖에는 없음
+ajustes2-ayuda-priv-nada-mas = 광고, 분석, 오류 보고서, 계정, PinDesk 서버가 없습니다. 받아쓰기와 텍스트 변환은 이 PC에서 오프라인으로 실행됩니다.
+ajustes2-g-privacidad-datos = 내 데이터
+ajustes2-priv-carpeta = 내 데이터는 내 디스크에
+ajustes2-ayuda-priv-carpeta = 캡처, 채팅, 메모, 녹음, 설정은 { $carpeta }에 있습니다. 가져가려면 폴더를 복사하고, 삭제하려면 PinDesk를 닫은 뒤 폴더를 삭제하세요. AI 키는 Windows 사용자 계정으로 암호화됩니다.
+ajustes2-priv-reportes = AI가 쓴 내용 신고
+ajustes2-ayuda-priv-reportes = reportes-ia.jsonl(데이터 폴더 안)에 { $n }건 저장됨.
+privacidad-asistente-que = 어시스턴트에게 묻는 내용, 최근 채팅, 첨부한 항목
+privacidad-asistente-adonde = Anthropic(Claude) 또는 DeepSeek
+privacidad-asistente-cuando = 직접 키를 붙여 넣고 질문할 때만. 키는 이 PC에 암호화되어 저장됩니다.
+privacidad-jev-que = Jev 각 기능의 텍스트: 회의 문장, 수업 내용, 작업, 받아쓰거나 설명한 내용
+privacidad-jev-adonde = TypeSafe(api.typesafe.ai)
+privacidad-jev-cuando = TypeSafe 키가 있고 그 기능을 켰을 때만. 오디오는 절대 보내지 않습니다.
+privacidad-web-que = 어시스턴트가 검색하는 내용과 답변을 위해 읽는 페이지
+privacidad-web-adonde = DuckDuckGo 또는 Brave Search, 그리고 읽는 사이트
+privacidad-web-cuando = 어시스턴트가 웹을 검색할 때. 쿠키도 AI 키도 보내지 않습니다.
+privacidad-google-que = 선택한 Drive 파일과 캘린더 일정
+privacidad-google-adonde = Google(Drive, Calendar)
+privacidad-google-cuando = 설정 › 어시스턴트에서 Google 계정을 연결한 경우에만. 연결 해제도 그곳에서 합니다.
+privacidad-voces-que = Microsoft 음성으로 소리 내어 읽는 텍스트
+privacidad-voces-adonde = Microsoft(Edge 음성)
+privacidad-voces-cuando = 리더에서 그 음성 중 하나를 선택한 경우에만. Windows 음성은 오프라인으로 작동합니다.
+privacidad-enlace-que = 링크로 공유하기로 선택한 파일
+privacidad-enlace-adonde = litterbox.catbox.moe 또는 temp.sh
+privacidad-enlace-cuando = 공유 링크를 요청할 때만. 몇 시간에서 며칠 안에 저절로 삭제됩니다.
+privacidad-modelos-que = 내 것은 아무것도 없음: 파일만 요청합니다
+privacidad-modelos-adonde = huggingface.co, github.com, alphacephei.com(Whisper, Qwen3-ASR, Vosk, Indra)
+privacidad-modelos-cuando = 요청에 따라 음성 인식이나 텍스트 인식 모델을 다운로드할 때.
+privacidad-sincro-que = 동기화한 캡처, 메모, 채팅
+privacidad-sincro-adonde = 내 장치(휴대폰)로, 내 네트워크를 통해
+privacidad-sincro-cuando = 동기화할 때: 네트워크 안에서 직접, 암호화하여, 서버를 거치지 않습니다.
+# Reportar lo que escribe la IA
+reportar-ia = 답변 신고…
+reportar-ia-motivo-ofensivo = 불쾌함
+reportar-ia-motivo-peligroso = 위험함
+reportar-ia-motivo-falso = 거짓이거나 오해의 소지가 있음
+reportar-ia-motivo-otro = 기타 이유
+reportar-ia-hecho = 신고를 reportes-ia.jsonl에 저장했습니다. 보내기 위해 이메일이 열립니다
+reportar-ia-asunto = AI 답변 신고
+reportar-ia-campo-motivo = 이유
+reportar-ia-campo-funcion = 기능
+reportar-ia-campo-fecha = 날짜
+reportar-ia-campo-version = 버전
+reportar-ia-campo-contenido = AI가 쓴 내용
+reportar-ia-comentario = (원하면 무엇이 잘못되었는지 여기에 적어 주세요.)
+repaso-jev-fallo-red = 연결 없음.

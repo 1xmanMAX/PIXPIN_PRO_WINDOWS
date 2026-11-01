@@ -220,6 +220,7 @@ chat-lectura-veloz-chapa = Schnelllesen · { $pct } %
 chat-escaneado = Gescannt
 chat-sin-origen = Diese Leinwand ist nicht in diesem Projekt
 chat-sin-proyectos-otros = Es gibt kein anderes Projekt, an das es gesendet werden kann
+chat-ajustes-bandeja = Die Einstellungen öffnen Sie über das PinDesk-Symbol im Infobereich
 chat-proyectos-lista = Die Projekte stehen in der Liste links
 chat-no-hay-voz = Sprachnachrichten aufnehmen gibt es unter Windows noch nicht
 chat-no-hay-aligerar = PDFs verkleinern gibt es unter Windows noch nicht
@@ -2993,3 +2994,96 @@ clase-acta-propuestas = Nicht angenommene Vorschläge
 clase-acta-aceptar = Annehmen
 clase-acta-aceptada = Zu „Aufgaben“ hinzugefügt
 clase-acta-anadidas = { $n } Fragen zum Aufgaben-Eingang hinzugefügt
+ia-estado-funciona = funktioniert
+ia-estado-sin-clave = kein Schlüssel
+ia-estado-desconocido = noch nicht geprüft
+ia-estado-clave-mala = der Schlüssel ist ungültig ({ $codigo })
+ia-estado-sin-saldo = das Konto hat kein Guthaben
+ia-estado-limite = zu viele Anfragen oder Kontingent aufgebraucht
+ia-estado-red = keine Verbindung
+ia-estado-servidor = der Dienst hat Störungen ({ $codigo })
+ia-estado-otro = antwortet nicht richtig ({ $codigo })
+ia-estado-comprobando = wird geprüft…
+ia-estado-hace-nada = gerade eben
+ia-estado-hace-min = vor { $n } Min.
+ia-estado-hace-horas = vor { $n } Std.
+ia-estado-pista = Klick: jetzt prüfen oder zu den Schlüsseln
+ia-estado-comprobar = Jetzt prüfen
+ia-estado-claves = Schlüssel unter Einstellungen → Assistent
+ia-estado-sin-ajustes = Die Einstellungen öffnen Sie über das PinDesk-Symbol im Infobereich
+
+## Live listening with Vosk (1-Nov-2026, what the phone already did)
+ajustes2-voz-en-vivo = Besprechung live mithören mit
+ajustes2-voz-en-vivo-sistema = Windows oder Whisper
+ajustes2-voz-en-vivo-vosk = Vosk
+ajustes2-ayuda-voz-en-vivo = Für die Themen und den Rest der Besprechung mit Jev. Vosk zeigt, was gerade gesagt wird, und schließt jeden Satz Sekundenbruchteile nach dem Verstummen ab (mit Whisper etwa 3 s), offline. Die Auswahl lädt { $megas } MB herunter (Apache-2.0).
+ajustes2-ayuda-voz-en-vivo-vosk-listo = Es wird mit Vosk mitgehört, offline: Was gerade gesagt wird, erscheint im Vollbild der Aufnahme. Falls es einmal nicht lädt, hört Windows oder Whisper zu.
+ajustes2-ayuda-voz-en-vivo-sin-idioma = Vosk wird für Spanisch und Englisch heruntergeladen; in dieser Sprache hört Windows oder Whisper zu.
+ajustes2-voz-en-vivo-bajando = Vosk wird heruntergeladen… { $por-ciento } %. Bis dahin hört Windows oder Whisper zu.
+ajustes2-voz-en-vivo-fallo = Vosk konnte nicht heruntergeladen werden: { $fallo }. Wählen Sie es erneut, um es noch einmal zu versuchen.
+ajustes2-voz-vosk-borrar = Vosk löschen
+ajustes2-ayuda-voz-vosk-borrar = Gibt den Download frei (etwa 100 MB auf der Festplatte). Wird erneut heruntergeladen, wenn Sie es wählen.
+clase-temas-bateria = Akku schwach: kein Live-Mithören, um ihn zu schonen (die Aufnahme läuft weiter)
+
+## Dictate to chat: if Jev fails, say so (1-Nov-2026, like the phone)
+chat-anotar-fallo-red = Keine Verbindung: Jev konnte nicht prüfen, ob es in einem anderen Chat notiert werden sollte. Ihr Diktat steht noch im Eingabefeld.
+chat-anotar-fallo = Jev hat nicht geantwortet ({ $motivo }). Ihr Diktat steht noch im Eingabefeld.
+
+## Privacy and data (1-Nov-2026, what the phone did for the stores: Settings › General)
+ajustes2-g-privacidad = Datenschutz und Daten
+ajustes2-priv-politica = Datenschutzerklärung
+ajustes2-ayuda-priv-politica = Was PinDesk mit Ihren Daten macht (auf Spanisch und Englisch): Alles bleibt auf diesem PC, außer dem unten Aufgeführten, und nur, wenn Sie es nutzen.
+ajustes2-g-privacidad-sale = Was diesen PC verlässt und wohin
+ajustes2-priv-ver-ajustes = Zu den Einstellungen
+ajustes2-priv-nada-mas = Sonst nichts
+ajustes2-ayuda-priv-nada-mas = Keine Werbung, keine Analysen, keine Absturzberichte, kein Konto und keine PinDesk-Server. Diktat und Transkription laufen auf diesem PC, offline.
+ajustes2-g-privacidad-datos = Ihre Daten
+ajustes2-priv-carpeta = Ihre Daten, auf Ihrer Festplatte
+ajustes2-ayuda-priv-carpeta = Screenshots, Chats, Notizen, Aufnahmen und Einstellungen liegen in { $carpeta }. Zum Mitnehmen kopieren Sie den Ordner; zum Löschen schließen Sie PinDesk und löschen ihn. KI-Schlüssel werden mit Ihrem Windows-Benutzer verschlüsselt.
+ajustes2-priv-reportes = Meldungen zu dem, was die KI schreibt
+ajustes2-ayuda-priv-reportes = { $n ->
+    [one] { $n } gespeichert in reportes-ia.jsonl (im Datenordner).
+   *[other] { $n } gespeichert in reportes-ia.jsonl (im Datenordner).
+}
+privacidad-asistente-que = Was Sie den Assistenten fragen, der jüngste Chatverlauf und was Sie anhängen
+privacidad-asistente-adonde = Anthropic (Claude) oder DeepSeek
+privacidad-asistente-cuando = Nur wenn Sie Ihren eigenen Schlüssel einfügen und fragen. Der Schlüssel wird verschlüsselt auf diesem PC gespeichert.
+privacidad-jev-que = Die Texte jeder Jev-Funktion: Sätze einer Besprechung, Zeilen einer Unterrichtsstunde, Aufgaben, was Sie diktieren oder erklären
+privacidad-jev-adonde = TypeSafe (api.typesafe.ai)
+privacidad-jev-cuando = Nur mit Ihrem TypeSafe-Schlüssel und eingeschalteter Funktion. Nie das Audio.
+privacidad-web-que = Was der Assistent sucht und die Seiten, die er für die Antwort liest
+privacidad-web-adonde = DuckDuckGo oder Brave Search und die Website, die er liest
+privacidad-web-cuando = Wenn der Assistent im Web sucht. Ohne Cookies und ohne Ihren KI-Schlüssel.
+privacidad-google-que = Die Drive-Dateien, die Sie auswählen, und Kalendertermine
+privacidad-google-adonde = Google (Drive, Calendar)
+privacidad-google-cuando = Nur wenn Sie Ihr Google-Konto unter Einstellungen › Assistent verbinden; dort trennen Sie es auch.
+privacidad-voces-que = Der Text, der mit einer Microsoft-Stimme vorgelesen wird
+privacidad-voces-adonde = Microsoft (die Edge-Stimmen)
+privacidad-voces-cuando = Nur wenn Sie im Reader eine dieser Stimmen wählen; die Windows-Stimmen funktionieren offline.
+privacidad-enlace-que = Die Datei, die Sie per Link teilen
+privacidad-enlace-adonde = litterbox.catbox.moe oder temp.sh
+privacidad-enlace-cuando = Nur wenn Sie einen Freigabelink anfordern; er löscht sich nach Stunden oder Tagen selbst.
+privacidad-modelos-que = Nichts von Ihnen: Es werden nur die Dateien angefordert
+privacidad-modelos-adonde = huggingface.co, github.com und alphacephei.com (Whisper, Qwen3-ASR, Vosk, Indra)
+privacidad-modelos-cuando = Beim Herunterladen eines Sprach- oder Vorlesemodells, wenn Sie es anfordern.
+privacidad-sincro-que = Ihre synchronisierten Screenshots, Notizen und Chats
+privacidad-sincro-adonde = Ihre eigenen Geräte (das Handy), über Ihr Netzwerk
+privacidad-sincro-cuando = Beim Synchronisieren: direkt in Ihrem Netzwerk, verschlüsselt, ohne Umweg über Server.
+
+## Report what the AI writes (1-Nov-2026, like the phone)
+reportar-ia = Antwort melden…
+reportar-ia-motivo-ofensivo = Beleidigend
+reportar-ia-motivo-peligroso = Gefährlich
+reportar-ia-motivo-falso = Falsch oder irreführend
+reportar-ia-motivo-otro = Anderer Grund
+reportar-ia-hecho = Meldung in reportes-ia.jsonl gespeichert; Ihr E-Mail-Programm öffnet sich zum Senden
+reportar-ia-asunto = Meldung einer KI-Antwort
+reportar-ia-campo-motivo = Grund
+reportar-ia-campo-funcion = Funktion
+reportar-ia-campo-fecha = Datum
+reportar-ia-campo-version = Version
+reportar-ia-campo-contenido = Was die KI geschrieben hat
+reportar-ia-comentario = (Wenn Sie möchten, schreiben Sie hier, was falsch ist.)
+
+## Review aloud: if Jev fails, why (1-Nov-2026, like the phone)
+repaso-jev-fallo-red = Keine Verbindung.

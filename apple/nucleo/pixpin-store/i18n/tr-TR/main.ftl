@@ -220,6 +220,7 @@ chat-lectura-veloz-chapa = Hızlı okuma · % { $pct }
 chat-escaneado = Tarandı
 chat-sin-origen = O tuval bu projede değil
 chat-sin-proyectos-otros = Gönderilecek başka proje yok
+chat-ajustes-bandeja = Ayarlar, sistem tepsisindeki PinDesk simgesinden açılır
 chat-proyectos-lista = Projeler soldaki listedir
 chat-no-hay-voz = Sesli not kaydı Windows'ta henüz yok
 chat-no-hay-aligerar = PDF hafifletme Windows'ta henüz yok
@@ -2993,3 +2994,96 @@ clase-acta-propuestas = Kabul edilmeyen öneriler
 clase-acta-aceptar = Kabul et
 clase-acta-aceptada = Görevler'e eklendi
 clase-acta-anadidas = Görevler gelen kutusuna { $n } soru eklendi
+ia-estado-funciona = çalışıyor
+ia-estado-sin-clave = anahtar yok
+ia-estado-desconocido = henüz denetlenmedi
+ia-estado-clave-mala = anahtar geçerli değil ({ $codigo })
+ia-estado-sin-saldo = hesapta bakiye yok
+ia-estado-limite = çok fazla istek veya kota doldu
+ia-estado-red = bağlantı yok
+ia-estado-servidor = hizmet hata veriyor ({ $codigo })
+ia-estado-otro = düzgün yanıt vermiyor ({ $codigo })
+ia-estado-comprobando = denetleniyor…
+ia-estado-hace-nada = az önce
+ia-estado-hace-min = { $n } dk önce
+ia-estado-hace-horas = { $n } sa önce
+ia-estado-pista = Tıkla: şimdi denetle veya anahtarlara git
+ia-estado-comprobar = Şimdi denetle
+ia-estado-claves = Anahtarlar: Ayarlar → Asistan
+ia-estado-sin-ajustes = Ayarlar, sistem tepsisindeki PinDesk simgesinden açılır
+
+## Live listening with Vosk (1-Nov-2026, what the phone already did)
+ajustes2-voz-en-vivo = Toplantıyı canlı dinleyen
+ajustes2-voz-en-vivo-sistema = Windows veya Whisper
+ajustes2-voz-en-vivo-vosk = Vosk
+ajustes2-ayuda-voz-en-vivo = Jev ile toplantı konuları ve toplantının geri kalanı için. Vosk söyleneni anında gösterir ve siz sustuktan saniyenin onda birkaçı sonra her cümleyi kapatır (Whisper ile yaklaşık 3 sn), çevrimdışı. Seçince { $megas } MB indirilir (Apache-2.0).
+ajustes2-ayuda-voz-en-vivo-vosk-listo = Vosk ile çevrimdışı dinleniyor: söylenenler kaydın tam ekranında görünür. Bir gün yüklenmezse Windows veya Whisper kullanılır.
+ajustes2-ayuda-voz-en-vivo-sin-idioma = Vosk yalnızca İspanyolca ve İngilizce için indirilir; bu dilde Windows veya Whisper dinler.
+ajustes2-voz-en-vivo-bajando = Vosk indiriliyor… %{ $por-ciento }. Bu sırada Windows veya Whisper dinler.
+ajustes2-voz-en-vivo-fallo = Vosk indirilemedi: { $fallo }. Yeniden denemek için tekrar seçin.
+ajustes2-voz-vosk-borrar = Vosk'u sil
+ajustes2-ayuda-voz-vosk-borrar = İndirileni siler (diskte yaklaşık 100 MB). Seçince yeniden indirilir.
+clase-temas-bateria = Pil zayıf: tasarruf için canlı dinlenmiyor (kayıt sürüyor)
+
+## Dictate to chat: if Jev fails, say so (1-Nov-2026, like the phone)
+chat-anotar-fallo-red = Bağlantı yok: Jev bunun başka bir sohbete not edilmesi gerekip gerekmediğine bakamadı. Dikte ettiğiniz hâlâ kutuda.
+chat-anotar-fallo = Jev yanıt vermedi ({ $motivo }). Dikte ettiğiniz hâlâ kutuda.
+
+## Privacy and data (1-Nov-2026, what the phone did for the stores: Settings › General)
+ajustes2-g-privacidad = Gizlilik ve veriler
+ajustes2-priv-politica = Gizlilik politikası
+ajustes2-ayuda-priv-politica = PinDesk verilerinizle ne yapar (İspanyolca ve İngilizce): aşağıda listelenenler dışında her şey bu bilgisayarda kalır, onlar da yalnızca siz kullandığınızda.
+ajustes2-g-privacidad-sale = Bu bilgisayardan ne çıkar ve nereye gider
+ajustes2-priv-ver-ajustes = Ayarları
+ajustes2-priv-nada-mas = Başka bir şey yok
+ajustes2-ayuda-priv-nada-mas = Reklam yok, analiz yok, çökme raporu yok, hesap yok ve PinDesk sunucusu yok. Dikte ve metne dökme bu bilgisayarda, çevrimdışı çalışır.
+ajustes2-g-privacidad-datos = Verileriniz
+ajustes2-priv-carpeta = Verileriniz, kendi diskinizde
+ajustes2-ayuda-priv-carpeta = Yakalamalar, sohbetler, notlar, kayıtlar ve ayarlar { $carpeta } içinde durur. Yanında götürmek için klasörü kopyalayın; silmek için PinDesk'i kapatın ve klasörü silin. Yapay zekâ anahtarları Windows kullanıcınızla şifrelenir.
+ajustes2-priv-reportes = Yapay zekânın yazdıklarına ilişkin bildirimler
+ajustes2-ayuda-priv-reportes = { $n ->
+    [one] 1 bildirim reportes-ia.jsonl dosyasına kaydedildi (veri klasöründe).
+   *[other] { $n } bildirim reportes-ia.jsonl dosyasına kaydedildi (veri klasöründe).
+}
+privacidad-asistente-que = Asistana sorduğunuz, sohbetin son kısmı ve eklediğiniz dosyalar
+privacidad-asistente-adonde = Anthropic (Claude) veya DeepSeek
+privacidad-asistente-cuando = Yalnızca kendi anahtarınızı yapıştırıp soru sorarsanız. Anahtar bu bilgisayarda şifreli saklanır.
+privacidad-jev-que = Her Jev özelliğinin metni: toplantı cümleleri, ders satırları, görevler, dikte ettiğiniz veya anlattığınız şeyler
+privacidad-jev-adonde = TypeSafe (api.typesafe.ai)
+privacidad-jev-cuando = Yalnızca TypeSafe anahtarınızla ve o özellik açıkken. Ses asla gönderilmez.
+privacidad-web-que = Asistanın aradığı şeyler ve size yanıt vermek için okuduğu sayfalar
+privacidad-web-adonde = DuckDuckGo veya Brave Search ve okuduğu site
+privacidad-web-cuando = Asistan web'de arama yaptığında. Çerez yok, yapay zekâ anahtarınız da yok.
+privacidad-google-que = Seçtiğiniz Drive dosyaları ve takvim etkinlikleri
+privacidad-google-adonde = Google (Drive, Calendar)
+privacidad-google-cuando = Yalnızca Google hesabınızı Ayarlar › Asistan'dan bağlarsanız; bağlantıyı da oradan kesebilirsiniz.
+privacidad-voces-que = Bir Microsoft sesiyle sesli okunan metin
+privacidad-voces-adonde = Microsoft (Edge sesleri)
+privacidad-voces-cuando = Yalnızca okuyucuda bu seslerden birini seçerseniz; Windows sesleri çevrimdışı çalışır.
+privacidad-enlace-que = Bağlantıyla paylaşmayı seçtiğiniz dosya
+privacidad-enlace-adonde = litterbox.catbox.moe veya temp.sh
+privacidad-enlace-cuando = Yalnızca paylaşım bağlantısı istediğinizde; saatler veya günler içinde kendiliğinden silinir.
+privacidad-modelos-que = Size ait hiçbir şey: yalnızca dosyalar istenir
+privacidad-modelos-adonde = huggingface.co, github.com ve alphacephei.com (Whisper, Qwen3-ASR, Vosk, Indra)
+privacidad-modelos-cuando = İstediğinizde bir konuşma veya metin okuma modeli indirilirken.
+privacidad-sincro-que = Eşitlenen yakalamalarınız, notlarınız ve sohbetleriniz
+privacidad-sincro-adonde = Kendi cihazlarınız (telefon), kendi ağınız üzerinden
+privacidad-sincro-cuando = Eşitlerken: doğrudan kendi ağınızda, şifreli, sunuculardan geçmeden.
+
+## Report what the AI writes (1-Nov-2026, like the phone)
+reportar-ia = Yanıtı bildir…
+reportar-ia-motivo-ofensivo = Saldırgan
+reportar-ia-motivo-peligroso = Tehlikeli
+reportar-ia-motivo-falso = Yanlış veya yanıltıcı
+reportar-ia-motivo-otro = Başka bir neden
+reportar-ia-hecho = Bildirim reportes-ia.jsonl dosyasına kaydedildi; göndermek için e-postanız açılıyor
+reportar-ia-asunto = Bir yapay zekâ yanıtının bildirimi
+reportar-ia-campo-motivo = Neden
+reportar-ia-campo-funcion = Özellik
+reportar-ia-campo-fecha = Tarih
+reportar-ia-campo-version = Sürüm
+reportar-ia-campo-contenido = Yapay zekânın yazdığı
+reportar-ia-comentario = (İsterseniz neyin yanlış olduğunu buraya yazın.)
+
+## Review aloud: if Jev fails, why (1-Nov-2026, like the phone)
+repaso-jev-fallo-red = Bağlantı yok.
