@@ -108,13 +108,18 @@ pub const CAPACIDADES_CON_CAMARA: [&str; 3] = [DIARIO, REANUDAR, camara::CAPACID
 pub const REANUDAR_DESDE: i64 = 1 << 20;
 
 /// El tipo de servicio que se anuncia y se busca por mDNS al sincronizar.
-pub const SERVICIO: &str = "_pixpin._tcp.";
+///
+/// Hasta nov-2026 era `_pixpin._tcp.` (y `_pixpinenvio`, `_pixpinrecibe`,
+/// `_pixpinchat`): mientras haya aparatos sin actualizar, el PC anuncia y
+/// busca con los dos (`pixpin_shell::mdns::tipo_de_antes`,
+/// docs/formato-pindesk.md).
+pub const SERVICIO: &str = "_pindesk._tcp.";
 /// Mandar algo puntual a otro aparato: el que envia escucha y anuncia esto.
-pub const SERVICIO_ENVIO: &str = "_pixpinenvio._tcp.";
+pub const SERVICIO_ENVIO: &str = "_pindeskenvio._tcp.";
 /// Y al reves: el que RECIBE escucha y ensena su codigo, para que el otro se
 /// lo mande. Es el caso de «pasarle esto al ordenador»: el PC ensena su QR y
 /// el movil lo escanea.
-pub const SERVICIO_RECIBIR: &str = "_pixpinrecibe._tcp.";
+pub const SERVICIO_RECIBIR: &str = "_pindeskrecibe._tcp.";
 /// El puerto que se intenta primero. Si esta ocupado, Android cae a uno
 /// efimero y lo dice en el saludo, asi que no se puede dar por fijo.
 pub const PUERTO: u16 = 47474;

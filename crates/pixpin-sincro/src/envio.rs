@@ -77,6 +77,12 @@ pub fn legible(codigo: &str) -> String {
 
 /// Lo que lleva el QR de quien ENVIA (`Envio.textoDelQr`): el codigo y donde
 /// esta, para conectar sin buscar.
+///
+/// Los QR siguen con el prefijo de antes de PinDesk (`pixpin-envio`,
+/// `pixpin-recibe`) porque los lee el movil, y uno sin actualizar no sabria
+/// leer el nuevo; [`leer_qr`] acepta ya los dos (`pindesk-envio`,
+/// `pindesk-recibe`). Se cambia cuando todos los lean
+/// (docs/formato-pindesk.md).
 pub fn texto_del_qr(codigo: &str, host: &str, puerto: u16) -> String {
     format!("pixpin-envio:1:{codigo}:{host}:{puerto}")
 }
@@ -108,8 +114,8 @@ pub fn leer_qr(texto: &str) -> Option<DelQr> {
     if p.len() < 5 {
         return None;
     }
-    let espera_recibir = p[0] == "pixpin-recibe";
-    if p[0] != "pixpin-envio" && !espera_recibir {
+    let espera_recibir = matches!(p[0], "pindesk-recibe" | "pixpin-recibe");
+    if !matches!(p[0], "pindesk-envio" | "pixpin-envio") && !espera_recibir {
         return None;
     }
     let codigo = p[2];
@@ -630,7 +636,7 @@ pub fn nombre_sano(nombre: &str) -> String {
 
 /// Las extensiones que se reconocen (`EXTENSIONES_CONOCIDAS` de
 /// `guardados/Mensajes.kt`). `bin` NO esta: es «no se que es».
-const EXTENSIONES_CONOCIDAS: [&str; 46] = [
+const EXTENSIONES_CONOCIDAS: [&str; 47] = [
     "pdf",
     "jpg",
     "jpeg",
@@ -674,6 +680,7 @@ const EXTENSIONES_CONOCIDAS: [&str; 46] = [
     "ods",
     "dxf",
     "dwg",
+    "pindesk",
     "pixpin",
     "excalidraw",
     "epub",
@@ -820,6 +827,13 @@ mod pruebas {
         );
         assert_eq!(leer_qr("otra-cosa:1:482913:1.2.3.4:5"), None);
         assert_eq!(leer_qr("pixpin-envio:1:48291:1.2.3.4:5"), None);
+        // Los prefijos de PinDesk valen igual que los de antes.
+        assert_eq!(
+            leer_qr("pindesk-envio:1:482913:1.2.3.4:5"),
+            leer_qr("pixpin-envio:1:482913:1.2.3.4:5")
+        );
+        assert!(leer_qr("pindesk-recibe:1:482913:1.2.3.4:5").is_some_and(|q| q.espera_recibir));
+        assert_eq!(leer_qr("pindesk-otro:1:482913:1.2.3.4:5"), None);
         assert_eq!(leer_qr("pixpin-envio:1:48291a:1.2.3.4:5"), None);
         assert_eq!(leer_qr(""), None);
     }

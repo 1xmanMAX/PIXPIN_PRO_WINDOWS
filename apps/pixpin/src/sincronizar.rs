@@ -1867,7 +1867,7 @@ fn es_del_grupo(v: &pixpin_shell::mdns::Vecino, etiqueta: &str, yo: &str) -> boo
 }
 
 /// El tipo que anuncia y busca el movil (`Red.TIPO`).
-const TIPO_MDNS: &str = "_pixpin._tcp";
+const TIPO_MDNS: &str = "_pindesk._tcp";
 
 fn etiqueta_de(codigo: &str) -> String {
     pixpin_sincro::codigo::etiqueta(&pixpin_sincro::codigo::clave_de_grupo(codigo))
@@ -1925,7 +1925,7 @@ fn anunciarse(raiz: PathBuf, puerto: u16, vivo: Arc<AtomicBool>) {
                             datos.extend([("id", id.yo.id.as_str()), ("l", letra), ("n", &corto)]);
                             match pixpin_shell::mdns::anunciar(
                                 TIPO_MDNS,
-                                &format!("PixPin {nombre}"),
+                                &format!("PinDesk {nombre}"),
                                 puerto,
                                 &datos,
                             ) {
@@ -2155,7 +2155,7 @@ fn hacer_una_vuelta(
     // manda» de «¿Que sincronizar?», y lo que se elija ahi es lo que vale;
     // sin preguntar («con todos») es lo que manda.
     // `Instalado` o `Portable` da igual para esto: el fichero de ajustes es
-    // `raiz/pixpinmax.toml` en los dos casos (`Ubicacion::fichero_ajustes`).
+    // `raiz/pindesk.toml` en los dos casos (`Ubicacion::fichero_ajustes`).
     let donde = Ubicacion::Instalado {
         raiz: raiz.to_path_buf(),
     };

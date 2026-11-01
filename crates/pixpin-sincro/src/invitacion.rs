@@ -29,8 +29,9 @@ use crate::protocolo::{ErrorSincro, Resultado};
 /// Ocho signos sin letras que se confundan: unos 40 bits, de sobra para lo
 /// que dura abierta.
 pub const LARGO: usize = 8;
-/// El tipo mDNS de quien invita.
-pub const TIPO: &str = "_pixpinchat._tcp.";
+/// El tipo mDNS de quien invita (antes `_pixpinchat._tcp.`, que se anuncia
+/// y se busca tambien: `pixpin_shell::mdns`).
+pub const TIPO: &str = "_pindeskchat._tcp.";
 /// Codigos equivocados seguidos que cierran la invitacion (`Envio.INTENTOS`).
 pub const INTENTOS: u32 = 5;
 
@@ -102,6 +103,10 @@ pub fn etiqueta(codigo: &str) -> String {
     etiqueta_de_clave(&clave(codigo))
 }
 
+/// El QR de la invitacion. Sigue con el prefijo de antes (`pixpin-chat`)
+/// hasta que todos los aparatos lean el nuevo (`pindesk-chat`), que
+/// [`leer_qr`] ya acepta: un movil sin actualizar no sabria leerlo
+/// (docs/formato-pindesk.md).
 pub fn texto_del_qr(codigo: &str, host: Option<&str>, puerto: u16) -> String {
     format!("pixpin-chat:1:{codigo}:{}:{puerto}", host.unwrap_or(""))
 }
@@ -116,7 +121,7 @@ pub struct DelQr {
 
 pub fn leer_qr(texto: &str) -> Option<DelQr> {
     let p: Vec<&str> = texto.trim().split(':').collect();
-    if p.len() < 5 || p[0] != "pixpin-chat" || !valido(p[2]) {
+    if p.len() < 5 || !matches!(p[0], "pindesk-chat" | "pixpin-chat") || !valido(p[2]) {
         return None;
     }
     Some(DelQr {
@@ -504,6 +509,12 @@ mod pruebas {
         );
         // Casos negativos: otro QR de PixPin, un codigo malo, poco texto.
         assert!(leer_qr("pixpin-envio:1:123456::0").is_none());
+        // El prefijo de PinDesk vale igual que el de antes.
+        assert_eq!(
+            leer_qr("pindesk-chat:1:K7Q2M9XP::4000"),
+            leer_qr("pixpin-chat:1:K7Q2M9XP::4000")
+        );
+        assert!(leer_qr("pindesk-chat:1:K7Q2M9XP::4000").is_some());
         assert!(leer_qr("pixpin-chat:1:K7Q2M9X0:h:1").is_none());
         assert!(leer_qr("pixpin-chat:1:K7Q2M9XP").is_none());
         assert_eq!(limpiar("k7q2-m9xp"), "K7Q2M9XP");

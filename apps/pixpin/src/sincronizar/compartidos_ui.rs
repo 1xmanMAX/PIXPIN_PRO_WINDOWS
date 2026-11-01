@@ -485,7 +485,7 @@ fn abrir_invitacion(
     let etiqueta = invitacion::etiqueta(&puerta.codigo);
     let anuncio = pixpin_shell::mdns::anunciar(
         invitacion::TIPO,
-        &format!("PixPin {nombre}"),
+        &format!("PinDesk {nombre}"),
         puerta.puerto,
         &[("g", etiqueta.as_str())],
     )

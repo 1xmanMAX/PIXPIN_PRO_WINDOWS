@@ -433,7 +433,7 @@ fn esperar_a_que_me_manden(
             let corto: String = cx.nombre.chars().take(40).collect();
             let anuncio = pixpin_shell::mdns::anunciar(
                 envio::SERVICIO_RECIBIR,
-                &format!("PixPin {}", cx.nombre),
+                &format!("PinDesk {}", cx.nombre),
                 puerto,
                 &[("g", &etiqueta), ("n", &corto)],
             );
