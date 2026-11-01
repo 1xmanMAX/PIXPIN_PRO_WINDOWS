@@ -908,7 +908,7 @@ mod pruebas {
             vec!["ayuda_app"]
         );
         assert_eq!(
-            nombres("¿Donde estan los ajustes de PixPin?", false),
+            nombres("¿Donde estan los ajustes de PixDesk?", false),
             vec!["ayuda_app"]
         );
         // Pedir algo con una pregunta de cortesia no es pedir ayuda.
@@ -942,7 +942,7 @@ mod pruebas {
         );
         // Lo de la app sigue siendo solo ayuda.
         assert_eq!(
-            nombres("¿Donde estan los ajustes de PixPin?", false),
+            nombres("¿Donde estan los ajustes de PixDesk?", false),
             vec!["ayuda_app"]
         );
         assert!(!nombres("Dibuja un circulo rojo", false).contains(&b.to_string()));
@@ -1155,7 +1155,7 @@ mod pruebas {
         }
         // Caso negativo: una pregunta sobre la app sigue siendo de la ayuda.
         assert_eq!(
-            nombres("¿Donde estan los ajustes de PixPin?", false),
+            nombres("¿Donde estan los ajustes de PixDesk?", false),
             vec!["ayuda_app"]
         );
     }

@@ -541,7 +541,7 @@ pub fn html(c: &ClaseParaExportar, r: &Rotulos, medio: &dyn Fn(&Path) -> Option<
         "<html lang=\"{}\">\n<head>\n<meta charset=\"utf-8\">\n\
          <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n\
          <meta name=\"color-scheme\" content=\"light dark\">\n\
-         <meta name=\"generator\" content=\"PixPin\">\n<title>{}</title>\n<style>\n{CSS}</style>\n</head>\n",
+         <meta name=\"generator\" content=\"PixDesk\">\n<title>{}</title>\n<style>\n{CSS}</style>\n</head>\n",
         escapar(&r.idioma),
         escapar(&c.titulo)
     ));

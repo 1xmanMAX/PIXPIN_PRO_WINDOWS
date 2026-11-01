@@ -73,7 +73,7 @@ pub const ACCIONES_DOCUMENTOS: &[Accion] = &[
     Accion {
         herramienta: TABLA,
         accion: TABLA,
-        descripcion: "Pasa la tabla de una foto o un PDF (escaneado o no) a una tabla del chat o a un Excel. Las celdas las lee PixPin; tu solo eliges destino, nombre y si la primera fila es cabecera.",
+        descripcion: "Pasa la tabla de una foto o un PDF (escaneado o no) a una tabla del chat o a un Excel. Las celdas las lee PixDesk; tu solo eliges destino, nombre y si la primera fila es cabecera.",
         categoria: Categoria::Notas,
         claves: &[
             "tabla",

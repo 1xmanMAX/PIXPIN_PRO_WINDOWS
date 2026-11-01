@@ -112,7 +112,7 @@ pub fn fondo(oscuro: bool) -> (u8, u8, u8) {
 
 /// El titulo de la ventana (la barra de tareas, Alt+Tab).
 pub fn titulo_de_ventana(nombre_fichero: &str) -> String {
-    format!("{nombre_fichero} — PixPin")
+    format!("{nombre_fichero} — PixDesk")
 }
 
 /// **Abre `ruta` en el visor, en su propio hilo**: quien lo pide (el chat)
@@ -589,7 +589,7 @@ mod pruebas {
 
     #[test]
     fn el_titulo_lleva_el_fichero_y_el_fondo_sigue_al_tema() {
-        assert_eq!(titulo_de_ventana("informe.html"), "informe.html — PixPin");
+        assert_eq!(titulo_de_ventana("informe.html"), "informe.html — PixDesk");
         assert_ne!(fondo(true), fondo(false));
         // Caso negativo: en claro no se pinta oscuro (una pagina sin estilo
         // es blanca y saldria un fogonazo).
@@ -660,7 +660,7 @@ mod latencia {
             let ub = pixpin_store::Ubicacion::Portable { raiz: d.clone() };
             crate::notas_md::abrir(idioma, ub, crate::notas_md::Destino::Fichero { ruta: md });
             let t = pixpin_web::esperar_visible(
-                &format!("prueba{vuelta}.md — PixPin"),
+                &format!("prueba{vuelta}.md — PixDesk"),
                 Duration::from_secs(10),
             );
             eprintln!("vuelta {vuelta}: md visible en {t:?}");

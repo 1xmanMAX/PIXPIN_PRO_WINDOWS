@@ -239,7 +239,7 @@ fn mandar(mut pedidos: Vec<Value>, origen: &Origen, sin_arrancar: bool) -> i32 {
         Envio::Aceptado => None,
         Envio::VersionNo => Some(textos().t("orden-version")),
         Envio::NoSeEntiende => {
-            Some("PixPin no entiende el pedido (¿es mas antigua que esta orden?)".to_string())
+            Some("PixDesk no entiende el pedido (¿es mas antigua que esta orden?)".to_string())
         }
         Envio::SinApp(m) => {
             let mut a = fluent_bundle::FluentArgs::new();

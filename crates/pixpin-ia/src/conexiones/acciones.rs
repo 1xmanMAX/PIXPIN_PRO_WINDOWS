@@ -126,7 +126,7 @@ pub const ACCIONES_CONEXIONES: &[Accion] = &[
         herramienta: BAJAR,
         accion: CONEXION,
         descripcion: "Baja un archivo del Google Drive del usuario y lo deja en este chat (un Doc de Google sale como Word, una Hoja como Excel). \
-                      Para trabajar despues con el en PixPin (anotarlo, abrirlo, pasarlo al lienzo).",
+                      Para trabajar despues con el en PixDesk (anotarlo, abrirlo, pasarlo al lienzo).",
         categoria: Categoria::Abrir,
         claves: &[],
         fijos: "{}",

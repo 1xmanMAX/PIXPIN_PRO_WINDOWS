@@ -297,7 +297,7 @@ fn escribir_png_temporal(imagen: &ImagenRgba) -> Result<PathBuf, ErrorArrastre> 
     // SAFETY: `GetLocalTime` solo escribe el `SYSTEMTIME` que se le pasa.
     let t = unsafe { GetLocalTime() };
     let base = format!(
-        "PixPin {:04}-{:02}-{:02} {:02}-{:02}-{:02}",
+        "PixDesk {:04}-{:02}-{:02} {:02}-{:02}-{:02}",
         t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute, t.wSecond
     );
 

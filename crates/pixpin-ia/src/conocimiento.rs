@@ -15,7 +15,7 @@
 use crate::acciones::normalizar;
 
 /// Para las instrucciones de sistema: que es PixPin, en corto.
-pub const RESUMEN: &str = "PixPin Max es una app de Windows que vive en la bandeja del sistema. \
+pub const RESUMEN: &str = "PixDesk es una app de Windows que vive en la bandeja del sistema. \
 Hace capturas (Ctrl+Alt+X o Alt + arrastrar) y pines flotantes con zoom, anotacion y OCR. \
 Tiene un chat por proyectos (con «Mensajes guardados») con fotos, archivos, notas de voz, notas, \
 lienzos y tablas, y visores de PDF, Word, PowerPoint, Excel, planos CAD y modelos BIM. \
@@ -297,7 +297,7 @@ pub const INDICE: &[Entrada] = &[
             "diapositiva",
             "office",
         ],
-        "Se abren en PixPin sin Office. A anota, Ctrl+F busca, Ctrl+P imprime, F5 presenta. Se anota encima; el documento original no cambia.",
+        "Se abren en PixDesk sin Office. A anota, Ctrl+F busca, Ctrl+P imprime, F5 presenta. Se anota encima; el documento original no cambia.",
     ),
     e(
         "PDF",
@@ -326,7 +326,7 @@ pub const INDICE: &[Entrada] = &[
             "explorador",
             "abrir con",
         ],
-        "En la bandeja, «Abrir documento…». Con «Vista rapida con la barra espaciadora» activada en Ajustes, Espacio sobre un fichero del Explorador lo abre en PixPin.",
+        "En la bandeja, «Abrir documento…». Con «Vista rapida con la barra espaciadora» activada en Ajustes, Espacio sobre un fichero del Explorador lo abre en PixDesk.",
     ),
     e(
         "Planos CAD",
@@ -413,7 +413,7 @@ pub const INDICE: &[Entrada] = &[
             "preferencias",
             "settings",
         ],
-        "Desde el icono de PixPin en la bandeja del sistema → «Ajustes». Tiene buscador y secciones General, Captura, Lienzo y herramientas, Voz, Atajos, Sincronizar, Apps predeterminadas, Apariencia y Avanzado.",
+        "Desde el icono de PixDesk en la bandeja del sistema → «Ajustes». Tiene buscador y secciones General, Captura, Lienzo y herramientas, Voz, Atajos, Sincronizar, Apps predeterminadas, Apariencia y Avanzado.",
     ),
     e(
         "Arrancar con Windows e idioma",
@@ -435,12 +435,12 @@ pub const INDICE: &[Entrada] = &[
             "barra de tareas",
             "salir",
         ],
-        "Clic izquierdo en el icono de PixPin: el panel (Capturar, modos, Pines, Ultimas capturas, Tareas, Lecciones, Galeria, Abrir documento…). Clic derecho: el menu (Capturar, Pin en vivo, Anotar, Abrir el chat de proyectos, Tareas…, Sincronizar, Ajustes, Buscar en PixPin…, Salir).",
+        "Clic izquierdo en el icono de PixDesk: el panel (Capturar, modos, Pines, Ultimas capturas, Tareas, Lecciones, Galeria, Abrir documento…). Clic derecho: el menu (Capturar, Pin en vivo, Anotar, Abrir el chat de proyectos, Tareas…, Sincronizar, Ajustes, Buscar en PixDesk…, Salir).",
     ),
     e(
-        "Buscar en PixPin",
+        "Buscar en PixDesk",
         &["buscar", "busqueda", "encontrar", "buscador"],
-        "En la bandeja, «Buscar en PixPin…». Busca archivos, tareas, lecciones y capturas (Tab cambia de pestana).",
+        "En la bandeja, «Buscar en PixDesk…». Busca archivos, tareas, lecciones y capturas (Tab cambia de pestana).",
     ),
     e(
         "Flow Launcher",
@@ -544,7 +544,7 @@ pub fn responder(pregunta: &str) -> String {
         .collect();
     puntuadas.sort_by(|a, b| b.0.total_cmp(&a.0));
     if puntuadas.is_empty() {
-        return "No encuentro eso en la ayuda de PixPin. Di que no lo sabes; no inventes menus."
+        return "No encuentro eso en la ayuda de PixDesk. Di que no lo sabes; no inventes menus."
             .into();
     }
     let mejor = puntuadas[0].0;
@@ -571,11 +571,11 @@ mod pruebas {
             ("como exporto el lienzo a pdf", "Ctrl+Mayus+E"),
             ("cuanto duran las capturas", "7 dias"),
             (
-                "Cómo mover las capturas, notas o tareas a una app móvil de PixPin?",
+                "Cómo mover las capturas, notas o tareas a una app móvil de PixDesk?",
                 "Sincronizar",
             ),
             (
-                "dónde están las tareas pendientes en PixPin",
+                "dónde están las tareas pendientes en PixDesk",
                 "ventana de Tareas",
             ),
             ("como pongo el modo oscuro", "luna"),

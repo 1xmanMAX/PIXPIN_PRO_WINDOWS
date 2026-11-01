@@ -268,7 +268,7 @@ pub fn leer_fichero(ruta: &Path) -> Result<Vec<Unidad>, String> {
         Some(Tipo::PowerPoint) => leer_powerpoint(ruta),
         Some(Tipo::Excel) => leer_excel(ruta),
         Some(Tipo::Nota) | Some(Tipo::Texto) => leer_texto(ruta),
-        _ => Err(format!("PixPin no sabe leer «{nombre}»")),
+        _ => Err(format!("PixDesk no sabe leer «{nombre}»")),
     }
 }
 

@@ -531,7 +531,7 @@ impl EjecutorDelChat {
     fn tabla_al_lienzo(&mut self, args: &serde_json::Value) -> Result<String, String> {
         let raiz = super::documentos::raiz()
             .or_else(|| crate::oscuro::ubicacion().map(|u| u.raiz().to_path_buf()))
-            .ok_or("no se sabe donde estan los datos de PixPin")?;
+            .ok_or("no se sabe donde estan los datos de PixDesk")?;
         // La imagen del lienzo: a su misma escala (unidades por pixel).
         let escala = self.fuente.and_then(|c| {
             let a = self
@@ -586,7 +586,7 @@ impl EjecutorDelChat {
         let ubicacion = crate::oscuro::ubicacion();
         let raiz = super::documentos::raiz()
             .or_else(|| ubicacion.as_ref().map(|u| u.raiz().to_path_buf()))
-            .ok_or("no se sabe donde estan los datos de PixPin")?;
+            .ok_or("no se sabe donde estan los datos de PixDesk")?;
         let idioma = ubicacion
             .as_ref()
             .map(crate::compartir::idioma_de)
@@ -699,7 +699,7 @@ impl EjecutorDelChat {
             .clone()
             .or_else(super::documentos::raiz)
             .or_else(|| crate::oscuro::ubicacion().map(|u| u.raiz().to_path_buf()))
-            .ok_or_else(|| "no se sabe donde estan los datos de PixPin".to_string())
+            .ok_or_else(|| "no se sabe donde estan los datos de PixDesk".to_string())
     }
 
     /// **Los lienzos del chat** (17-oct): listarlos, crear uno con nombre y
@@ -953,7 +953,7 @@ impl EjecutorDelChat {
         }
         let raiz = super::documentos::raiz()
             .or_else(|| crate::oscuro::ubicacion().map(|x| x.raiz().to_path_buf()))
-            .ok_or("no se sabe donde estan los datos de PixPin")?;
+            .ok_or("no se sabe donde estan los datos de PixDesk")?;
         let d = crate::lector_pdf_proyecto::DondeVa::de(
             &raiz,
             &u.ruta,
@@ -1156,7 +1156,7 @@ impl Ejecutor for EjecutorDelChat {
                 let ubicacion = crate::oscuro::ubicacion();
                 let raiz = super::documentos::raiz()
                     .or_else(|| ubicacion.as_ref().map(|u| u.raiz().to_path_buf()))
-                    .ok_or("no se sabe donde estan los datos de PixPin")?;
+                    .ok_or("no se sabe donde estan los datos de PixDesk")?;
                 let idioma = ubicacion
                     .as_ref()
                     .map(crate::compartir::idioma_de)
@@ -1183,7 +1183,9 @@ impl Ejecutor for EjecutorDelChat {
                     (Some(r), Some(u)) if u.raiz() == r.as_path() => u,
                     (Some(r), _) => pixpin_store::Ubicacion::Portable { raiz: r.clone() },
                     (None, Some(u)) => u,
-                    (None, None) => return Err("no se sabe donde estan los datos de PixPin".into()),
+                    (None, None) => {
+                        return Err("no se sabe donde estan los datos de PixDesk".into());
+                    }
                 };
                 let idioma = crate::compartir::idioma_de(&ubicacion);
                 super::conexiones::hacer(
@@ -1207,7 +1209,9 @@ impl Ejecutor for EjecutorDelChat {
                     (Some(r), Some(u)) if u.raiz() == r.as_path() => u,
                     (Some(r), _) => pixpin_store::Ubicacion::Portable { raiz: r.clone() },
                     (None, Some(u)) => u,
-                    (None, None) => return Err("no se sabe donde estan los datos de PixPin".into()),
+                    (None, None) => {
+                        return Err("no se sabe donde estan los datos de PixDesk".into());
+                    }
                 };
                 let idioma = crate::compartir::idioma_de(&ubicacion);
                 super::en_el_chat::hacer(

@@ -563,7 +563,7 @@ mod pruebas {
         // El movil viejo no recibio ningun trozo y oyo el «adios».
         assert!(hilo.join().unwrap().is_empty());
         let t = Catalogo::nuevo(pixpin_store::Idioma::Espanol);
-        assert!(aviso(&t, &hecho).starts_with("Actualiza PixPin en Telefono"));
+        assert!(aviso(&t, &hecho).starts_with("Actualiza PixDesk en Telefono"));
     }
 
     #[test]
@@ -586,7 +586,7 @@ mod pruebas {
         );
         assert_eq!(
             aviso(&t, &Err(Fallo::NoEsta("Pixel".into()))),
-            "Pixel no está abierto: abre PixPin en el móvil"
+            "Pixel no está abierto: abre PixDesk en el móvil"
         );
         // Caso negativo: el globo nunca ensena una clave sin traducir.
         for f in [

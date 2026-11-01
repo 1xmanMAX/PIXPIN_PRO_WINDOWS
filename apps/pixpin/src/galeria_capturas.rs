@@ -1554,7 +1554,7 @@ fn pinear(e: &mut Estado, v: &[usize], textos: &Catalogo) {
     // es la que tiene los pines, las pinea.
     let ok = pixpin_shell::mensajero::enviar_ficheros(&rutas);
     e.avisar(if !ok {
-        fallo(textos, "PixPin".into())
+        fallo(textos, "PixDesk".into())
     } else if rutas.len() == 1 {
         textos.t("galeria-pineada")
     } else {

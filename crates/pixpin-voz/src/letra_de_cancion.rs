@@ -621,7 +621,7 @@ mod pruebas {
             ]
         );
         assert_eq!(a_guardar(&letra), guardado);
-        assert!(!es_lrc(guardado), "lo de PixPin no se toca");
+        assert!(!es_lrc(guardado), "lo de PixDesk no se toca");
     }
 
     #[test]

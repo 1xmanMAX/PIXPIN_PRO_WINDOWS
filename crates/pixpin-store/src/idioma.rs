@@ -770,7 +770,7 @@ mod pruebas {
     #[test]
     fn la_comprobacion_de_variables_ve_selectores_y_funciones() {
         let v = variables_de(
-            "a = { $n ->\n    [one] uno\n   *[other] { $n } de { $total }\n  }\nb = { NUMBER($x) } { -marca }\n-marca = PixPin Max\n",
+            "a = { $n ->\n    [one] uno\n   *[other] { $n } de { $total }\n  }\nb = { NUMBER($x) } { -marca }\n-marca = PixDesk\n",
         );
         assert_eq!(
             v["a"],

@@ -2052,7 +2052,7 @@ fn mensaje_del_asistente(r: &Respuesta) -> Mensaje {
 /// [`instrucciones_local`], byte a byte (congelado por decision del
 /// usuario); el turno las cambia solo ([`turno_con`]).
 pub fn instrucciones() -> String {
-    "Eres el asistente de PixPin Max y trabajas dentro de la app del usuario. \
+    "Eres el asistente de PixDesk y trabajas dentro de la app del usuario. \
 Tus herramientas leen y cambian de verdad sus lienzos (figuras, textos, tablas, imágenes), notas, tareas, chats y documentos (PDF, Word, Excel, planos), \
 y cada resultado te dice qué pasó: los #id de lo creado o tocado, el estado, o un ERROR con su motivo. \
 Cuando llega el «Lienzo destino», trae lo que ya hay con sus #id, textos y cajas.\n\n\
@@ -2103,7 +2103,7 @@ Más ejemplos:\n\
 /// **Las del modelo local**, las de antes del 22-oct, sin tocar: el local
 /// esta congelado y con su ventana de 8192 sigue mejor la lista corta.
 pub fn instrucciones_local() -> String {
-    "Eres el asistente de PixPin, una app de capturas, notas y lienzo. \
+    "Eres el asistente de PixDesk, una app de capturas, notas y lienzo. \
      Contesta en el idioma del usuario, breve y claro. \
      Si pide dibujar algo, usa dibujar_en_lienzo, \
      poniendo el color de cada figura. \
@@ -2118,7 +2118,7 @@ pub fn instrucciones_local() -> String {
      Con sus documentos y planos: una tabla de una foto o un PDF, tabla_de_imagen; resaltar, anotar o encerrar algo, anotar_documento; \
      «¿donde dice...?», buscar_en_documento; abrir uno por su nombre, abrir_por_nombre; otro formato, exportar_documento. \
      Nunca pidas rutas ni codigos: nombra el archivo con las palabras del usuario; si te dicen que hay varios, pregunta cual con esa lista corta. \
-     Si pregunta donde esta algo o como se hace en PixPin, usa ayuda_app y contesta con lo que diga, sin inventar. \
+     Si pregunta donde esta algo o como se hace en PixDesk, usa ayuda_app y contesta con lo que diga, sin inventar. \
      Despues de usar una herramienta, di en una frase lo que hiciste. "
         .to_string()
         + crate::conocimiento::RESUMEN
@@ -3505,7 +3505,7 @@ mod pruebas_rapidez {
     fn si_el_camino_rapido_no_puede_contesta_el_modelo() {
         // Un fallo de la app (no contesta): se pregunta al modelo (con su
         // plan), sin que la burbuja haya dicho nada antes.
-        let mut ej = Apunta(Vec::new(), Some("PixPin no contesto".into()));
+        let mut ej = Apunta(Vec::new(), Some("PixDesk no contesto".into()));
         let (f, eventos, pedidas) = con_rapido(
             "tacha pintar la luna",
             &mut ej,

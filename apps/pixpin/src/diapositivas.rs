@@ -469,7 +469,7 @@ pub fn presentar_nativa(
         let mut documento = match pixpin_office::Documento::abrir(&ruta) {
             Ok(d) => Some(d),
             Err(err) => {
-                tracing::warn!(%err, ruta = %ruta.display(), "presentacion que PixPin no lee; se pasa por PowerPoint");
+                tracing::warn!(%err, ruta = %ruta.display(), "presentacion que PixDesk no lee; se pasa por PowerPoint");
                 lanzar_con_powerpoint(idioma, ubicacion, &ruta);
                 return;
             }

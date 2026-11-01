@@ -121,7 +121,7 @@ pub fn abrir(ruta: &Path) -> Result<Documento, ErrorDocs> {
             Ok(html::llano(&texto_de(&crudo), &titulo))
         }
         None => Err(ErrorDocs::NoSeLee(format!(
-            "PixPin no sabe abrir «{nombre}»"
+            "PixDesk no sabe abrir «{nombre}»"
         ))),
     }
 }

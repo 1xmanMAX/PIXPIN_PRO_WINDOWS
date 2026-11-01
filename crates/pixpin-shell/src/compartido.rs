@@ -224,7 +224,7 @@ pub fn leer_activacion(destino: &Path) -> Option<Recibido> {
         }
         None => {
             let _ = op.ReportError(&windows::core::HSTRING::from(
-                "PixPin no pudo leer lo compartido",
+                "PixDesk no pudo leer lo compartido",
             ));
         }
     }

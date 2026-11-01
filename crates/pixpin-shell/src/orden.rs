@@ -333,7 +333,7 @@ pub const VERBOS: &[Verbo] = &[
     Verbo {
         nombres: &["ocr", "texto"],
         uso: "ocr <imagen>… [--copiar]",
-        ayuda: "Escribe en la consola el texto de las imagenes (y lo copia con --copiar). No necesita PixPin abierta.",
+        ayuda: "Escribe en la consola el texto de las imagenes (y lo copia con --copiar). No necesita PixDesk abierta.",
         opciones: &[],
         por_enlace: false,
         armar: armar_ocr,
@@ -341,7 +341,7 @@ pub const VERBOS: &[Verbo] = &[
     Verbo {
         nombres: &["copiar-texto"],
         uso: "copiar-texto <imagen>…",
-        ayuda: "PixPin lee el texto de las imagenes, lo copia y lo dice en su aviso (el menu del Explorador).",
+        ayuda: "PixDesk lee el texto de las imagenes, lo copia y lo dice en su aviso (el menu del Explorador).",
         opciones: &[],
         por_enlace: false,
         armar: armar_copiar_texto,
@@ -349,7 +349,7 @@ pub const VERBOS: &[Verbo] = &[
     Verbo {
         nombres: &["leer", "leer-en-voz"],
         uso: "leer \"<texto>\" [--titulo T]",
-        ayuda: "Lee el texto en voz alta con la voz de PixPin, sin abrir nada (se para con las teclas multimedia).",
+        ayuda: "Lee el texto en voz alta con la voz de PixDesk, sin abrir nada (se para con las teclas multimedia).",
         opciones: &["texto", "titulo"],
         por_enlace: true,
         armar: armar_leer,
@@ -365,7 +365,7 @@ pub const VERBOS: &[Verbo] = &[
     Verbo {
         nombres: &["abrir", "open"],
         uso: "abrir <fichero>… [--pagina N] [--buscar T]",
-        ayuda: "Abre cada fichero como «Abrir con PixPin» (lector, editor o pin).",
+        ayuda: "Abre cada fichero como «Abrir con PixDesk» (lector, editor o pin).",
         opciones: &[
             "pagina",
             "buscar",
@@ -645,7 +645,7 @@ fn de_json(json: &str) -> Result<Orden, Fallo> {
 pub fn de_enlace(url: &str) -> Result<Llamada, Fallo> {
     let partes = partir_enlace(url)?;
     let fila = verbo(&partes.verbo).ok_or_else(|| {
-        Fallo::no_se_entiende(format!("PixPin no conoce «{}» por enlace", partes.verbo))
+        Fallo::no_se_entiende(format!("PixDesk no conoce «{}» por enlace", partes.verbo))
     })?;
     if !fila.por_enlace {
         return Err(Fallo {

@@ -60,17 +60,17 @@ pub struct Plan {
 /// tabla (como `pixpin_ia::acciones`) y no un `match` suelto: la extension
 /// tiene la suya y una prueba en Node comprueba que coinciden.
 pub const ACCIONES: [(&str, &str); 12] = [
-    ("tarea", "Tarea apuntada en PixPin"),
-    ("nota", "Nota abierta en PixPin"),
-    ("chat", "Enviado al chat de PixPin"),
-    ("leccion", "Lección abierta en PixPin"),
-    ("leer", "PixPin lo lee en voz alta"),
-    ("asistente", "Preguntado al asistente de PixPin"),
+    ("tarea", "Tarea apuntada en PixDesk"),
+    ("nota", "Nota abierta en PixDesk"),
+    ("chat", "Enviado al chat de PixDesk"),
+    ("leccion", "Lección abierta en PixDesk"),
+    ("leer", "PixDesk lo lee en voz alta"),
+    ("asistente", "Preguntado al asistente de PixDesk"),
     ("pinear_imagen", "Imagen pineada"),
-    ("imagen_al_chat", "Imagen enviada al chat de PixPin"),
-    ("ocr", "PixPin lee el texto de la imagen"),
-    ("captura_pagina", "Página entera enviada al chat de PixPin"),
-    ("enlace_al_chat", "Enlace enviado al chat de PixPin"),
+    ("imagen_al_chat", "Imagen enviada al chat de PixDesk"),
+    ("ocr", "PixDesk lee el texto de la imagen"),
+    ("captura_pagina", "Página entera enviada al chat de PixDesk"),
+    ("enlace_al_chat", "Enlace enviado al chat de PixDesk"),
     ("pagina_al_movil", "Enviando la página al móvil"),
 ];
 
@@ -81,7 +81,7 @@ pub const PREGUNTA_POR_DEFECTO: &str = "Explícame este texto";
 /// y `sello` un nombre unico para ellos (milisegundos y proceso).
 pub fn traducir(m: &Mensaje, carpeta: &Path, sello: &str) -> Result<Plan, String> {
     if m.v > 1 {
-        return Err("Esta versión de PixPin no entiende la extensión: actualiza PixPin".into());
+        return Err("Esta versión de PixDesk no entiende la extensión: actualiza PixDesk".into());
     }
     let Some(&(_, hecho)) = ACCIONES.iter().find(|(a, _)| *a == m.accion) else {
         return Err(format!("Acción desconocida: «{}»", m.accion));

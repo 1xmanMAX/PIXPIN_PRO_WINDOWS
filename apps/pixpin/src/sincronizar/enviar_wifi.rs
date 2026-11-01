@@ -1561,7 +1561,7 @@ mod pruebas {
         let viejo = Some(Err(al_movil::Fallo::SinSoporte("Tel".into())));
         let (texto, tono) = estado_en_grupo(&t, Some(&viejo), true);
         assert_eq!(tono, Tono::Mal);
-        assert!(texto.starts_with("Actualiza PixPin en Tel"), "{texto}");
+        assert!(texto.starts_with("Actualiza PixDesk en Tel"), "{texto}");
         assert!(!texto.contains("Te abro"), "aqui ya esta abierta");
         // Caso negativo: nunca una clave sin traducir.
         for k in [

@@ -508,7 +508,7 @@ fn arrancar(
     // con un boton, y todo se abre como pin.
     if config.abrir_con {
         if let Err(e) = pixpin_shell::asociaciones::registrar(&ruta_exe) {
-            tracing::warn!(?e, "no se pudo registrar PixPin para imagenes y videos");
+            tracing::warn!(?e, "no se pudo registrar PixDesk para imagenes y videos");
         }
     } else {
         pixpin_shell::asociaciones::quitar();

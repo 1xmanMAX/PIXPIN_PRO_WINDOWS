@@ -379,7 +379,10 @@ mod pruebas {
                 dir.join("pixdesk.exe"),
                 dir.join("pixpinmax.exe"),
                 local.join("Programs").join("PixDesk").join("pixdesk.exe"),
-                local.join("Programs").join("PixPinMax").join("pixpinmax.exe"),
+                local
+                    .join("Programs")
+                    .join("PixPinMax")
+                    .join("pixpinmax.exe"),
             ]
         );
         // Caso negativo: sin carpeta ni %LOCALAPPDATA% no hay donde buscar.

@@ -365,11 +365,7 @@ impl<M: Mensajero, W: Write> Plugin<M, W> {
             Pegado::Nada => {
                 self.llamar_a_flow(
                     "ShowMsg",
-                    json!([
-                        "PixDesk",
-                        "No hay ninguna imagen en el portapapeles",
-                        icono
-                    ]),
+                    json!(["PixDesk", "No hay ninguna imagen en el portapapeles", icono]),
                 );
             }
         }

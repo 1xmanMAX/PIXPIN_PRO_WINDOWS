@@ -196,10 +196,10 @@ pub fn para_el_modelo(filas: &[Vec<String>]) -> Option<String> {
     }
     let e = revisar(filas);
     Some(if e.is_empty() {
-        "Cuentas comprobadas por PixPin (productos por fila y totales): todo cuadra.".to_string()
+        "Cuentas comprobadas por PixDesk (productos por fila y totales): todo cuadra.".to_string()
     } else {
         format!(
-            "Cuentas comprobadas por PixPin (exactas; no las rehagas): {}.",
+            "Cuentas comprobadas por PixDesk (exactas; no las rehagas): {}.",
             e.iter()
                 .map(|d| d.texto.clone())
                 .collect::<Vec<_>>()

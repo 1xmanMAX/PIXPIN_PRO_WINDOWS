@@ -171,7 +171,7 @@ impl MandosDelSistema {
             let m = d.MusicProperties()?;
             m.SetTitle(&HSTRING::from(titulo))?;
             m.SetArtist(&HSTRING::from(detalle))?;
-            m.SetAlbumTitle(&HSTRING::from("PixPin"))?;
+            m.SetAlbumTitle(&HSTRING::from("PixDesk"))?;
             d.Update()
         })();
         if let Err(e) = r {
@@ -254,7 +254,7 @@ mod pruebas {
         // SAFETY: inicio de COM en el hilo de la prueba.
         let _ = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };
         let m = MandosDelSistema::nuevos().expect("Windows tiene que dar los mandos");
-        m.poner(true, "Prueba de PixPin", "Párrafo 1 de 2");
+        m.poner(true, "Prueba de PixDesk", "Párrafo 1 de 2");
         m.bombear();
         assert!(m.botones().is_empty());
         let estado = m.smtc.PlaybackStatus().unwrap();
@@ -267,7 +267,7 @@ mod pruebas {
             .unwrap()
             .Title()
             .unwrap();
-        assert_eq!(titulo.to_string(), "Prueba de PixPin");
+        assert_eq!(titulo.to_string(), "Prueba de PixDesk");
         drop(m);
     }
 }

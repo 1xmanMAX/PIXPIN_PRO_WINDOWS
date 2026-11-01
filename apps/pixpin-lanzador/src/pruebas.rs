@@ -277,7 +277,7 @@ fn vacio_da_las_funciones_y_los_proyectos_recientes() {
             "Última captura",
             "Sincronizar",
             "Asistente",
-            "Abrir PixPin",
+            "Abrir PixDesk",
             "Gestión de proyectos",
             "Thesis",
             "Mensajes guardados",

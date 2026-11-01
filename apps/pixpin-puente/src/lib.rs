@@ -120,7 +120,7 @@ pub fn entregar(cartero: &mut dyn Cartero, json: &str) -> Result<(), String> {
         let inicio = Instant::now();
         while r == 0 {
             if inicio.elapsed() > ESPERA_ARRANQUE {
-                return Err("PixPin no se abrió a tiempo".into());
+                return Err("PixDesk no se abrió a tiempo".into());
             }
             cartero.esperar(Duration::from_millis(100));
             r = cartero.mandar(json);
@@ -130,10 +130,10 @@ pub fn entregar(cartero: &mut dyn Cartero, json: &str) -> Result<(), String> {
     match r {
         respuesta::ACEPTADO => Ok(()),
         respuesta::VERSION_NO => {
-            Err("Esta PixPin es más vieja que la extensión: actualízala".into())
+            Err("Esta PixDesk es más vieja que la extensión: actualízala".into())
         }
-        respuesta::NO_SE_ENTIENDE => Err("Esta PixPin no entiende el pedido: actualízala".into()),
-        otra => Err(format!("PixPin no contestó (respuesta {otra})")),
+        respuesta::NO_SE_ENTIENDE => Err("Esta PixDesk no entiende el pedido: actualízala".into()),
+        otra => Err(format!("PixDesk no contestó (respuesta {otra})")),
     }
 }
 
@@ -220,7 +220,7 @@ fn atender(
         Err(ErrorLectura::Fin) => return Ok(None),
         Err(ErrorLectura::Enorme(n)) => {
             return Err(format!(
-                "Demasiado grande para PixPin ({} MB; el tope es {} MB)",
+                "Demasiado grande para PixDesk ({} MB; el tope es {} MB)",
                 n.div_ceil(1024 * 1024),
                 protocolo::TOPE_ENTRADA / (1024 * 1024)
             ));

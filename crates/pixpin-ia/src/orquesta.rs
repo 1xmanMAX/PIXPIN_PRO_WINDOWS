@@ -107,7 +107,7 @@ pub struct Cierre {
 
 /// Quien es el jefe y como contesta (va delante de las instrucciones de
 /// siempre, que traen el mapa de la app).
-pub const SISTEMA_JEFE: &str = "Eres el JEFE del asistente de PixPin: planeas, repartes y supervisas; no usas herramientas. \
+pub const SISTEMA_JEFE: &str = "Eres el JEFE del asistente de PixDesk: planeas, repartes y supervisas; no usas herramientas. \
 Unos trabajadores (modelos más pequeños, con todas las herramientas de la app) hacen cada tarea que les mandes y te informan. \
 Divide el pedido en pocas tareas concretas (como mucho 8), cada una de un solo sitio de la app, con instrucciones detalladas \
 (qué leer, qué herramientas, qué valores, dónde) y una prueba de «hecho» que se pueda comprobar con los resultados de las herramientas. \
@@ -310,7 +310,7 @@ fn trabajar(
     al_evento: &mut dyn FnMut(Evento) -> Seguir,
 ) -> (Informe, Result<Final, crate::ErrorIa>) {
     let mut encargo = format!(
-        "Eres un trabajador del asistente de PixPin. El jefe dividió el pedido del usuario en tareas; haz SOLO la tuya, \
+        "Eres un trabajador del asistente de PixDesk. El jefe dividió el pedido del usuario en tareas; haz SOLO la tuya, \
 con detalle y bien, usando las herramientas, y comprueba con sus resultados que quedó como se pide. \
 Termina con una o dos frases de lo que hiciste.\n\nTu tarea ({n} de {total}): {}\n{}\nSe da por hecha si: {}",
         tarea.titulo, tarea.instrucciones, tarea.hecho_si

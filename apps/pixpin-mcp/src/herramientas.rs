@@ -121,7 +121,7 @@ pub const LOCALES: &[Local] = &[
     Local {
         nombre: pixpin_ia::documentos::BUSCAR,
         titulo: "Buscar en mis cosas",
-        descripcion: "Busca en los PDF, Word, Excel, PowerPoint, notas y chats del usuario guardados en PixPin (el mismo indice que usa su asistente). Devuelve trozos con su origen y como abrirlos (abrir_fichero con su ruta, o abrir_mensaje con su codigo).",
+        descripcion: "Busca en los PDF, Word, Excel, PowerPoint, notas y chats del usuario guardados en PixDesk (el mismo indice que usa su asistente). Devuelve trozos con su origen y como abrirlos (abrir_fichero con su ruta, o abrir_mensaje con su codigo).",
         esquema: esquema_buscar,
         hacer: crate::leer::buscar,
     },
@@ -135,7 +135,7 @@ pub const LOCALES: &[Local] = &[
     Local {
         nombre: "listar_chats",
         titulo: "Listar chats",
-        descripcion: "Los chats (proyectos) del usuario en PixPin, del mas reciente al mas viejo, con sus listas de tareas.",
+        descripcion: "Los chats (proyectos) del usuario en PixDesk, del mas reciente al mas viejo, con sus listas de tareas.",
         esquema: esquema_vacio,
         hacer: crate::leer::listar_chats,
     },
@@ -199,9 +199,9 @@ pub fn lista() -> Vec<Value> {
     for a in de_la_app() {
         let h = acciones::herramienta(a);
         let mut descripcion = h.descripcion;
-        descripcion.push_str(" Lo hace la PixPin abierta.");
+        descripcion.push_str(" Lo hace la PixDesk abierta.");
         if pregunta(a) {
-            descripcion.push_str(" PixPin pide permiso al usuario antes.");
+            descripcion.push_str(" PixDesk pide permiso al usuario antes.");
         }
         v.push(json!({
             "name": h.nombre,

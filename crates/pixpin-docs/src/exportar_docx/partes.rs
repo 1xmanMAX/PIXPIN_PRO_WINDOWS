@@ -180,7 +180,7 @@ pub(super) fn fecha(ms: i64) -> String {
 
 pub(super) fn core(titulo: &str, autor: &str, ms: i64) -> String {
     let autor = if autor.trim().is_empty() {
-        "PixPin"
+        "PixDesk"
     } else {
         autor.trim()
     };
@@ -206,7 +206,7 @@ pub(super) fn core(titulo: &str, autor: &str, ms: i64) -> String {
 pub(super) const APP: &str = concat!(
     r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>"#,
     r#"<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties">"#,
-    "<Application>PixPin</Application></Properties>"
+    "<Application>PixDesk</Application></Properties>"
 );
 
 pub(super) const AJUSTES: &str = concat!(
@@ -425,7 +425,7 @@ pub(super) fn comentarios(hilos: &[ComentarioW]) -> (String, String) {
     );
     for h in hilos {
         let autor = if h.autor.trim().is_empty() {
-            "PixPin"
+            "PixDesk"
         } else {
             h.autor.trim()
         };

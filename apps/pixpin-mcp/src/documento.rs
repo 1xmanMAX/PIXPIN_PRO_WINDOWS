@@ -289,7 +289,7 @@ pub fn leer_documento(args: &Map<String, Value>) -> Resultado {
         _ if pixpin_docs::formato_de(&pixpin_docs::nombre(&ruta)).is_some() => {
             leer_word_y_demas(&ruta)?
         }
-        _ => return Err(format!("PixPin no sabe leer el texto de un «.{ext}»")),
+        _ => return Err(format!("PixDesk no sabe leer el texto de un «.{ext}»")),
     };
     if texto.trim().is_empty() {
         return Err("el documento no tiene texto".into());

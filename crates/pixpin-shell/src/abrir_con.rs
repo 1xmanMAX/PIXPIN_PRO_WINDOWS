@@ -253,7 +253,7 @@ mod pruebas {
         // argumentos y el fichero no se encontraria: el programa
         // funcionaria con `foto.png` y no con `mi foto.png`, que es de los
         // fallos mas confusos que puede tener.
-        let orden = orden_de_apertura(Path::new(r"C:\Archivos de programa\PixPin\pixpinmax.exe"));
+        let orden = orden_de_apertura(Path::new(r"C:\Archivos de programa\PixDesk\pixdesk.exe"));
         assert!(orden.ends_with("\"%1\""), "{orden}");
         assert!(orden.starts_with('"'), "{orden}");
         assert!(orden.contains(r"Archivos de programa"));

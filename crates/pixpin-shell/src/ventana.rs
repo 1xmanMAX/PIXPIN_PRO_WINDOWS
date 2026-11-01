@@ -629,8 +629,7 @@ mod pruebas {
         let ventana = VentanaMensajes::nueva().expect("deberia poder crearse");
         let hwnd = ventana.handle();
 
-        let bandeja =
-            Bandeja::nueva(hwnd, "PixPin Max — prueba de orden").expect("deberia añadirse");
+        let bandeja = Bandeja::nueva(hwnd, "PixDesk — prueba de orden").expect("deberia añadirse");
 
         let raro: Atajo = "Ctrl+Alt+Shift+F21".parse().unwrap();
         let (registrados, fallidos) = atajos::registrar(hwnd, &[(atajos::ID_REGION, raro)]);

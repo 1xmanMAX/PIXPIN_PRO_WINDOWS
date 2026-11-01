@@ -83,7 +83,7 @@ fn texto_de<'a>(args: &'a Value, campo: &str) -> Option<&'a str> {
 fn mandar(cx: &Contexto, pedido: Value) -> Result<(), String> {
     match (cx.mandar)(&pedido.to_string()) {
         pixpin_shell::mensajero::respuesta::ACEPTADO => Ok(()),
-        _ => Err("PixPin no acepto el pedido".into()),
+        _ => Err("PixDesk no acepto el pedido".into()),
     }
 }
 

@@ -1749,7 +1749,7 @@ fn saludar_como_cliente(
     let hola = r.hola.context("El otro aparato no saludó")?;
     anyhow::ensure!(
         hola.version == pixpin_sincro::VERSION,
-        "El otro aparato tiene otra versión de PixPin: actualiza los dos"
+        "El otro aparato tiene otra versión de PixDesk: actualiza los dos"
     );
     if unirme {
         let yo = hola
@@ -1820,7 +1820,7 @@ fn explicar(e: &anyhow::Error, nombre: &str) -> String {
         return match io.kind() {
             K::ConnectionRefused | K::TimedOut | K::HostUnreachable | K::NetworkUnreachable => {
                 format!(
-                    "No se pudo llegar a {nombre}. Comprueba que está en la misma Wi-Fi y con PixPin abierto."
+                    "No se pudo llegar a {nombre}. Comprueba que está en la misma Wi-Fi y con PixDesk abierto."
                 )
             }
             K::UnexpectedEof => {
@@ -1952,7 +1952,7 @@ fn lanzar_union(
     let raiz = raiz.to_path_buf();
     let tx = tx.clone();
     let _ = tx.send(Aviso::Fase(Fase::Trabajando(
-        "Buscando un aparato del grupo en esta Wi-Fi…\nEn el otro aparato, ten PixPin abierto."
+        "Buscando un aparato del grupo en esta Wi-Fi…\nEn el otro aparato, ten PixDesk abierto."
             .into(),
     )));
     let _ = std::thread::Builder::new()
@@ -1967,7 +1967,7 @@ fn lanzar_union(
             let Some((host, puerto)) = hallado else {
                 let _ = tx.send(Aviso::Fase(Fase::Fallo(
                     "No apareció ningún aparato con ese código. Comprueba el código, que los dos \
-                     estáis en la misma Wi-Fi y que el otro tiene PixPin abierto. También puedes \
+                     estáis en la misma Wi-Fi y que el otro tiene PixDesk abierto. También puedes \
                      escribir su dirección."
                         .into(),
                 )));

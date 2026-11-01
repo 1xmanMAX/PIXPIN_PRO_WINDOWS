@@ -349,7 +349,7 @@ fn una_conversacion_de_ida_y_vuelta() {
         );
         assert!(
             de("quitar_tarea").get("preguntar").is_none(),
-            "la pregunta de borrar la pone la tabla en PixPin"
+            "la pregunta de borrar la pone la tabla en PixDesk"
         );
         // Ninguna respuesta se queda en %TEMP%.
         for p in rec.iter() {

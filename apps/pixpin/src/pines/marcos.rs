@@ -139,7 +139,7 @@ impl Pines {
         let titulo = self
             .imagen_del_pin(id)
             .and_then(|r| r.file_stem().map(|s| s.to_string_lossy().into_owned()))
-            .unwrap_or_else(|| "PixPin".to_string());
+            .unwrap_or_else(|| "PixDesk".to_string());
         crate::marco_imprimir::imprimir_fotos(pin.hwnd().0 as isize, fotos, &titulo)
     }
 }
@@ -163,7 +163,7 @@ impl Pines {
         let titulo = self
             .imagen_del_pin(id)
             .and_then(|r| r.file_stem().map(|s| s.to_string_lossy().into_owned()))
-            .unwrap_or_else(|| "PixPin".to_string());
+            .unwrap_or_else(|| "PixDesk".to_string());
         crate::marco_imprimir::imprimir_fotos(hwnd.0 as isize, vec![foto], &titulo)
     }
 }

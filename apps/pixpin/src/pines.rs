@@ -971,7 +971,7 @@ impl Pines {
             tracing::info!(
                 id,
                 ?p,
-                "clic a distancia descartado: el punto lo tapa PixPin"
+                "clic a distancia descartado: el punto lo tapa PixDesk"
             );
             return Ok(None);
         }
@@ -1885,7 +1885,7 @@ impl Pines {
                         .file_stem()
                         .map(|s| s.to_string_lossy().into_owned())
                 })
-                .unwrap_or_else(|| "PixPin".to_string())
+                .unwrap_or_else(|| "PixDesk".to_string())
         };
         crate::marco_imprimir::imprimir_zona(hwnd.0 as isize, area, &titulo, textos());
     }

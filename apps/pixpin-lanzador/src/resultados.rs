@@ -541,7 +541,7 @@ fn resultado_funcion(f: Funcion, ctx: &Contexto) -> Resultado {
     let (titulo, sub, glifo, accion) = match f {
         Funcion::Chat => (
             "Chat",
-            "Escribe y pulsa Intro: va al chat de PixPin",
+            "Escribe y pulsa Intro: va al chat de PixDesk",
             glifo::CHAT,
             Accion::Consulta(ctx.consulta("chat ")),
         ),
@@ -642,7 +642,7 @@ fn resultado_funcion(f: Funcion, ctx: &Contexto) -> Resultado {
             Accion::Consulta(ctx.consulta("asistente ")),
         ),
         Funcion::Abrir => (
-            "Abrir PixPin",
+            "Abrir PixDesk",
             "Saca la ventana del chat",
             glifo::PIXPIN,
             Accion::Pedido(pedido("ventana_principal", json!({}))),
@@ -1643,7 +1643,7 @@ fn resultado_ventana_tareas() -> Resultado {
     resultado_ventana(
         "tareas",
         "Abrir la ventana de Tareas",
-        "El Inbox y todas tus listas, en PixPin",
+        "El Inbox y todas tus listas, en PixDesk",
         glifo::VENTANA,
     )
 }
@@ -1929,7 +1929,7 @@ fn verbo(
                 None => Accion::Pedido(pedido("ventana_principal", json!({}))),
             };
             v.push(Resultado::nuevo(
-                "Abrir PixPin",
+                "Abrir PixDesk",
                 "Saca la ventana del chat",
                 glifo::PIXPIN,
                 accion,

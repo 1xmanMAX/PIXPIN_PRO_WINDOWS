@@ -460,7 +460,7 @@ pub(super) fn comprobar_paquete(bytes: &[u8]) -> BTreeMap<String, Vec<u8>> {
 
 fn leer_con_pixpin(bytes: &[u8]) -> crate::Documento {
     let mut p = Paquete::de_bytes(bytes).unwrap();
-    docx::de_paquete(&mut p, "x").expect("el lector de PixPin lo abre")
+    docx::de_paquete(&mut p, "x").expect("el lector de PixDesk lo abre")
 }
 
 #[test]
@@ -649,7 +649,7 @@ fn el_documento_lleva_los_estilos_y_la_estructura_de_word() {
     assert!(rels.contains(r#"Target="https://example.com/a?b=1&amp;c=2" TargetMode="External""#));
     assert!(
         !rels.contains("pixpin:"),
-        "los enlaces de PixPin no son hipervinculos"
+        "los enlaces de PixDesk no son hipervinculos"
     );
     let num = texto(&m, "word/numbering.xml");
     assert!(
@@ -915,7 +915,7 @@ fn muestra_para_word() {
             letra: Letra::default(),
             comentarios: c.as_ref(),
             imagen: &fotos,
-            autor: "PixPin",
+            autor: "PixDesk",
             ahora_ms: 1_790_000_000_000,
         })
         .unwrap();

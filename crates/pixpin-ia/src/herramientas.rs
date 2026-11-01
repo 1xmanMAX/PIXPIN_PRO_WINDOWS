@@ -231,7 +231,7 @@ pub fn catalogo_base() -> Vec<Herramienta> {
         Herramienta {
             nombre: DIBUJAR.into(),
             descripcion: concat!(
-                "Dibuja figuras en el lienzo de PixPin (800x600 si esta vacio, origen arriba a la izquierda; si ya hay cosas, usa las MISMAS coordenadas que trae el «Lienzo destino», que pueden pasar de 800x600). ",
+                "Dibuja figuras en el lienzo de PixDesk (800x600 si esta vacio, origen arriba a la izquierda; si ya hay cosas, usa las MISMAS coordenadas que trae el «Lienzo destino», que pueden pasar de 800x600). ",
                 "Cada elemento lleva su «color» (el que pidio el usuario) y, si va lleno, su «relleno». ",
                 "Tipos: rectangulo, elipse, rombo, triangulo, estrella, onda y nube (de revision, para rodear lo que cambio) (con «caja»:[x,y,ancho,alto]; un circulo tambien con «centro»:[x,y] y «radio»); ",
                 "linea, flecha, curva (suave), poligono y lapiz (a mano alzada) (con «puntos»:[x1,y1,x2,y2,...]); texto (con «x», «y» y «texto»); ",
@@ -334,7 +334,7 @@ pub fn catalogo_base() -> Vec<Herramienta> {
         },
         Herramienta {
             nombre: AYUDA.into(),
-            descripcion: "Busca en la ayuda de PixPin donde esta algo o como se hace (menus, atajos, ventanas). Usala ante cualquier pregunta sobre la app, antes de contestar.".into(),
+            descripcion: "Busca en la ayuda de PixDesk donde esta algo o como se hace (menus, atajos, ventanas). Usala ante cualquier pregunta sobre la app, antes de contestar.".into(),
             parametros: json!({
                 "type": "object",
                 "required": ["pregunta"],

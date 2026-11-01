@@ -77,7 +77,7 @@ pub fn por_avisar() -> Option<u64> {
 /// «Dejarlos»: la tarjeta no vuelve a salir (el boton de Ajustes sigue).
 pub fn no_avisar() {
     let Some(c) = carpeta() else { return };
-    let texto = "PixPin Max ya no usa esta carpeta: el asistente contesta con la nube.\r\n\
+    let texto = "PixDesk ya no usa esta carpeta: el asistente contesta con la nube.\r\n\
                  Se puede borrar entera (Ajustes > Asistente > Liberar espacio).\r\n";
     if let Err(e) = std::fs::write(c.join(NO_AVISAR), texto) {
         tracing::warn!(?e, "asistente: no se pudo apuntar que no se avise");
