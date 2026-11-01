@@ -320,11 +320,12 @@ impl Hacedor for DeVerdad {
                 // Lo que borra o envia pregunta en una burbuja del chat
                 // «Asistente» (13-oct-2026; antes, un cuadro de Windows).
                 let ent = self.app.entorno.clone();
+                let quien = pixpin_store::Catalogo::nuevo(self.app.idioma).t("auto-origen");
                 let confirmar: crate::asistente::acciones::Confirmar = Box::new(move |p: &str| {
                     crate::asistente::permiso::preguntar_en_el_chat(
                         &ent.ubicacion,
                         &ent.aparato,
-                        "Automatización",
+                        &quien,
                         p,
                     )
                 });
@@ -354,7 +355,7 @@ impl Hacedor for DeVerdad {
                 texto: pedido.to_string(),
                 proyecto: proyecto.map(str::to_string),
                 imagenes: imagenes.to_vec(),
-                origen: Some("Automatización".into()),
+                origen: Some(textos.t("auto-origen")),
                 bloquear: Some(bloquear),
             },
             encargo::Permiso::EnLaBurbuja,

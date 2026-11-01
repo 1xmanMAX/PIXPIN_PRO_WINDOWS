@@ -1353,7 +1353,7 @@ fn hacer(p: Pedido, cx: &Contexto) -> Result<Hecho, Fallo> {
         }
         // En su hilo, como la de arriba: una vuelta tarda segundos.
         Pedido::Sincronizar { aparato } => {
-            crate::sincronizar::en_fondo::lanzar(cx.ubicacion, &aparato);
+            crate::sincronizar::en_fondo::lanzar(cx.ubicacion, &aparato, cx.idioma);
         }
         // A la cola de encargos: un turno tarda segundos (o minutos en el
         // local). Al acabar, una notificacion de Windows (`cola`).

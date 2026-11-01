@@ -3501,3 +3501,19 @@ lamina-unidades = UNIDADES
 lamina-opcion = Lámina
 lamina-con-membrete = Con marco y membrete
 lamina-sin-marco = Sin marco
+# Sincronizar en segundo plano, pedido desde Flow o el asistente (sincronizar/en_fondo.rs)
+sinc-fondo-solo = Este PC no tiene a nadie más en el grupo: únelo en Sincronizar
+sinc-fondo-no-es-del-grupo = Ese aparato ya no está en el grupo
+sinc-fondo-aparatos = { $n } aparatos
+sinc-fondo-sincronizando = Sincronizando con { $quien }…
+sinc-fondo-ya-en-marcha = Ya se está sincronizando: espera a que acabe
+sinc-fondo-fallo = No se pudo sincronizar: { $error }
+# Leer en voz (leer_en_voz.rs)
+lector-voz-en-linea = en línea
+# Quien pide en el chat cuando lo hace una automatizacion (automatizaciones/motor.rs)
+auto-origen = Automatización
+# El asistente de la nube sin clave (asistente/nube.rs)
+ia-nube-falta-la-clave = Falta la clave de { $proveedor }: pégala en Ajustes → Asistente (se saca en { $pagina }).
+# Los campos de una figura que se alarga (ventana_editor/figuras/ventana.rs)
+figuras-ventana-no-es-numero = «{ $texto }» no es un número
+figuras-ventana-mes = «{ $texto }»: escribe el mes como 2026-11

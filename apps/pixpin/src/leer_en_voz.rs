@@ -109,6 +109,8 @@ pub struct Rotulos {
     pub preparando: String,
     pub no_respondio: String,
     pub sin_voz: String,
+    /// «en línea», detras de una voz de Microsoft.
+    pub en_linea: String,
 }
 
 impl Rotulos {
@@ -121,6 +123,7 @@ impl Rotulos {
             preparando: textos.t("lector-voz-preparando"),
             no_respondio: textos.t("lector-voz-no-respondio"),
             sin_voz: textos.t("lector-voz-sin-voz"),
+            en_linea: textos.t("lector-voz-en-linea"),
         }
     }
 
@@ -650,11 +653,13 @@ impl Hilo {
     /// saberlo empieza ya, y lo que sonaba vuelve a empezar su parrafo.
     fn con_las_voces(&mut self, voces: &[Voz], preferida: Option<String>) {
         self.esperando_voces = false;
-        let Some((idioma, no_respondio)) = self
-            .doc
-            .as_ref()
-            .map(|d| (d.idioma.clone(), d.rotulos.no_respondio.clone()))
-        else {
+        let Some((idioma, no_respondio, en_linea)) = self.doc.as_ref().map(|d| {
+            (
+                d.idioma.clone(),
+                d.rotulos.no_respondio.clone(),
+                d.rotulos.en_linea.clone(),
+            )
+        }) else {
             return;
         };
         let pendiente = self.pendiente.take();
@@ -668,7 +673,7 @@ impl Hilo {
         let etiqueta = match edge::elegir(voces, &idioma, preferida.as_deref()) {
             Some(v) => {
                 self.edge = Some(v.nombre.clone());
-                etiqueta_de_microsoft(&v)
+                etiqueta_de_microsoft(&v, &en_linea)
             }
             None => {
                 self.edge = None;
@@ -1108,8 +1113,8 @@ fn etiqueta_de_windows(nombre: &str) -> String {
 }
 
 /// «Elvira · Microsoft · en línea», como el movil.
-pub fn etiqueta_de_microsoft(v: &Voz) -> String {
-    format!("{} · Microsoft · en línea", v.corto())
+pub fn etiqueta_de_microsoft(v: &Voz, en_linea: &str) -> String {
+    format!("{} · Microsoft · {en_linea}", v.corto())
 }
 
 /// La carpeta de lo de Microsoft: los MP3 leidos y la lista de voces.
@@ -1292,7 +1297,10 @@ pub fn elegir_voz(
         if vivo {
             mandar(Orden::De(
                 vuelta,
-                Que::Microsoft(Some((v.nombre.clone(), etiqueta_de_microsoft(v)))),
+                Que::Microsoft(Some((
+                    v.nombre.clone(),
+                    etiqueta_de_microsoft(v, &textos.t("lector-voz-en-linea")),
+                ))),
             ));
         }
     }
@@ -1535,7 +1543,10 @@ mod pruebas {
             idioma: "es-ES".into(),
             genero: "Female".into(),
         };
-        assert_eq!(etiqueta_de_microsoft(&v), "Elvira · Microsoft · en línea");
+        assert_eq!(
+            etiqueta_de_microsoft(&v, "en línea"),
+            "Elvira · Microsoft · en línea"
+        );
         assert_eq!(etiqueta_de_windows(""), "Windows");
         assert_eq!(
             etiqueta_de_windows("Microsoft Helena Desktop"),

@@ -3500,3 +3500,22 @@ lamina-unidades = UNITS
 lamina-opcion = Sheet
 lamina-con-membrete = With border and title block
 lamina-sin-marco = No border
+# Sincronizar en segundo plano, pedido desde Flow o el asistente (sincronizar/en_fondo.rs)
+sinc-fondo-solo = This PC has nobody else in the group: join one in Sync
+sinc-fondo-no-es-del-grupo = That device is no longer in the group
+sinc-fondo-aparatos = { $n ->
+        [one] { $n } device
+       *[other] { $n } devices
+    }
+sinc-fondo-sincronizando = Syncing with { $quien }…
+sinc-fondo-ya-en-marcha = A sync is already running: wait for it to finish
+sinc-fondo-fallo = Couldn't sync: { $error }
+# Leer en voz (leer_en_voz.rs)
+lector-voz-en-linea = online
+# Quien pide en el chat cuando lo hace una automatizacion (automatizaciones/motor.rs)
+auto-origen = Automation
+# El asistente de la nube sin clave (asistente/nube.rs)
+ia-nube-falta-la-clave = The { $proveedor } key is missing: paste it in Settings → Assistant (get one at { $pagina }).
+# Los campos de una figura que se alarga (ventana_editor/figuras/ventana.rs)
+figuras-ventana-no-es-numero = “{ $texto }” is not a number
+figuras-ventana-mes = “{ $texto }”: write the month as 2026-11
