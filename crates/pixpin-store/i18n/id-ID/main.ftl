@@ -173,7 +173,7 @@ chat-clase-pagina = Halaman
 chat-clase-proyecto = Proyek
 chat-clase-miniapp = Aplikasi mini
 chat-escribe = Tulis sesuatu…
-# The chat, like PixPin Android's (guardados/MensajesActivity.kt).
+# The chat, like PinDesk Android's (guardados/MensajesActivity.kt).
 chat-cosas = { $n ->
    *[other] { $n } item
 }
@@ -750,7 +750,7 @@ lienzo-copiar-estilo-ayuda = Ambil warna, goresan, dan isian dari satu bentuk la
 lienzo-estilo-tomado = Gaya diambil
 lienzo-estilo-sin-tomar = Anda belum mengambil gaya.
 
-# The attachment the document viewer can open without leaving PixPin.
+# The attachment the document viewer can open without leaving PinDesk.
 chat-abrir-aqui = Buka di sini
 
 # The seven mini-apps from the phone, and their panel.
@@ -827,7 +827,7 @@ chat-recordatorio-titulo = Pengingat
 chat-enviar-wifi = Kirim lewat Wi-Fi
 
 # Turning a voice note into text with Vosk. What is missing is named with its
-# file and link: PixPin never downloads anything on its own.
+# file and link: PinDesk never downloads anything on its own.
 chat-transcribiendo = Mengubah menjadi teks… { $pct }%
 chat-transcribir-hecha = Catatan suara diubah menjadi teks
 chat-transcribir-en-marcha = Catatan lain sedang diubah; tunggu sampai selesai
@@ -1012,7 +1012,7 @@ compartir-originales = File asli
 compartir-editable = Dapat diedit
 compartir-texto = Teks
 compartir-csv = Tabel (CSV)
-compartir-pixpin = PinDesk (.pixpin)
+compartir-pindesk = PinDesk (.pindesk)
 compartir-dxf = DXF
 compartir-xlsx = Excel (xlsx)
 compartir-docx = Word (docx)
@@ -1703,7 +1703,7 @@ pedido-ocr-sin-texto = Tidak ditemukan teks di gambar.
 pedido-ocr-no-disponible = OCR Windows tidak terpasang: tambahkan bahasa dengan pengenalan teks di Pengaturan.
 pedido-ocr-fallo = Tidak dapat membaca teks di gambar: { $motivo }
 
-## Command line and pixpin:// links (Oct 15)
+## Command line and pindesk:// links (Oct 15)
 orden-titulo = PinDesk
 orden-confirmar-cabecera = Sebuah tautan meminta PinDesk untuk:
 orden-confirmar-pregunta = Lakukan?
@@ -2513,7 +2513,7 @@ bandeja2-silenciar-sub = untuk game atau presentasi
 bandeja2-ultimas = Tangkapan terbaru
 bandeja2-ver-galeria = Lihat galeri
 bandeja2-sin-capturas = Belum ada tangkapan
-bandeja2-abrir-pixpin = Buka PinDesk
+bandeja2-abrir-pindesk = Buka PinDesk
 bandeja2-tareas = Tugas
 bandeja2-lecciones = Pelajaran
 bandeja2-nueva-leccion = Pelajaran baru
@@ -2891,7 +2891,7 @@ asistente-viejos-dejar = Biarkan
 asistente-viejos-borrados = Selesai: model lokal dihapus dan ruangnya kosong.
 asistente-viejos-no-borrados = Tidak semua model lokal dapat dihapus. Tutup yang memakainya dan coba lagi dari Pengaturan → Asisten.
 ajustes2-asistente-borrar-locales = Model lokal lama
-ajustes2-ayuda-asistente-borrar-locales = Yang diunduh untuk asisten lokal, tidak lagi dipakai: { $tamano } di %LOCALAPPDATA%\PixPinMax\modelos.
+ajustes2-ayuda-asistente-borrar-locales = Yang diunduh untuk asisten lokal, tidak lagi dipakai: { $tamano } di %LOCALAPPDATA%\PinDesk\modelos.
 
 ## Cloud assistant (13-oct-2026)
 ajustes2-sec-asistente = Asisten

@@ -18,7 +18,7 @@
 //!    habia sigue en su sitio). Solo en hojas sin girar: girada, «a los
 //!    lados» es otro eje de la caja y el lector no pone margenes ahi.
 //! 2. Lo anotado encima, **como vectores**, en un formulario con su **capa**
-//!    («PixPin · hoja N») que **el contenido de la hoja pinta al final**
+//!    («PinDesk · hoja N»; antes «PixPin · hoja N») que **el contenido de la hoja pinta al final**
 //!    (`/OC … BDC … EMC`, Android v0.98.2, 30-sep): hasta entonces iba en una
 //!    anotacion (un sello), y el lector de PDF de Android —el de PixPin y el
 //!    de muchos visores del movil— no pinta anotaciones: el PDF salia
@@ -261,7 +261,7 @@ pub fn hacer(base: &[u8], a: &Anotaciones) -> Option<Vec<u8>> {
         }
         if let Some((forma, _)) = formulario {
             let hoja = paginas.iter().position(|&n| n == h.numero).unwrap_or(k) + 1;
-            let nombre_capa = format!("PixPin · hoja {hoja}");
+            let nombre_capa = format!("PinDesk · hoja {hoja}");
             let (capa, n_forma, abrir, pintar) =
                 (siguiente, siguiente + 1, siguiente + 2, siguiente + 3);
             siguiente += 4;

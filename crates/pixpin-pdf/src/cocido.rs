@@ -21,10 +21,16 @@
 //! reescribir nada ni depender de que el lector de Windows respete las capas
 //! apagadas.
 
-/// Como empieza el nombre de una capa de PixPin, en las tres formas en que
+/// Como empieza el nombre de una capa nuestra, en las tres formas en que
 /// puede ir escrito dentro del PDF: cadena hexadecimal UTF-16 (la del movil,
-/// `<feff0050…>`), en mayusculas, y cadena literal.
-const MARCAS: [&[u8]; 4] = [
+/// `<feff0050…>`), en mayusculas, y cadena literal. Con el nombre de ahora
+/// («PinDesk · hoja N») y con el de antes («PixPin · hoja N»), que es el que
+/// escriben los aparatos sin actualizar y los PDF ya anotados.
+const MARCAS: [&[u8]; 8] = [
+    b"feff00500069006e004400650073006b",
+    b"FEFF00500069006E004400650073006B",
+    b"(PinDesk",
+    b"(\xFE\xFF\x00P\x00i\x00n\x00D\x00e\x00s\x00k",
     b"feff00500069007800500069006e",
     b"FEFF00500069007800500069006E",
     b"(PixPin",
@@ -96,6 +102,26 @@ mod pruebas {
             largo_sin_lo_cocido(&con_capa("(PixPin)")),
             Some(ORIGINAL.len())
         );
+    }
+
+    #[test]
+    fn la_capa_con_el_nombre_de_pindesk_tambien_se_reconoce() {
+        // «PinDesk · hoja 1» como la escribe el PC ahora, en las tres formas.
+        for capa in [
+            "<feff00500069006e004400650073006b002000b700200068006f006a0061>",
+            "<FEFF00500069006E004400650073006B>",
+            "(PinDesk \\267 hoja 1)",
+        ] {
+            assert_eq!(
+                largo_sin_lo_cocido(&con_capa(capa)),
+                Some(ORIGINAL.len()),
+                "{capa}"
+            );
+        }
+        // Caso negativo: un «PinDesk» en el `/Producer` no es una capa.
+        let mut w = ORIGINAL.to_vec();
+        w.extend_from_slice(b"9 0 obj<</Producer (PinDesk)>>endobj\n%%EOF\n");
+        assert_eq!(largo_sin_lo_cocido(&w), None);
     }
 
     #[test]

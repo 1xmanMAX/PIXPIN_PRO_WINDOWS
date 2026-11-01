@@ -374,7 +374,7 @@ fn lienzo_con_foto(foto: &str, ancho: u32, alto: u32, ahora: i64) -> String {
     json!({
         "type": "excalidraw",
         "version": 2,
-        "source": "pixpin-max",
+        "source": "pindesk",
         "elements": [{
             "id": format!("foto-{ahora}-0"),
             "type": "image",

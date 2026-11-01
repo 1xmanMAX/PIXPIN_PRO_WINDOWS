@@ -400,7 +400,7 @@ fn de_visor(x: exportable::Exportable, t: &Catalogo) -> Preparado {
         let (raiz, proyecto, anotado) = (x.raiz, x.proyecto, x.anotado);
         p.extras.push(Extra {
             id: exportable::PIXPIN,
-            clave: "compartir-pixpin",
+            clave: "compartir-pindesk",
             que: Entero::Funcion(Arc::new(move |carpeta: &Path| {
                 let (fichero, bytes) = exportable::pixpin_de(
                     raiz.as_deref(),
@@ -437,7 +437,7 @@ fn anadir_pixpin(p: &mut Preparado, ruta: PathBuf) {
     let raiz = crate::oscuro::ubicacion().map(|u| u.raiz().to_path_buf());
     p.extras.push(Extra {
         id: exportable::PIXPIN,
-        clave: "compartir-pixpin",
+        clave: "compartir-pindesk",
         que: Entero::Funcion(Arc::new(move |carpeta: &Path| {
             let (fichero, bytes) = exportable::pixpin_de(
                 raiz.as_deref(),
@@ -474,10 +474,10 @@ fn de_lienzo_suelto(l: LienzoSuelto, t: &Catalogo) -> Preparado {
     let (titulo, editable) = (p.titulo.clone(), json.clone());
     p.extras.push(Extra {
         id: exportable::PIXPIN,
-        clave: "compartir-pixpin",
+        clave: "compartir-pindesk",
         que: Entero::Funcion(Arc::new(move |carpeta: &Path| {
             let nombre = nombre_de_fichero(&titulo);
-            let r = carpeta.join(format!("{nombre}.pixpin"));
+            let r = carpeta.join(format!("{nombre}.pindesk"));
             escribir(&r, &pixpin_de_un_lienzo(carpeta, &nombre, &editable)?)?;
             Ok(vec![r])
         })),
@@ -491,7 +491,7 @@ fn de_lienzo_suelto(l: LienzoSuelto, t: &Catalogo) -> Preparado {
 /// `EnviarActivity.deLienzo` del movil), no como un fichero adjunto. El
 /// `.excalidraw` de paso se escribe en `carpeta` y se quita.
 fn pixpin_de_un_lienzo(carpeta: &Path, nombre: &str, json: &str) -> Result<Vec<u8>> {
-    let lienzo = carpeta.join(format!("{nombre}.pixpin-lienzo.excalidraw"));
+    let lienzo = carpeta.join(format!("{nombre}.pindesk-lienzo.excalidraw"));
     escribir(&lienzo, json.as_bytes())?;
     let raiz = crate::oscuro::ubicacion()
         .map(|u| u.raiz().to_path_buf())
@@ -1125,11 +1125,14 @@ fn de_proyectos(raiz: &Path, ids: &[String], t: &Catalogo) -> Result<Preparado> 
         paquetes.push((
             raiz.to_path_buf(),
             ficha.id.clone(),
-            format!("{}.pixpin", exportar_html::nombre_de_fichero(&ficha.nombre)),
+            format!(
+                "{}.pindesk",
+                exportar_html::nombre_de_fichero(&ficha.nombre)
+            ),
         ));
     }
     p.extras.push(Extra {
-        id: "pixpin",
+        id: "pindesk",
         clave: "compartir-editable",
         que: Entero::Proyectos(paquetes),
     });
@@ -1146,11 +1149,11 @@ fn anadir_pixpin_del_chat(p: &mut Preparado, raiz: &Path, proyecto: &str) {
     };
     p.extras.push(Extra {
         id: exportable::PIXPIN,
-        clave: "compartir-pixpin",
+        clave: "compartir-pindesk",
         que: Entero::Proyectos(vec![(
             raiz.to_path_buf(),
             proyecto.to_string(),
-            format!("{}.pixpin", exportar_html::nombre_de_fichero(&nombre)),
+            format!("{}.pindesk", exportar_html::nombre_de_fichero(&nombre)),
         )]),
     });
 }
@@ -2210,7 +2213,7 @@ pub(crate) fn generar(
 /// de Windows, el correo o Teams pueden leerlos despues—, sino al abrir la
 /// siguiente, los que tienen mas de un dia.
 pub(crate) fn carpeta_temporal() -> PathBuf {
-    std::env::temp_dir().join("PixPin").join("compartir")
+    std::env::temp_dir().join("PinDesk").join("compartir")
 }
 
 pub(crate) fn limpiar_viejos(base: &Path, edad: std::time::Duration) {

@@ -480,7 +480,7 @@ pub(super) fn mime_de(nombre: &str) -> Option<&'static str> {
         "md" => "text/markdown",
         "html" | "htm" => "text/html",
         "json" => "application/json",
-        "zip" | "pixpin" => "application/zip",
+        "zip" | "pindesk" | "pixpin" => "application/zip",
         "excalidraw" => "application/vnd.excalidraw+json",
         "mp4" => "video/mp4",
         "mov" => "video/quicktime",
@@ -529,7 +529,9 @@ fn de_proyecto(raiz: &Path, id: &str, carpeta: &Path) -> Result<(Elemento, PathB
         .get("origen")
         .and_then(|v| v.as_str())
         .unwrap_or(&pr.id);
-    let destino = carpeta.join(format!("{}.pixpin", envio::nombre_sano(&pr.nombre)));
+    let destino = carpeta.join(pixpin_proyecto::nombre_de_paquete(&envio::nombre_sano(
+        &pr.nombre,
+    )));
     std::fs::create_dir_all(carpeta).map_err(|e| e.to_string())?;
     std::fs::write(&destino, &bytes).map_err(|e| e.to_string())?;
     Ok((
@@ -646,7 +648,7 @@ fn abrir_la_puerta(s: &Enviar, cx: &Contexto) -> anyhow::Result<Fase> {
             let corto: String = cx.nombre.chars().take(40).collect();
             let anuncio = pixpin_shell::mdns::anunciar(
                 envio::SERVICIO,
-                &format!("PixPin {}", cx.nombre),
+                &format!("PinDesk {}", cx.nombre),
                 puerto,
                 &[("g", &etiqueta), ("n", &corto)],
             );
@@ -1357,6 +1359,7 @@ mod pruebas {
     fn el_tipo_de_un_archivo_sale_de_su_extension_y_lo_raro_va_sin() {
         assert_eq!(mime_de("Plano.PDF"), Some("application/pdf"));
         assert_eq!(mime_de("foto.jpeg"), Some("image/jpeg"));
+        assert_eq!(mime_de("casa.pindesk"), Some("application/zip"));
         assert_eq!(mime_de("casa.pixpin"), Some("application/zip"));
         assert_eq!(mime_de("sin-extension"), None);
         assert_eq!(mime_de("cosa.xyz"), None);

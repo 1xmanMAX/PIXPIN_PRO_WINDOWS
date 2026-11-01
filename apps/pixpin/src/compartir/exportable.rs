@@ -129,7 +129,7 @@ impl Exportable {
 }
 
 pub(crate) const ORIGINAL: &str = "original";
-pub(crate) const PIXPIN: &str = "pixpin";
+pub(crate) const PIXPIN: &str = "pindesk";
 
 /// **El `.pixpin` de un fichero suelto**: si se sabe su chat (`proyecto`) o
 /// es un adjunto de un chat, el proyecto entero de ese chat (lo que manda el
@@ -155,7 +155,7 @@ pub(crate) fn pixpin_de(
             .map(|f| f.nombre.clone())
             .unwrap_or(tronco.clone());
         return Ok((
-            format!("{}.pixpin", super::nombre_de_fichero(&ficha)),
+            format!("{}.pindesk", super::nombre_de_fichero(&ficha)),
             bytes,
         ));
     }
@@ -170,7 +170,7 @@ pub(crate) fn pixpin_de(
             .map(|f| f.nombre.clone())
             .unwrap_or(tronco.clone());
         return Ok((
-            format!("{}.pixpin", super::nombre_de_fichero(&ficha)),
+            format!("{}.pindesk", super::nombre_de_fichero(&ficha)),
             bytes,
         ));
     }
@@ -212,7 +212,7 @@ pub(crate) fn pixpin_de(
     p.poner_entrada("guardados.jsonl", format!("{linea}\n").into_bytes());
     let bytes = p.a_bytes().map_err(|e| anyhow::anyhow!("{e}"))?;
     Ok((
-        format!("{}.pixpin", super::nombre_de_fichero(&tronco)),
+        format!("{}.pindesk", super::nombre_de_fichero(&tronco)),
         bytes,
     ))
 }
@@ -342,7 +342,7 @@ pub(crate) fn pixpin_nuevo(
     cuando: i64,
 ) -> Result<(String, Vec<u8>)> {
     use pixpin_proyecto::cuaderno::{Clase, Mensaje};
-    anyhow::ensure!(!apuntes.is_empty(), "no hay nada que poner en el .pixpin");
+    anyhow::ensure!(!apuntes.is_empty(), "no hay nada que poner en el .pindesk");
     let nombre = if titulo.trim().is_empty() {
         "PinDesk".to_string()
     } else {
@@ -420,18 +420,18 @@ pub(crate) fn pixpin_nuevo(
             poner(m, &mut lineas)?;
         }
     }
-    anyhow::ensure!(!lineas.is_empty(), "no hay nada que poner en el .pixpin");
+    anyhow::ensure!(!lineas.is_empty(), "no hay nada que poner en el .pindesk");
     p.poner_entrada("guardados.jsonl", lineas.into_bytes());
     let bytes = p.a_bytes().map_err(|e| anyhow::anyhow!("{e}"))?;
     Ok((
-        format!("{}.pixpin", super::nombre_de_fichero(&nombre)),
+        format!("{}.pindesk", super::nombre_de_fichero(&nombre)),
         bytes,
     ))
 }
 
 /// El `.pixpin` de [`pixpin_nuevo`] como formato propio de un visor.
 pub(crate) fn propio_pixpin(titulo: String, apuntes: Vec<Apunte>) -> Propio {
-    Propio::nuevo(PIXPIN, "compartir-pixpin", move |c| {
+    Propio::nuevo(PIXPIN, "compartir-pindesk", move |c| {
         let (fichero, bytes) =
             pixpin_nuevo(&titulo, &apuntes, pixpin_shell::entorno::ahora_utc_ms())?;
         let r = c.join(fichero);
@@ -762,7 +762,7 @@ mod pruebas {
         std::fs::write(&a, "{}").unwrap();
         let (nombre, bytes) =
             pixpin_de(None, None, &f, std::slice::from_ref(&a), 1_700_000_000_000).unwrap();
-        assert_eq!(nombre, "plano.pixpin");
+        assert_eq!(nombre, "plano.pindesk");
         let p = pixpin_proyecto::Paquete::desde_bytes(&bytes).unwrap();
         assert_eq!(p.proyecto.nombre, "plano");
         assert_eq!(p.entrada("archivos/plano.dxf"), Some(&b"0\nEOF\n"[..]));
@@ -849,7 +849,7 @@ mod pruebas {
             },
         ];
         let (nombre, bytes) = pixpin_nuevo("Timeline: hoy", &apuntes, 7).unwrap();
-        assert!(nombre.ends_with(".pixpin"), "{nombre}");
+        assert!(nombre.ends_with(".pindesk"), "{nombre}");
         let p = pixpin_proyecto::Paquete::desde_bytes(&bytes).unwrap();
         assert_eq!(p.proyecto.nombre, "Timeline: hoy");
         assert!(
@@ -893,7 +893,7 @@ mod pruebas {
         assert_eq!(ids.iter().filter(|i| **i == "web").count(), 1, "{ids:?}");
         let claves: Vec<String> = p.piezas.iter().map(|x| x.pagina.clave.clone()).collect();
         let salida = d.join("salida");
-        for id in ["web", "pdf", "png", "jpg", "svg", "original", "pixpin"] {
+        for id in ["web", "pdf", "png", "jpg", "svg", "original", "pindesk"] {
             let s = super::super::generar(&p, id, &claves, &salida)
                 .unwrap_or_else(|e| panic!("{id}: {e:#}"));
             assert!(

@@ -938,7 +938,7 @@ compartir-originales = 原件
 compartir-editable = 可编辑
 compartir-texto = 文本
 compartir-csv = 表格（CSV）
-compartir-pixpin = PinDesk (.pixpin)
+compartir-pindesk = PinDesk (.pindesk)
 compartir-dxf = DXF
 compartir-xlsx = Excel (xlsx)
 compartir-docx = Word (docx)
@@ -2358,7 +2358,7 @@ bandeja2-silenciar-sub = 用于游戏或演讲
 bandeja2-ultimas = 最近的截图
 bandeja2-ver-galeria = 查看截图库
 bandeja2-sin-capturas = 还没有截图
-bandeja2-abrir-pixpin = 打开 PinDesk
+bandeja2-abrir-pindesk = 打开 PinDesk
 bandeja2-tareas = 任务
 bandeja2-lecciones = 心得
 bandeja2-nueva-leccion = 新建心得
@@ -2717,7 +2717,7 @@ asistente-viejos-dejar = 保留
 asistente-viejos-borrados = 完成：本地模型已删除，空间已释放。
 asistente-viejos-no-borrados = 无法删除所有本地模型。请关闭正在使用它们的程序，然后在“设置 → 助手”中重试。
 ajustes2-asistente-borrar-locales = 旧的本地模型
-ajustes2-ayuda-asistente-borrar-locales = 为本地助手下载、现已不再使用的内容：{ $tamano }，位于 %LOCALAPPDATA%\PixPinMax\modelos。
+ajustes2-ayuda-asistente-borrar-locales = 为本地助手下载、现已不再使用的内容：{ $tamano }，位于 %LOCALAPPDATA%\PinDesk\modelos。
 
 ## Cloud assistant (13-oct-2026)
 ajustes2-sec-asistente = 助手

@@ -195,7 +195,7 @@ chat-buscar = Buscar
 chat-adjuntar = Adjuntar
 chat-fijado = Mensaje fijado
 chat-sistema-memoria-menu = Memoria del asistente (abrir su carpeta para leerla o cambiarla)
-# El chat como el de PixPin Android (guardados/MensajesActivity.kt).
+# El chat como el de PinDesk Android (guardados/MensajesActivity.kt).
 chat-cosas = { $n ->
     [one] 1 cosa
    *[other] { $n } cosas
@@ -761,7 +761,7 @@ lienzo-copiar-estilo-ayuda = Toma el color, el trazo y el relleno de una figura 
 lienzo-estilo-tomado = Estilo tomado
 lienzo-estilo-sin-tomar = Todavía no has tomado ningún estilo.
 
-# El adjunto que el visor de documentos sabe abrir sin salir de PixPin.
+# El adjunto que el visor de documentos sabe abrir sin salir de PinDesk.
 chat-abrir-aqui = Abrir aquí
 
 # Las siete mini-aplicaciones del movil, y su panel.
@@ -839,7 +839,7 @@ chat-recordatorio-titulo = Recordatorio
 chat-enviar-wifi = Enviar por Wi-Fi
 
 # Pasar una nota de voz a texto con Vosk. Lo que falta se dice con el nombre
-# del fichero y el enlace: PixPin no descarga nada por su cuenta.
+# del fichero y el enlace: PinDesk no descarga nada por su cuenta.
 chat-transcribiendo = Pasando a texto… { $pct } %
 chat-transcribir-hecha = Nota pasada a texto
 chat-transcribir-en-marcha = Ya se está pasando otra nota a texto; espera a que acabe
@@ -1024,7 +1024,7 @@ compartir-originales = Originales
 compartir-editable = Editable
 compartir-texto = Texto
 compartir-csv = Tabla (CSV)
-compartir-pixpin = PinDesk (.pixpin)
+compartir-pindesk = PinDesk (.pindesk)
 compartir-dxf = DXF
 compartir-xlsx = Excel (xlsx)
 compartir-docx = Word (docx)
@@ -1717,7 +1717,7 @@ pedido-ocr-sin-texto = No se encontró texto en la imagen.
 pedido-ocr-no-disponible = El OCR de Windows no está instalado: añade un idioma con reconocimiento de texto en Configuración.
 pedido-ocr-fallo = No se pudo leer el texto de la imagen: { $motivo }
 
-## Linea de ordenes y enlaces pixpin:// (15-oct)
+## Linea de ordenes y enlaces pindesk:// (15-oct)
 orden-titulo = PinDesk
 orden-confirmar-cabecera = Un enlace le pide a PinDesk:
 orden-confirmar-pregunta = ¿Hacerlo?
@@ -2539,7 +2539,7 @@ bandeja2-silenciar-sub = para jugar o presentar
 bandeja2-ultimas = Últimas capturas
 bandeja2-ver-galeria = Ver la galería
 bandeja2-sin-capturas = Aún no hay capturas
-bandeja2-abrir-pixpin = Abrir PinDesk
+bandeja2-abrir-pindesk = Abrir PinDesk
 bandeja2-tareas = Tareas
 bandeja2-lecciones = Lecciones
 bandeja2-nueva-leccion = Nueva lección
@@ -2933,7 +2933,7 @@ asistente-viejos-dejar = Dejarlos
 asistente-viejos-borrados = Listo: los modelos locales se borraron y el espacio quedó libre.
 asistente-viejos-no-borrados = No se pudieron borrar todos los modelos locales. Cierra lo que los use y prueba otra vez desde Ajustes → Asistente.
 ajustes2-asistente-borrar-locales = Modelos locales antiguos
-ajustes2-ayuda-asistente-borrar-locales = Lo que se bajó para el asistente local, que ya no se usa: { $tamano } en %LOCALAPPDATA%\PixPinMax\modelos.
+ajustes2-ayuda-asistente-borrar-locales = Lo que se bajó para el asistente local, que ya no se usa: { $tamano } en %LOCALAPPDATA%\PinDesk\modelos.
 
 ## Asistente con la nube (13-oct-2026)
 ajustes2-sec-asistente = Asistente

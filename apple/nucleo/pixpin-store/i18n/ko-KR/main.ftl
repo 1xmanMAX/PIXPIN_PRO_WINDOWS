@@ -938,7 +938,7 @@ compartir-originales = 원본
 compartir-editable = 편집 가능
 compartir-texto = 텍스트
 compartir-csv = 표(CSV)
-compartir-pixpin = PinDesk(.pixpin)
+compartir-pindesk = PinDesk(.pindesk)
 compartir-dxf = DXF
 compartir-xlsx = Excel(xlsx)
 compartir-docx = Word(docx)
@@ -2358,7 +2358,7 @@ bandeja2-silenciar-sub = 게임이나 발표 중에
 bandeja2-ultimas = 최근 캡처
 bandeja2-ver-galeria = 갤러리 보기
 bandeja2-sin-capturas = 아직 캡처가 없습니다
-bandeja2-abrir-pixpin = PinDesk 열기
+bandeja2-abrir-pindesk = PinDesk 열기
 bandeja2-tareas = 작업
 bandeja2-lecciones = 교훈
 bandeja2-nueva-leccion = 새 교훈
@@ -2717,7 +2717,7 @@ asistente-viejos-dejar = 유지
 asistente-viejos-borrados = 완료: 로컬 모델을 삭제하여 공간을 확보했습니다.
 asistente-viejos-no-borrados = 일부 로컬 모델을 삭제할 수 없습니다. 사용 중인 프로그램을 닫고 설정 → 어시스턴트에서 다시 시도하세요.
 ajustes2-asistente-borrar-locales = 이전 로컬 모델
-ajustes2-ayuda-asistente-borrar-locales = 더 이상 사용하지 않는 로컬 어시스턴트용 다운로드 파일: %LOCALAPPDATA%\PixPinMax\modelos에 { $tamano }.
+ajustes2-ayuda-asistente-borrar-locales = 더 이상 사용하지 않는 로컬 어시스턴트용 다운로드 파일: %LOCALAPPDATA%\PinDesk\modelos에 { $tamano }.
 
 ## Cloud assistant (13-oct-2026)
 ajustes2-sec-asistente = 어시스턴트

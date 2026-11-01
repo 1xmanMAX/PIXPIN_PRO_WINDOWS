@@ -968,7 +968,7 @@ compartir-originales = Оригиналы
 compartir-editable = Редактируемый
 compartir-texto = Текст
 compartir-csv = Таблица (CSV)
-compartir-pixpin = PinDesk (.pixpin)
+compartir-pindesk = PinDesk (.pindesk)
 compartir-dxf = DXF
 compartir-xlsx = Excel (xlsx)
 compartir-docx = Word (docx)
@@ -2431,7 +2431,7 @@ bandeja2-silenciar-sub = для игр или выступлений
 bandeja2-ultimas = Последние снимки
 bandeja2-ver-galeria = Открыть галерею
 bandeja2-sin-capturas = Снимков пока нет
-bandeja2-abrir-pixpin = Открыть PinDesk
+bandeja2-abrir-pindesk = Открыть PinDesk
 bandeja2-tareas = Задачи
 bandeja2-lecciones = Уроки
 bandeja2-nueva-leccion = Новый урок
@@ -2846,7 +2846,7 @@ asistente-viejos-dejar = Оставить
 asistente-viejos-borrados = Готово: локальные модели удалены, место освобождено.
 asistente-viejos-no-borrados = Не все локальные модели удалось удалить. Закройте то, что их использует, и повторите в Параметры → Помощник.
 ajustes2-asistente-borrar-locales = Старые локальные модели
-ajustes2-ayuda-asistente-borrar-locales = Загруженное для локального помощника, больше не используется: { $tamano } в %LOCALAPPDATA%\PixPinMax\modelos.
+ajustes2-ayuda-asistente-borrar-locales = Загруженное для локального помощника, больше не используется: { $tamano } в %LOCALAPPDATA%\PinDesk\modelos.
 
 ## Cloud assistant (13-oct-2026)
 ajustes2-sec-asistente = Помощник

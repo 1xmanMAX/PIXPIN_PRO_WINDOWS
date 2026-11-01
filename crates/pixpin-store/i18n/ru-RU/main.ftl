@@ -176,7 +176,7 @@ chat-clase-pagina = Страница
 chat-clase-proyecto = Проект
 chat-clase-miniapp = Мини-приложение
 chat-escribe = Напишите что-нибудь…
-# The chat, like PixPin Android's (guardados/MensajesActivity.kt).
+# The chat, like PinDesk Android's (guardados/MensajesActivity.kt).
 chat-cosas = { $n ->
     [one] { $n } элемент
     [few] { $n } элемента
@@ -777,7 +777,7 @@ lienzo-copiar-estilo-ayuda = Возьмите цвет, линию и залив
 lienzo-estilo-tomado = Стиль взят
 lienzo-estilo-sin-tomar = Вы ещё не взяли стиль.
 
-# The attachment the document viewer can open without leaving PixPin.
+# The attachment the document viewer can open without leaving PinDesk.
 chat-abrir-aqui = Открыть здесь
 
 # The seven mini-apps from the phone, and their panel.
@@ -857,7 +857,7 @@ chat-recordatorio-titulo = Напоминание
 chat-enviar-wifi = Отправить через Wi-Fi
 
 # Turning a voice note into text with Vosk. What is missing is named with its
-# file and link: PixPin never downloads anything on its own.
+# file and link: PinDesk never downloads anything on its own.
 chat-transcribiendo = Преобразование в текст… { $pct }%
 chat-transcribir-hecha = Голосовая заметка преобразована в текст
 chat-transcribir-en-marcha = Уже преобразуется другая заметка; дождитесь окончания
@@ -1042,7 +1042,7 @@ compartir-originales = Оригиналы
 compartir-editable = Редактируемый
 compartir-texto = Текст
 compartir-csv = Таблица (CSV)
-compartir-pixpin = PinDesk (.pixpin)
+compartir-pindesk = PinDesk (.pindesk)
 compartir-dxf = DXF
 compartir-xlsx = Excel (xlsx)
 compartir-docx = Word (docx)
@@ -1739,7 +1739,7 @@ pedido-ocr-sin-texto = На изображении не найден текст.
 pedido-ocr-no-disponible = OCR Windows не установлено: добавьте язык с распознаванием текста в параметрах.
 pedido-ocr-fallo = Не удалось прочитать текст на изображении: { $motivo }
 
-## Command line and pixpin:// links (Oct 15)
+## Command line and pindesk:// links (Oct 15)
 orden-titulo = PinDesk
 orden-confirmar-cabecera = Ссылка просит PinDesk:
 orden-confirmar-pregunta = Выполнить?
@@ -2585,7 +2585,7 @@ bandeja2-silenciar-sub = для игр или выступлений
 bandeja2-ultimas = Последние снимки
 bandeja2-ver-galeria = Открыть галерею
 bandeja2-sin-capturas = Снимков пока нет
-bandeja2-abrir-pixpin = Открыть PinDesk
+bandeja2-abrir-pindesk = Открыть PinDesk
 bandeja2-tareas = Задачи
 bandeja2-lecciones = Уроки
 bandeja2-nueva-leccion = Новый урок
@@ -3015,7 +3015,7 @@ asistente-viejos-dejar = Оставить
 asistente-viejos-borrados = Готово: локальные модели удалены, место освобождено.
 asistente-viejos-no-borrados = Не все локальные модели удалось удалить. Закройте то, что их использует, и повторите в Параметры → Помощник.
 ajustes2-asistente-borrar-locales = Старые локальные модели
-ajustes2-ayuda-asistente-borrar-locales = Загруженное для локального помощника, больше не используется: { $tamano } в %LOCALAPPDATA%\PixPinMax\modelos.
+ajustes2-ayuda-asistente-borrar-locales = Загруженное для локального помощника, больше не используется: { $tamano } в %LOCALAPPDATA%\PinDesk\modelos.
 
 ## Cloud assistant (13-oct-2026)
 ajustes2-sec-asistente = Помощник

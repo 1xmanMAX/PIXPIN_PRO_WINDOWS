@@ -949,7 +949,7 @@ compartir-originales = Özgünler
 compartir-editable = Düzenlenebilir
 compartir-texto = Metin
 compartir-csv = Tablo (CSV)
-compartir-pixpin = PinDesk (.pixpin)
+compartir-pindesk = PinDesk (.pindesk)
 compartir-dxf = DXF
 compartir-xlsx = Excel (xlsx)
 compartir-docx = Word (docx)
@@ -2384,7 +2384,7 @@ bandeja2-silenciar-sub = oyunlar veya sunumlar için
 bandeja2-ultimas = Son yakalamalar
 bandeja2-ver-galeria = Galeriyi gör
 bandeja2-sin-capturas = Henüz yakalama yok
-bandeja2-abrir-pixpin = PinDesk'i aç
+bandeja2-abrir-pindesk = PinDesk'i aç
 bandeja2-tareas = Görevler
 bandeja2-lecciones = Dersler
 bandeja2-nueva-leccion = Yeni ders
@@ -2763,7 +2763,7 @@ asistente-viejos-dejar = Kalsın
 asistente-viejos-borrados = Bitti: yerel modeller silindi ve alan boşaldı.
 asistente-viejos-no-borrados = Yerel modellerin hepsi silinemedi. Onları kullananı kapatıp Ayarlar → Asistan'dan yeniden deneyin.
 ajustes2-asistente-borrar-locales = Eski yerel modeller
-ajustes2-ayuda-asistente-borrar-locales = Yerel asistan için indirilen ve artık kullanılmayanlar: %LOCALAPPDATA%\PixPinMax\modelos içinde { $tamano }.
+ajustes2-ayuda-asistente-borrar-locales = Yerel asistan için indirilen ve artık kullanılmayanlar: %LOCALAPPDATA%\PinDesk\modelos içinde { $tamano }.
 
 ## Cloud assistant (13-oct-2026)
 ajustes2-sec-asistente = Asistan

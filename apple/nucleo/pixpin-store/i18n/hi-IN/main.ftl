@@ -949,7 +949,7 @@ compartir-originales = मूल फ़ाइलें
 compartir-editable = संपादन योग्य
 compartir-texto = टेक्स्ट
 compartir-csv = टेबल (CSV)
-compartir-pixpin = PinDesk (.pixpin)
+compartir-pindesk = PinDesk (.pindesk)
 compartir-dxf = DXF
 compartir-xlsx = Excel (xlsx)
 compartir-docx = Word (docx)
@@ -2384,7 +2384,7 @@ bandeja2-silenciar-sub = गेम या प्रेज़ेंटेशन �
 bandeja2-ultimas = हाल के कैप्चर
 bandeja2-ver-galeria = गैलरी देखें
 bandeja2-sin-capturas = अभी कोई कैप्चर नहीं
-bandeja2-abrir-pixpin = PinDesk खोलें
+bandeja2-abrir-pindesk = PinDesk खोलें
 bandeja2-tareas = कार्य
 bandeja2-lecciones = सबक
 bandeja2-nueva-leccion = नया सबक
@@ -2763,7 +2763,7 @@ asistente-viejos-dejar = इन्हें रखें
 asistente-viejos-borrados = हो गया: लोकल मॉडल हटा दिए गए और जगह खाली है।
 asistente-viejos-no-borrados = सभी लोकल मॉडल हटाए नहीं जा सके। जो इन्हें इस्तेमाल कर रहा है उसे बंद करें और सेटिंग्स → असिस्टेंट से फिर से कोशिश करें।
 ajustes2-asistente-borrar-locales = पुराने लोकल मॉडल
-ajustes2-ayuda-asistente-borrar-locales = लोकल असिस्टेंट के लिए डाउनलोड किया गया, अब इस्तेमाल नहीं होता: %LOCALAPPDATA%\PixPinMax\modelos में { $tamano }।
+ajustes2-ayuda-asistente-borrar-locales = लोकल असिस्टेंट के लिए डाउनलोड किया गया, अब इस्तेमाल नहीं होता: %LOCALAPPDATA%\PinDesk\modelos में { $tamano }।
 
 ## Cloud assistant (13-oct-2026)
 ajustes2-sec-asistente = असिस्टेंट

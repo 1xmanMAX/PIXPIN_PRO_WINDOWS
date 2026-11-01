@@ -838,9 +838,12 @@ fn elemento_desde(v: &Value) -> Option<Elemento> {
         "image" => Figura::Imagen {
             id_objeto: id_estable(v.get("fileId").and_then(Value::as_str).unwrap_or_default()),
         },
-        "text" if v["customData"]["pixpin"] == "emoji" => Figura::Emoji {
-            caracter: v.get("text").and_then(|t| t.as_str()).unwrap_or("").into(),
-        },
+        // `customData.pindesk` (o el `customData.pixpin` de antes de PinDesk).
+        "text" if v["customData"]["pindesk"] == "emoji" || v["customData"]["pixpin"] == "emoji" => {
+            Figura::Emoji {
+                caracter: v.get("text").and_then(|t| t.as_str()).unwrap_or("").into(),
+            }
+        }
         "text" => Figura::Texto {
             texto: v.get("text").and_then(|t| t.as_str()).unwrap_or("").into(),
             tam: num_o(v, "fontSize", 20.0),
@@ -1797,7 +1800,9 @@ fn elemento_hacia(e: &Elemento, original: &Value, objetos: bool) -> Value {
             mapa.insert("fontSize".into(), Value::from((e.alto * 0.8) as f64));
             mapa.insert(
                 "customData".into(),
-                serde_json::json!({ "pixpin": "emoji" }),
+                // Los dos mientras haya moviles sin actualizar, que solo
+                // miran `pixpin` (docs/formato-pindesk.md).
+                serde_json::json!({ "pindesk": "emoji", "pixpin": "emoji" }),
             );
         }
         Figura::Cota { puntos } => {
@@ -3686,7 +3691,11 @@ mod pruebas {
         let ultimo = elementos_de(&texto).pop().unwrap();
         assert_eq!(ultimo["type"], "text");
         assert_eq!(ultimo["text"], "😀");
-        assert_eq!(ultimo["customData"]["pixpin"], "emoji");
+        assert_eq!(ultimo["customData"]["pindesk"], "emoji");
+        assert_eq!(
+            ultimo["customData"]["pixpin"], "emoji",
+            "y el de antes, para el movil"
+        );
         let vuelta = leer(&texto).unwrap();
         let elementos = vuelta.elementos();
         assert!(matches!(

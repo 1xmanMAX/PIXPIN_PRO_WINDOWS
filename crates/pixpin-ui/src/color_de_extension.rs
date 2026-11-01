@@ -127,7 +127,7 @@ const TABLA: &[(&Familia, &[&str])] = &[
             "apk", "aab", "xapk", "apks", "exe", "msi", "dmg", "deb", "appimage",
         ],
     ),
-    (&PIXPIN, &["pixpin", "excalidraw"]),
+    (&PIXPIN, &["pindesk", "pixpin", "excalidraw"]),
 ];
 
 /// Para lo que no esta en la tabla: colores que se distinguen de los de las

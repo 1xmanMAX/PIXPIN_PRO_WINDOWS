@@ -388,7 +388,7 @@ pub(crate) fn empaquetar(
 pub(crate) fn nombre_del_paquete(e: &Elemento) -> String {
     let proyecto = e.proyecto_nombre.as_deref().unwrap_or("Proyecto");
     format!(
-        "{}.pixpin",
+        "{}.pindesk",
         envio::nombre_sano(&format!("{proyecto} - {}", e.nombre))
     )
 }

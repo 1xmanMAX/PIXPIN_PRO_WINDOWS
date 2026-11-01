@@ -938,7 +938,7 @@ compartir-originales = オリジナル
 compartir-editable = 編集可能
 compartir-texto = テキスト
 compartir-csv = 表（CSV）
-compartir-pixpin = PinDesk (.pixpin)
+compartir-pindesk = PinDesk (.pindesk)
 compartir-dxf = DXF
 compartir-xlsx = Excel (xlsx)
 compartir-docx = Word (docx)
@@ -2358,7 +2358,7 @@ bandeja2-silenciar-sub = ゲームや講演のときに
 bandeja2-ultimas = 最近のキャプチャ
 bandeja2-ver-galeria = ギャラリーを表示
 bandeja2-sin-capturas = まだキャプチャはありません
-bandeja2-abrir-pixpin = PinDesk を開く
+bandeja2-abrir-pindesk = PinDesk を開く
 bandeja2-tareas = タスク
 bandeja2-lecciones = 教訓
 bandeja2-nueva-leccion = 新しい教訓
@@ -2717,7 +2717,7 @@ asistente-viejos-dejar = 残す
 asistente-viejos-borrados = 完了：ローカルモデルを削除し、空き容量を確保しました。
 asistente-viejos-no-borrados = 一部のローカルモデルを削除できませんでした。使用中のものを閉じて、設定 → アシスタント からもう一度お試しください。
 ajustes2-asistente-borrar-locales = 古いローカルモデル
-ajustes2-ayuda-asistente-borrar-locales = ローカルアシスタント用にダウンロードし、今は使われていないもの：{ $tamano }（%LOCALAPPDATA%\PixPinMax\modelos）。
+ajustes2-ayuda-asistente-borrar-locales = ローカルアシスタント用にダウンロードし、今は使われていないもの：{ $tamano }（%LOCALAPPDATA%\PinDesk\modelos）。
 
 ## Cloud assistant (13-oct-2026)
 ajustes2-sec-asistente = アシスタント

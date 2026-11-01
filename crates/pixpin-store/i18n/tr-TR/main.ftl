@@ -174,7 +174,7 @@ chat-clase-pagina = Sayfa
 chat-clase-proyecto = Proje
 chat-clase-miniapp = Mini uygulama
 chat-escribe = Bir şey yazın…
-# The chat, like PixPin Android's (guardados/MensajesActivity.kt).
+# The chat, like PinDesk Android's (guardados/MensajesActivity.kt).
 chat-cosas = { $n ->
     [one] 1 öğe
    *[other] { $n } öğe
@@ -760,7 +760,7 @@ lienzo-copiar-estilo-ayuda = Bir şeklin rengini, çizgisini ve dolgusunu alıp 
 lienzo-estilo-tomado = Stil alındı
 lienzo-estilo-sin-tomar = Henüz bir stil almadınız.
 
-# The attachment the document viewer can open without leaving PixPin.
+# The attachment the document viewer can open without leaving PinDesk.
 chat-abrir-aqui = Burada aç
 
 # The seven mini-apps from the phone, and their panel.
@@ -838,7 +838,7 @@ chat-recordatorio-titulo = Hatırlatıcı
 chat-enviar-wifi = Wi-Fi üzerinden gönder
 
 # Turning a voice note into text with Vosk. What is missing is named with its
-# file and link: PixPin never downloads anything on its own.
+# file and link: PinDesk never downloads anything on its own.
 chat-transcribiendo = Metne dönüştürülüyor… %{ $pct }
 chat-transcribir-hecha = Sesli not metne dönüştürüldü
 chat-transcribir-en-marcha = Başka bir not zaten dönüştürülüyor; bitmesini bekleyin
@@ -1023,7 +1023,7 @@ compartir-originales = Özgünler
 compartir-editable = Düzenlenebilir
 compartir-texto = Metin
 compartir-csv = Tablo (CSV)
-compartir-pixpin = PinDesk (.pixpin)
+compartir-pindesk = PinDesk (.pindesk)
 compartir-dxf = DXF
 compartir-xlsx = Excel (xlsx)
 compartir-docx = Word (docx)
@@ -1715,7 +1715,7 @@ pedido-ocr-sin-texto = Görüntüde metin bulunamadı.
 pedido-ocr-no-disponible = Windows OCR yüklü değil: Ayarlar'dan metin tanıma içeren bir dil ekleyin.
 pedido-ocr-fallo = Görüntüdeki metin okunamadı: { $motivo }
 
-## Command line and pixpin:// links (Oct 15)
+## Command line and pindesk:// links (Oct 15)
 orden-titulo = PinDesk
 orden-confirmar-cabecera = Bir bağlantı PinDesk'ten şunu istiyor:
 orden-confirmar-pregunta = Yapılsın mı?
@@ -2537,7 +2537,7 @@ bandeja2-silenciar-sub = oyunlar veya sunumlar için
 bandeja2-ultimas = Son yakalamalar
 bandeja2-ver-galeria = Galeriyi gör
 bandeja2-sin-capturas = Henüz yakalama yok
-bandeja2-abrir-pixpin = PinDesk'i aç
+bandeja2-abrir-pindesk = PinDesk'i aç
 bandeja2-tareas = Görevler
 bandeja2-lecciones = Dersler
 bandeja2-nueva-leccion = Yeni ders
@@ -2931,7 +2931,7 @@ asistente-viejos-dejar = Kalsın
 asistente-viejos-borrados = Bitti: yerel modeller silindi ve alan boşaldı.
 asistente-viejos-no-borrados = Yerel modellerin hepsi silinemedi. Onları kullananı kapatıp Ayarlar → Asistan'dan yeniden deneyin.
 ajustes2-asistente-borrar-locales = Eski yerel modeller
-ajustes2-ayuda-asistente-borrar-locales = Yerel asistan için indirilen ve artık kullanılmayanlar: %LOCALAPPDATA%\PixPinMax\modelos içinde { $tamano }.
+ajustes2-ayuda-asistente-borrar-locales = Yerel asistan için indirilen ve artık kullanılmayanlar: %LOCALAPPDATA%\PinDesk\modelos içinde { $tamano }.
 
 ## Cloud assistant (13-oct-2026)
 ajustes2-sec-asistente = Asistan

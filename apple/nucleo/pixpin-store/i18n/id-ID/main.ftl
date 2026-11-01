@@ -938,7 +938,7 @@ compartir-originales = File asli
 compartir-editable = Dapat diedit
 compartir-texto = Teks
 compartir-csv = Tabel (CSV)
-compartir-pixpin = PinDesk (.pixpin)
+compartir-pindesk = PinDesk (.pindesk)
 compartir-dxf = DXF
 compartir-xlsx = Excel (xlsx)
 compartir-docx = Word (docx)
@@ -2359,7 +2359,7 @@ bandeja2-silenciar-sub = untuk game atau presentasi
 bandeja2-ultimas = Tangkapan terbaru
 bandeja2-ver-galeria = Lihat galeri
 bandeja2-sin-capturas = Belum ada tangkapan
-bandeja2-abrir-pixpin = Buka PinDesk
+bandeja2-abrir-pindesk = Buka PinDesk
 bandeja2-tareas = Tugas
 bandeja2-lecciones = Pelajaran
 bandeja2-nueva-leccion = Pelajaran baru
@@ -2722,7 +2722,7 @@ asistente-viejos-dejar = Biarkan
 asistente-viejos-borrados = Selesai: model lokal dihapus dan ruangnya kosong.
 asistente-viejos-no-borrados = Tidak semua model lokal dapat dihapus. Tutup yang memakainya dan coba lagi dari Pengaturan → Asisten.
 ajustes2-asistente-borrar-locales = Model lokal lama
-ajustes2-ayuda-asistente-borrar-locales = Yang diunduh untuk asisten lokal, tidak lagi dipakai: { $tamano } di %LOCALAPPDATA%\PixPinMax\modelos.
+ajustes2-ayuda-asistente-borrar-locales = Yang diunduh untuk asisten lokal, tidak lagi dipakai: { $tamano } di %LOCALAPPDATA%\PinDesk\modelos.
 
 ## Cloud assistant (13-oct-2026)
 ajustes2-sec-asistente = Asisten

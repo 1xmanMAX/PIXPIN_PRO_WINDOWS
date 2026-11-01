@@ -693,7 +693,7 @@ fn abrir_en_modo(
             minimo,
         );
         let p = crate::lector_pin::PinLector::nuevo(sitio, monitor.escala_por_cien as f32 / 100.0)
-            .con_extension("pixpin")
+            .con_extension("pindesk")
             .sin_oscuro()
             .con_minimo(minimo.0, minimo.1)
             .con_barra_en_pantalla_completa();

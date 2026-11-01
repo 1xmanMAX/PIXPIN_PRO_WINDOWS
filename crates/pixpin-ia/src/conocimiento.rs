@@ -494,8 +494,8 @@ pub const INDICE: &[Entrada] = &[
 const VACIAS: &[&str] = &[
     "el", "la", "los", "las", "un", "una", "de", "del", "en", "y", "o", "a", "al", "que", "como",
     "donde", "esta", "estan", "hago", "hace", "hacer", "puedo", "puede", "quiero", "tengo", "cual",
-    "cuando", "cuanto", "se", "me", "mi", "mis", "por", "para", "con", "es", "lo", "pixpin", "una",
-    "unos", "unas",
+    "cuando", "cuanto", "se", "me", "mi", "mis", "por", "para", "con", "es", "lo", "pindesk",
+    "pixpin", "una", "unos", "unas",
 ];
 
 /// Si una palabra suelta de la pregunta toca una entrada.

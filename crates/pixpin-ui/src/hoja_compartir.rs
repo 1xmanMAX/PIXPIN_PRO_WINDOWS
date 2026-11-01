@@ -124,7 +124,7 @@ pub const FORMATOS_EN_ORDEN: [(ClaseDeFormato, Option<&str>); 14] = [
     (ClaseDeFormato::Texto, Some("compartir-texto")),
     (ClaseDeFormato::Csv, Some("compartir-csv")),
     (ClaseDeFormato::Otro, None),
-    (ClaseDeFormato::Pixpin, Some("compartir-pixpin")),
+    (ClaseDeFormato::Pixpin, Some("compartir-pindesk")),
     (ClaseDeFormato::Original, Some("compartir-original")),
     (ClaseDeFormato::Anki, Some("compartir-anki")),
     (ClaseDeFormato::Wifi, Some("compartir-wifi")),
@@ -144,7 +144,7 @@ impl ClaseDeFormato {
             "md" | "markdown" => ClaseDeFormato::Markdown,
             "texto" | "txt" => ClaseDeFormato::Texto,
             "csv" => ClaseDeFormato::Csv,
-            "editable" | "pixpin" => ClaseDeFormato::Pixpin,
+            "editable" | "pindesk" | "pixpin" => ClaseDeFormato::Pixpin,
             "original" | "originales" => ClaseDeFormato::Original,
             "anki" => ClaseDeFormato::Anki,
             "wifi" => ClaseDeFormato::Wifi,
@@ -764,6 +764,7 @@ mod pruebas {
             ("md", C::Markdown),
             ("texto", C::Texto),
             ("csv", C::Csv),
+            ("pindesk", C::Pixpin),
             ("pixpin", C::Pixpin),
             ("editable", C::Pixpin),
             ("original", C::Original),
@@ -782,7 +783,7 @@ mod pruebas {
     fn ordenar_pone_el_orden_de_la_hoja_y_recuerda_el_que_iba_primero() {
         let mut f = vec![
             formato("original", Cuantas::Ninguna),
-            formato("pixpin", Cuantas::Ninguna),
+            formato("pindesk", Cuantas::Ninguna),
             formato("dxf", Cuantas::Ninguna),
             formato("web", Cuantas::Varias),
             formato("pdf", Cuantas::Varias),
@@ -797,7 +798,7 @@ mod pruebas {
         assert_eq!(
             ids,
             [
-                "png", "jpg", "svg", "pdf", "web", "texto", "dxf", "pixpin", "original", "anki"
+                "png", "jpg", "svg", "pdf", "web", "texto", "dxf", "pindesk", "original", "anki"
             ]
         );
         assert_eq!(ids[inicial], "original", "se abre con lo que dio primero");

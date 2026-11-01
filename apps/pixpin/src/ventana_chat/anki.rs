@@ -83,7 +83,7 @@ fn tarjetas_de(a: &Abierto, m: &Mensaje, textos: &Catalogo) -> (Vec<Tarjeta>, us
             .unwrap_or_default(),
         _ => tarjetas::de_la_nota(&m.texto),
     };
-    let etiquetas = vec!["pixpin".to_string(), tarjetas::etiqueta(&a.ficha.nombre)];
+    let etiquetas = vec!["pindesk".to_string(), tarjetas::etiqueta(&a.ficha.nombre)];
     for t in &mut v {
         t.etiquetas = etiquetas.clone();
     }
@@ -124,7 +124,7 @@ fn valer_la_pena(
 /// El mazo de un proyecto.
 fn mazo_de(nombre: &str) -> String {
     // `::` es el separador de submazos de Anki: dentro del nombre no.
-    format!("PixPin::{}", nombre.trim().replace("::", ":"))
+    format!("PinDesk::{}", nombre.trim().replace("::", ":"))
 }
 
 /// **Manda a Anki** las tarjetas del mensaje `i`.
@@ -218,7 +218,7 @@ mod pruebas {
 
     #[test]
     fn el_mazo_cuelga_de_pixpin_sin_romper_los_submazos() {
-        assert_eq!(mazo_de(" Física "), "PixPin::Física");
-        assert_eq!(mazo_de("A::B"), "PixPin::A:B");
+        assert_eq!(mazo_de(" Física "), "PinDesk::Física");
+        assert_eq!(mazo_de("A::B"), "PinDesk::A:B");
     }
 }

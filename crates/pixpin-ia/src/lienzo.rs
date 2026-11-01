@@ -90,7 +90,7 @@ impl Fabrica {
             "groupIds": self.grupo.iter().collect::<Vec<_>>(),
             "boundElements": null,
             "locked": false,
-            "customData": {"origen": "pixpin-ia"},
+            "customData": {"origen": "pindesk-ia"},
         })
     }
 
@@ -318,7 +318,7 @@ impl Fabrica {
                 g.push(json!(gr));
             }
             v["groupIds"] = Value::Array(g);
-            v["customData"] = json!({"origen": "pixpin-ia"});
+            v["customData"] = json!({"origen": "pindesk-ia"});
             self.salida.push(v);
         }
     }
@@ -381,7 +381,7 @@ pub fn documento(elementos: Vec<Value>) -> String {
     json!({
         "type": "excalidraw",
         "version": 2,
-        "source": "pixpin-ia",
+        "source": "pindesk-ia",
         "elements": elementos,
         "appState": {"viewBackgroundColor": "#ffffff"},
         "files": {},

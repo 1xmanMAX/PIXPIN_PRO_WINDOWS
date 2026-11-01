@@ -660,16 +660,16 @@ fn pintar(
 /// El tipo del elemento SI lo dice, asi que manda el tipo.
 fn nombre_con_extension(elemento: &pixpin_sincro::envio::Elemento) -> String {
     let nombre = pixpin_sincro::envio::nombre_sano(&elemento.nombre);
-    let ext = match elemento.tipo.as_str() {
-        "proyecto" => ".pixpin",
-        // Un lienzo del movil es un `.pixpin` de una hoja (`deLienzo`).
-        "lienzo" => ".pixpin",
+    match elemento.tipo.as_str() {
+        // Un lienzo del movil es un paquete de una hoja (`deLienzo`).
+        "proyecto" | "lienzo" => {}
         _ => return nombre,
-    };
-    if nombre.to_ascii_lowercase().ends_with(ext) {
+    }
+    // Uno que ya trae `.pindesk` (o el `.pixpin` de antes) se queda como esta.
+    if pixpin_proyecto::es_paquete(std::path::Path::new(&nombre)) {
         nombre
     } else {
-        format!("{nombre}{ext}")
+        pixpin_proyecto::nombre_de_paquete(&nombre)
     }
 }
 

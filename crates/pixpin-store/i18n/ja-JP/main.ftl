@@ -173,7 +173,7 @@ chat-clase-pagina = ページ
 chat-clase-proyecto = プロジェクト
 chat-clase-miniapp = ミニアプリ
 chat-escribe = 何か書いてください…
-# The chat, like PixPin Android's (guardados/MensajesActivity.kt).
+# The chat, like PinDesk Android's (guardados/MensajesActivity.kt).
 chat-cosas = { $n ->
    *[other] { $n } 件
 }
@@ -750,7 +750,7 @@ lienzo-copiar-estilo-ayuda = ある図形から色、線、塗りを取り、他
 lienzo-estilo-tomado = スタイルを取得しました
 lienzo-estilo-sin-tomar = まだスタイルを取得していません。
 
-# The attachment the document viewer can open without leaving PixPin.
+# The attachment the document viewer can open without leaving PinDesk.
 chat-abrir-aqui = ここで開く
 
 # The seven mini-apps from the phone, and their panel.
@@ -827,7 +827,7 @@ chat-recordatorio-titulo = リマインダー
 chat-enviar-wifi = Wi-Fi で送信
 
 # Turning a voice note into text with Vosk. What is missing is named with its
-# file and link: PixPin never downloads anything on its own.
+# file and link: PinDesk never downloads anything on its own.
 chat-transcribiendo = テキストに変換中… { $pct }%
 chat-transcribir-hecha = ボイスメモをテキストに変換しました
 chat-transcribir-en-marcha = 別のメモを変換中です。終わるまでお待ちください
@@ -1012,7 +1012,7 @@ compartir-originales = オリジナル
 compartir-editable = 編集可能
 compartir-texto = テキスト
 compartir-csv = 表（CSV）
-compartir-pixpin = PinDesk (.pixpin)
+compartir-pindesk = PinDesk (.pindesk)
 compartir-dxf = DXF
 compartir-xlsx = Excel (xlsx)
 compartir-docx = Word (docx)
@@ -1703,7 +1703,7 @@ pedido-ocr-sin-texto = 画像にテキストが見つかりませんでした。
 pedido-ocr-no-disponible = Windows OCR がインストールされていません：設定で文字認識に対応した言語を追加してください。
 pedido-ocr-fallo = 画像のテキストを読み取れませんでした：{ $motivo }
 
-## Command line and pixpin:// links (Oct 15)
+## Command line and pindesk:// links (Oct 15)
 orden-titulo = PinDesk
 orden-confirmar-cabecera = リンクが PinDesk に次の操作を求めています：
 orden-confirmar-pregunta = 実行しますか？
@@ -2512,7 +2512,7 @@ bandeja2-silenciar-sub = ゲームや講演のときに
 bandeja2-ultimas = 最近のキャプチャ
 bandeja2-ver-galeria = ギャラリーを表示
 bandeja2-sin-capturas = まだキャプチャはありません
-bandeja2-abrir-pixpin = PinDesk を開く
+bandeja2-abrir-pindesk = PinDesk を開く
 bandeja2-tareas = タスク
 bandeja2-lecciones = 教訓
 bandeja2-nueva-leccion = 新しい教訓
@@ -2885,7 +2885,7 @@ asistente-viejos-dejar = 残す
 asistente-viejos-borrados = 完了：ローカルモデルを削除し、空き容量を確保しました。
 asistente-viejos-no-borrados = 一部のローカルモデルを削除できませんでした。使用中のものを閉じて、設定 → アシスタント からもう一度お試しください。
 ajustes2-asistente-borrar-locales = 古いローカルモデル
-ajustes2-ayuda-asistente-borrar-locales = ローカルアシスタント用にダウンロードし、今は使われていないもの：{ $tamano }（%LOCALAPPDATA%\PixPinMax\modelos）。
+ajustes2-ayuda-asistente-borrar-locales = ローカルアシスタント用にダウンロードし、今は使われていないもの：{ $tamano }（%LOCALAPPDATA%\PinDesk\modelos）。
 
 ## Cloud assistant (13-oct-2026)
 ajustes2-sec-asistente = アシスタント

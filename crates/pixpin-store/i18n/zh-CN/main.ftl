@@ -173,7 +173,7 @@ chat-clase-pagina = 页面
 chat-clase-proyecto = 项目
 chat-clase-miniapp = 小程序
 chat-escribe = 写点什么…
-# The chat, like PixPin Android's (guardados/MensajesActivity.kt).
+# The chat, like PinDesk Android's (guardados/MensajesActivity.kt).
 chat-cosas = { $n ->
    *[other] { $n } 项
 }
@@ -750,7 +750,7 @@ lienzo-copiar-estilo-ayuda = 从一个形状获取颜色、笔画和填充，并
 lienzo-estilo-tomado = 已获取样式
 lienzo-estilo-sin-tomar = 你还没有获取样式。
 
-# The attachment the document viewer can open without leaving PixPin.
+# The attachment the document viewer can open without leaving PinDesk.
 chat-abrir-aqui = 在此打开
 
 # The seven mini-apps from the phone, and their panel.
@@ -827,7 +827,7 @@ chat-recordatorio-titulo = 提醒
 chat-enviar-wifi = 通过 Wi-Fi 发送
 
 # Turning a voice note into text with Vosk. What is missing is named with its
-# file and link: PixPin never downloads anything on its own.
+# file and link: PinDesk never downloads anything on its own.
 chat-transcribiendo = 正在转为文字… { $pct }%
 chat-transcribir-hecha = 语音消息已转为文字
 chat-transcribir-en-marcha = 另一条消息正在转换，请等待其完成
@@ -1012,7 +1012,7 @@ compartir-originales = 原件
 compartir-editable = 可编辑
 compartir-texto = 文本
 compartir-csv = 表格（CSV）
-compartir-pixpin = PinDesk (.pixpin)
+compartir-pindesk = PinDesk (.pindesk)
 compartir-dxf = DXF
 compartir-xlsx = Excel (xlsx)
 compartir-docx = Word (docx)
@@ -1703,7 +1703,7 @@ pedido-ocr-sin-texto = 图片中未找到文字。
 pedido-ocr-no-disponible = 未安装 Windows OCR：请在“设置”中添加支持文字识别的语言。
 pedido-ocr-fallo = 无法读取图片中的文字：{ $motivo }
 
-## Command line and pixpin:// links (Oct 15)
+## Command line and pindesk:// links (Oct 15)
 orden-titulo = PinDesk
 orden-confirmar-cabecera = 一个链接请求 PinDesk：
 orden-confirmar-pregunta = 是否执行？
@@ -2512,7 +2512,7 @@ bandeja2-silenciar-sub = 用于游戏或演讲
 bandeja2-ultimas = 最近的截图
 bandeja2-ver-galeria = 查看截图库
 bandeja2-sin-capturas = 还没有截图
-bandeja2-abrir-pixpin = 打开 PinDesk
+bandeja2-abrir-pindesk = 打开 PinDesk
 bandeja2-tareas = 任务
 bandeja2-lecciones = 心得
 bandeja2-nueva-leccion = 新建心得
@@ -2885,7 +2885,7 @@ asistente-viejos-dejar = 保留
 asistente-viejos-borrados = 完成：本地模型已删除，空间已释放。
 asistente-viejos-no-borrados = 无法删除所有本地模型。请关闭正在使用它们的程序，然后在“设置 → 助手”中重试。
 ajustes2-asistente-borrar-locales = 旧的本地模型
-ajustes2-ayuda-asistente-borrar-locales = 为本地助手下载、现已不再使用的内容：{ $tamano }，位于 %LOCALAPPDATA%\PixPinMax\modelos。
+ajustes2-ayuda-asistente-borrar-locales = 为本地助手下载、现已不再使用的内容：{ $tamano }，位于 %LOCALAPPDATA%\PinDesk\modelos。
 
 ## Cloud assistant (13-oct-2026)
 ajustes2-sec-asistente = 助手

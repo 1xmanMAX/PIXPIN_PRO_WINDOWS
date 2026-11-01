@@ -106,7 +106,7 @@ mod pruebas {
         let x = exportable(&d, &e);
         let f = x.formatos();
         for id in [
-            "pdf", "web", "png", "jpg", "svg", "original", "pixpin", "texto", "md",
+            "pdf", "web", "png", "jpg", "svg", "original", "pindesk", "texto", "md",
         ] {
             assert!(f.contains(&id), "falta {id}: {f:?}");
         }
@@ -123,7 +123,7 @@ mod pruebas {
         let p = crate::compartir::preparar(crate::compartir::Cosa::Visor(x), &t).unwrap();
         let claves: Vec<String> = p.piezas.iter().map(|x| x.pagina.clave.clone()).collect();
         let salida = d.join("salida");
-        for id in ["pdf", "web", "png", "original", "pixpin"] {
+        for id in ["pdf", "web", "png", "original", "pindesk"] {
             let s = crate::compartir::generar(&p, id, &claves, &salida)
                 .unwrap_or_else(|e| panic!("{id}: {e:#}"));
             assert!(

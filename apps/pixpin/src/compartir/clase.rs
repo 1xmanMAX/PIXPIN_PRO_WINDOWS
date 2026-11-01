@@ -138,7 +138,7 @@ pub(crate) fn leer(raiz: &Path, proyecto: &str, voz: &Mensaje, t: &Catalogo) -> 
     Some(Grabacion {
         datos,
         rotulos: rotulos(t),
-        mazo: format!("PixPin::{}", nombre.trim().replace("::", ":")),
+        mazo: format!("PinDesk::{}", nombre.trim().replace("::", ":")),
         pregunta: t.t("anki-pregunta-clase"),
     })
 }
@@ -615,7 +615,7 @@ fn anki(g: &Grabacion, base: &str, carpeta: &Path) -> Result<Vec<PathBuf>> {
         pixpin_anki::tarjetas::de_la_clase(&c.titulo, &g.pregunta, &trozos, capturas);
     anyhow::ensure!(!tarjetas.is_empty(), "sin tarjetas");
     for t in &mut tarjetas {
-        t.etiquetas = vec!["pixpin".to_string()];
+        t.etiquetas = vec!["pindesk".to_string()];
     }
     let r = carpeta.join(format!("{base} (Anki).txt"));
     escribir(
@@ -691,7 +691,7 @@ mod pruebas {
                 acta: Default::default(),
             },
             rotulos: Rotulos::default(),
-            mazo: "PixPin::Fisica".into(),
+            mazo: "PinDesk::Fisica".into(),
             pregunta: "¿Qué?".into(),
         }
     }
@@ -737,7 +737,7 @@ mod pruebas {
         let v = anki(&g, "Clase 1", &dir).unwrap();
         assert_eq!(v.len(), 2);
         let t = std::fs::read_to_string(&v[0]).unwrap();
-        assert!(t.contains("PixPin::Fisica"));
+        assert!(t.contains("PinDesk::Fisica"));
         assert!(v[1].is_file());
         let _ = std::fs::remove_dir_all(&dir);
     }

@@ -34,11 +34,11 @@ mod pruebas {
         let t = vec![Tarjeta {
             frente: "a\tb".into(),
             reverso: "c\nd".into(),
-            etiquetas: vec!["pixpin".into(), "clase".into()],
+            etiquetas: vec!["pindesk".into(), "clase".into()],
             imagenes: Vec::new(),
         }];
-        let s = texto("PixPin::Física", &t);
-        assert!(s.starts_with("#separator:tab\n#html:true\n#deck:PixPin::Física\n"));
-        assert!(s.ends_with("a b\tc d\tpixpin clase\n"), "{s}");
+        let s = texto("PinDesk::Física", &t);
+        assert!(s.starts_with("#separator:tab\n#html:true\n#deck:PinDesk::Física\n"));
+        assert!(s.ends_with("a b\tc d\tpindesk clase\n"), "{s}");
     }
 }

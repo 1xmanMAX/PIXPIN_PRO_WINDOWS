@@ -155,7 +155,7 @@ chat-clase-pagina = Pagina
 chat-clase-proyecto = Progetto
 chat-clase-miniapp = Mini-app
 chat-escribe = Scrivi qualcosa…
-# El chat como el de PixPin Android (guardados/MensajesActivity.kt).
+# El chat como el de PinDesk Android (guardados/MensajesActivity.kt).
 chat-cosas = { $n ->
     [one] 1 elemento
    *[other] { $n } elementi
@@ -729,7 +729,7 @@ lienzo-copiar-estilo = Copia stile
 lienzo-copiar-estilo-ayuda = Prende il colore, il tratto e il riempimento di una forma e li applica ad altre. Passa solo ciò che entrambi i tipi supportano.
 lienzo-estilo-tomado = Stile copiato
 lienzo-estilo-sin-tomar = Non hai ancora copiato nessuno stile.
-# El adjunto que el visor de documentos sabe abrir sin salir de PixPin.
+# El adjunto que el visor de documentos sabe abrir sin salir de PinDesk.
 chat-abrir-aqui = Apri qui
 # Las siete mini-aplicaciones del movil, y su panel.
 mini-moneda = EUR
@@ -801,7 +801,7 @@ chat-recordatorio-titulo = Promemoria
 # El menu de un mensaje con adjunto: mandarlo a otra persona por la wifi.
 chat-enviar-wifi = Invia tramite Wi-Fi
 # Pasar una nota de voz a texto con Vosk. Lo que falta se dice con el nombre
-# del fichero y el enlace: PixPin no descarga nada por su cuenta.
+# del fichero y el enlace: PinDesk no descarga nada por su cuenta.
 chat-transcribiendo = Trascrizione… { $pct } %
 chat-transcribir-hecha = Nota trascritta
 chat-transcribir-en-marcha = È già in corso la trascrizione di un'altra nota; attendi che finisca
@@ -978,7 +978,7 @@ compartir-originales = Originali
 compartir-editable = Modificabile
 compartir-texto = Testo
 compartir-csv = Tabella (CSV)
-compartir-pixpin = PinDesk (.pixpin)
+compartir-pindesk = PinDesk (.pindesk)
 compartir-dxf = DXF
 compartir-xlsx = Excel (xlsx)
 compartir-docx = Word (docx)
@@ -1637,7 +1637,7 @@ pedido-ocr-copiado = Testo copiato ({ $n } caratteri): «{ $texto }»
 pedido-ocr-sin-texto = Nessun testo trovato nell'immagine.
 pedido-ocr-no-disponible = L'OCR di Windows non è installato: aggiungi una lingua con riconoscimento del testo in Impostazioni.
 pedido-ocr-fallo = Impossibile leggere il testo dell'immagine: { $motivo }
-## Command line and pixpin:// links (Oct 15)
+## Command line and pindesk:// links (Oct 15)
 orden-titulo = PinDesk
 orden-confirmar-cabecera = Un link chiede a PinDesk:
 orden-confirmar-pregunta = Procedere?
@@ -2455,7 +2455,7 @@ bandeja2-silenciar-sub = per giocare o presentare
 bandeja2-ultimas = Ultime catture
 bandeja2-ver-galeria = Apri la galleria
 bandeja2-sin-capturas = Non ci sono ancora catture
-bandeja2-abrir-pixpin = Apri PinDesk
+bandeja2-abrir-pindesk = Apri PinDesk
 bandeja2-tareas = Attività
 bandeja2-lecciones = Lezioni
 bandeja2-nueva-leccion = Nuova lezione
@@ -2834,7 +2834,7 @@ asistente-viejos-dejar = Lasciali
 asistente-viejos-borrados = Fatto: i modelli locali sono stati eliminati e lo spazio è stato liberato.
 asistente-viejos-no-borrados = Impossibile eliminare tutti i modelli locali. Chiudi ciò che li sta usando e riprova da Impostazioni → Assistente.
 ajustes2-asistente-borrar-locales = Vecchi modelli locali
-ajustes2-ayuda-asistente-borrar-locales = Ciò che è stato scaricato per l'assistente locale, che non si usa più: { $tamano } in %LOCALAPPDATA%\PixPinMax\modelos.
+ajustes2-ayuda-asistente-borrar-locales = Ciò che è stato scaricato per l'assistente locale, che non si usa più: { $tamano } in %LOCALAPPDATA%\PinDesk\modelos.
 ## Cloud assistant (13-oct-2026)
 ajustes2-sec-asistente = Assistente
 ajustes2-sec-asistente-sub = Chi risponde nella chat «Assistente»: Claude o DeepSeek, con la tua chiave.

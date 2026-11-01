@@ -993,7 +993,7 @@ compartir-originales = الأصول
 compartir-editable = قابل للتعديل
 compartir-texto = نص
 compartir-csv = جدول (CSV)
-compartir-pixpin = PinDesk (.pixpin)
+compartir-pindesk = PinDesk (.pindesk)
 compartir-dxf = DXF
 compartir-xlsx = Excel (xlsx)
 compartir-docx = Word (docx)
@@ -2488,7 +2488,7 @@ bandeja2-silenciar-sub = للألعاب أو العروض
 bandeja2-ultimas = أحدث اللقطات
 bandeja2-ver-galeria = عرض المعرض
 bandeja2-sin-capturas = لا توجد لقطات بعد
-bandeja2-abrir-pixpin = فتح PinDesk
+bandeja2-abrir-pindesk = فتح PinDesk
 bandeja2-tareas = المهام
 bandeja2-lecciones = الدروس
 bandeja2-nueva-leccion = درس جديد
@@ -2951,7 +2951,7 @@ asistente-viejos-dejar = الاحتفاظ بها
 asistente-viejos-borrados = تم: حُذفت النماذج المحلية وتحرّرت المساحة.
 asistente-viejos-no-borrados = تعذّر حذف كل النماذج المحلية. أغلق ما يستخدمها وحاول مجددًا من الإعدادات ← المساعد.
 ajustes2-asistente-borrar-locales = النماذج المحلية القديمة
-ajustes2-ayuda-asistente-borrar-locales = ما نُزّل للمساعد المحلي ولم يعد مستخدمًا: { $tamano } في %LOCALAPPDATA%\PixPinMax\modelos.
+ajustes2-ayuda-asistente-borrar-locales = ما نُزّل للمساعد المحلي ولم يعد مستخدمًا: { $tamano } في %LOCALAPPDATA%\PinDesk\modelos.
 
 ## Cloud assistant (13-oct-2026)
 ajustes2-sec-asistente = المساعد

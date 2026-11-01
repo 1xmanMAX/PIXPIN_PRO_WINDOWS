@@ -324,7 +324,7 @@ fn lo_que_se_ve_se_exporta_por_el_componente_comun() {
         Some(foto),
     );
     let f = x.formatos();
-    for id in ["web", "pdf", "png", "jpg", "svg", "pixpin"] {
+    for id in ["web", "pdf", "png", "jpg", "svg", "pindesk"] {
         assert!(f.contains(&id), "falta {id}: {f:?}");
     }
     assert!(!f.contains(&"original"), "es una vista, no un fichero");

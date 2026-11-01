@@ -336,7 +336,7 @@ fn lienzo(
     serde_json::json!({
         "type": "excalidraw",
         "version": 2,
-        "source": "pixpin-max",
+        "source": "pindesk",
         "elements": elementos,
         "appState": {"viewBackgroundColor": "#ffffff"},
         "files": ficheros

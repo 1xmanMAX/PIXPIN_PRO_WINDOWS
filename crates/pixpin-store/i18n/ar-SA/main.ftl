@@ -178,7 +178,7 @@ chat-clase-pagina = صفحة
 chat-clase-proyecto = مشروع
 chat-clase-miniapp = تطبيق مصغّر
 chat-escribe = اكتب شيئًا…
-# The chat, like PixPin Android's (guardados/MensajesActivity.kt).
+# The chat, like PinDesk Android's (guardados/MensajesActivity.kt).
 chat-cosas = { $n ->
     [zero] لا عناصر
     [one] عنصر واحد
@@ -800,7 +800,7 @@ lienzo-copiar-estilo-ayuda = خذ اللون والخط والتعبئة من ش
 lienzo-estilo-tomado = أُخذ النمط
 lienzo-estilo-sin-tomar = لم تأخذ نمطًا بعد.
 
-# The attachment the document viewer can open without leaving PixPin.
+# The attachment the document viewer can open without leaving PinDesk.
 chat-abrir-aqui = فتح هنا
 
 # The seven mini-apps from the phone, and their panel.
@@ -882,7 +882,7 @@ chat-recordatorio-titulo = تذكير
 chat-enviar-wifi = إرسال عبر Wi-Fi
 
 # Turning a voice note into text with Vosk. What is missing is named with its
-# file and link: PixPin never downloads anything on its own.
+# file and link: PinDesk never downloads anything on its own.
 chat-transcribiendo = جارٍ التحويل إلى نص… { $pct }%
 chat-transcribir-hecha = حُوّلت الملاحظة الصوتية إلى نص
 chat-transcribir-en-marcha = يجري تحويل ملاحظة أخرى بالفعل؛ انتظر حتى تنتهي
@@ -1067,7 +1067,7 @@ compartir-originales = الأصول
 compartir-editable = قابل للتعديل
 compartir-texto = نص
 compartir-csv = جدول (CSV)
-compartir-pixpin = PinDesk (.pixpin)
+compartir-pindesk = PinDesk (.pindesk)
 compartir-dxf = DXF
 compartir-xlsx = Excel (xlsx)
 compartir-docx = Word (docx)
@@ -1768,7 +1768,7 @@ pedido-ocr-sin-texto = لم يُعثر على نص في الصورة.
 pedido-ocr-no-disponible = التعرّف الضوئي على الحروف في Windows غير مثبّت: أضف لغة تدعم التعرّف على النص من الإعدادات.
 pedido-ocr-fallo = تعذّرت قراءة النص في الصورة: { $motivo }
 
-## Command line and pixpin:// links (Oct 15)
+## Command line and pindesk:// links (Oct 15)
 orden-titulo = PinDesk
 orden-confirmar-cabecera = يطلب رابط من PinDesk أن:
 orden-confirmar-pregunta = هل تريد التنفيذ؟
@@ -2646,7 +2646,7 @@ bandeja2-silenciar-sub = للألعاب أو العروض
 bandeja2-ultimas = أحدث اللقطات
 bandeja2-ver-galeria = عرض المعرض
 bandeja2-sin-capturas = لا توجد لقطات بعد
-bandeja2-abrir-pixpin = فتح PinDesk
+bandeja2-abrir-pindesk = فتح PinDesk
 bandeja2-tareas = المهام
 bandeja2-lecciones = الدروس
 bandeja2-nueva-leccion = درس جديد
@@ -3124,7 +3124,7 @@ asistente-viejos-dejar = الاحتفاظ بها
 asistente-viejos-borrados = تم: حُذفت النماذج المحلية وتحرّرت المساحة.
 asistente-viejos-no-borrados = تعذّر حذف كل النماذج المحلية. أغلق ما يستخدمها وحاول مجددًا من الإعدادات ← المساعد.
 ajustes2-asistente-borrar-locales = النماذج المحلية القديمة
-ajustes2-ayuda-asistente-borrar-locales = ما نُزّل للمساعد المحلي ولم يعد مستخدمًا: { $tamano } في %LOCALAPPDATA%\PixPinMax\modelos.
+ajustes2-ayuda-asistente-borrar-locales = ما نُزّل للمساعد المحلي ولم يعد مستخدمًا: { $tamano } في %LOCALAPPDATA%\PinDesk\modelos.
 
 ## Cloud assistant (13-oct-2026)
 ajustes2-sec-asistente = المساعد

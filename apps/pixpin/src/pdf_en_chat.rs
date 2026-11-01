@@ -613,7 +613,7 @@ fn lienzo_con_foto(foto: &str, ancho: u32, alto: u32, ahora: i64, i: u32) -> Str
     serde_json::json!({
         "type": "excalidraw",
         "version": 2,
-        "source": "pixpin-max",
+        "source": "pindesk",
         "elements": [{
             "id": format!("foto-{ahora}-{i}"),
             "type": "image",

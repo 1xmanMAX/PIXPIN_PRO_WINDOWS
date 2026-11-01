@@ -949,7 +949,7 @@ compartir-originales = Originais
 compartir-editable = Editável
 compartir-texto = Texto
 compartir-csv = Tabela (CSV)
-compartir-pixpin = PinDesk (.pixpin)
+compartir-pindesk = PinDesk (.pindesk)
 compartir-dxf = DXF
 compartir-xlsx = Excel (xlsx)
 compartir-docx = Word (docx)
@@ -2384,7 +2384,7 @@ bandeja2-silenciar-sub = para jogar ou apresentar
 bandeja2-ultimas = Últimas capturas
 bandeja2-ver-galeria = Ver a galeria
 bandeja2-sin-capturas = Ainda não há capturas
-bandeja2-abrir-pixpin = Abrir o PinDesk
+bandeja2-abrir-pindesk = Abrir o PinDesk
 bandeja2-tareas = Tarefas
 bandeja2-lecciones = Lições
 bandeja2-nueva-leccion = Nova lição
@@ -2763,7 +2763,7 @@ asistente-viejos-dejar = Mantê-los
 asistente-viejos-borrados = Pronto: os modelos locais foram excluídos e o espaço foi liberado.
 asistente-viejos-no-borrados = Não foi possível excluir todos os modelos locais. Feche o que os estiver usando e tente de novo em Configurações → Assistente.
 ajustes2-asistente-borrar-locales = Modelos locais antigos
-ajustes2-ayuda-asistente-borrar-locales = O que foi baixado para o assistente local, que não é mais usado: { $tamano } em %LOCALAPPDATA%\PixPinMax\modelos.
+ajustes2-ayuda-asistente-borrar-locales = O que foi baixado para o assistente local, que não é mais usado: { $tamano } em %LOCALAPPDATA%\PinDesk\modelos.
 
 ## Cloud assistant (13-oct-2026)
 ajustes2-sec-asistente = Assistente

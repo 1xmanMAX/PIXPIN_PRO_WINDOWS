@@ -173,7 +173,7 @@ chat-clase-pagina = 페이지
 chat-clase-proyecto = 프로젝트
 chat-clase-miniapp = 미니 앱
 chat-escribe = 메시지 입력…
-# The chat, like PixPin Android's (guardados/MensajesActivity.kt).
+# The chat, like PinDesk Android's (guardados/MensajesActivity.kt).
 chat-cosas = { $n ->
    *[other] { $n }개 항목
  }
@@ -750,7 +750,7 @@ lienzo-copiar-estilo-ayuda = 한 도형의 색, 선, 채우기를 가져와 다�
 lienzo-estilo-tomado = 스타일을 가져왔습니다
 lienzo-estilo-sin-tomar = 아직 가져온 스타일이 없습니다.
 
-# The attachment the document viewer can open without leaving PixPin.
+# The attachment the document viewer can open without leaving PinDesk.
 chat-abrir-aqui = 여기에서 열기
 
 # The seven mini-apps from the phone, and their panel.
@@ -827,7 +827,7 @@ chat-recordatorio-titulo = 알림
 chat-enviar-wifi = Wi-Fi로 보내기
 
 # Turning a voice note into text with Vosk. What is missing is named with its
-# file and link: PixPin never downloads anything on its own.
+# file and link: PinDesk never downloads anything on its own.
 chat-transcribiendo = 텍스트로 변환하는 중… { $pct }%
 chat-transcribir-hecha = 음성 메모를 텍스트로 변환했습니다
 chat-transcribir-en-marcha = 다른 메모를 이미 변환하고 있습니다. 끝날 때까지 기다리세요
@@ -1012,7 +1012,7 @@ compartir-originales = 원본
 compartir-editable = 편집 가능
 compartir-texto = 텍스트
 compartir-csv = 표(CSV)
-compartir-pixpin = PinDesk(.pixpin)
+compartir-pindesk = PinDesk(.pindesk)
 compartir-dxf = DXF
 compartir-xlsx = Excel(xlsx)
 compartir-docx = Word(docx)
@@ -1703,7 +1703,7 @@ pedido-ocr-sin-texto = 이미지에서 텍스트를 찾지 못했습니다.
 pedido-ocr-no-disponible = Windows OCR이 설치되어 있지 않습니다. 설정에서 텍스트 인식이 포함된 언어를 추가하세요.
 pedido-ocr-fallo = 이미지의 텍스트를 읽을 수 없습니다: { $motivo }
 
-## Command line and pixpin:// links (Oct 15)
+## Command line and pindesk:// links (Oct 15)
 orden-titulo = PinDesk
 orden-confirmar-cabecera = 링크가 PinDesk에 다음 작업을 요청합니다:
 orden-confirmar-pregunta = 실행하시겠습니까?
@@ -2512,7 +2512,7 @@ bandeja2-silenciar-sub = 게임이나 발표 중에
 bandeja2-ultimas = 최근 캡처
 bandeja2-ver-galeria = 갤러리 보기
 bandeja2-sin-capturas = 아직 캡처가 없습니다
-bandeja2-abrir-pixpin = PinDesk 열기
+bandeja2-abrir-pindesk = PinDesk 열기
 bandeja2-tareas = 작업
 bandeja2-lecciones = 교훈
 bandeja2-nueva-leccion = 새 교훈
@@ -2886,7 +2886,7 @@ asistente-viejos-dejar = 유지
 asistente-viejos-borrados = 완료: 로컬 모델을 삭제하여 공간을 확보했습니다.
 asistente-viejos-no-borrados = 일부 로컬 모델을 삭제할 수 없습니다. 사용 중인 프로그램을 닫고 설정 → 어시스턴트에서 다시 시도하세요.
 ajustes2-asistente-borrar-locales = 이전 로컬 모델
-ajustes2-ayuda-asistente-borrar-locales = 더 이상 사용하지 않는 로컬 어시스턴트용 다운로드 파일: %LOCALAPPDATA%\PixPinMax\modelos에 { $tamano }.
+ajustes2-ayuda-asistente-borrar-locales = 더 이상 사용하지 않는 로컬 어시스턴트용 다운로드 파일: %LOCALAPPDATA%\PinDesk\modelos에 { $tamano }.
 
 ## Cloud assistant (13-oct-2026)
 ajustes2-sec-asistente = 어시스턴트

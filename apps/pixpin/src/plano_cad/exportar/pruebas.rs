@@ -173,7 +173,7 @@ fn el_exportar_del_plano_ofrece_lo_minimo_y_falla_sin_permiso() {
     let p = prueba("menu", false);
     let x = exportable(p.plano.clone(), pixpin_store::Idioma::Espanol);
     let f = x.formatos();
-    for id in ["web", "pdf", "png", "original", "pixpin"] {
+    for id in ["web", "pdf", "png", "original", "pindesk"] {
         assert!(f.contains(&id), "falta {id}: {f:?}");
     }
     // Un DXF no se exporta a DXF; un DWG si.

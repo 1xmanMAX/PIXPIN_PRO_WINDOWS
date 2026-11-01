@@ -1,6 +1,6 @@
 //! **Lo que entra desde Windows sin pasar por PixPin** (15-oct-2026):
 //!
-//! - **«Imprimir a PixPin»**: la impresora «PixPin» deja el PDF en
+//! - **«Imprimir a PinDesk»**: la impresora «PinDesk» deja el PDF en
 //!   `<raiz>\cache\impresora\`; en cuanto esta entero se mueve a
 //!   `<raiz>\impresos\` y se **abre en el lector** como pin
 //!   (`pixpin_shell::impresora`). Como el «Compartir con PixPin» de Android
@@ -50,14 +50,14 @@ pub fn pedido_del_arranque() -> Option<String> {
 /// El pedido de abrir un impreso en el lector.
 fn pedido_abrir(ruta: &std::path::Path) -> String {
     serde_json::json!({
-        "pixpin": 1,
+        "pindesk": 1,
         "accion": "abrir",
         "que": { "tipo": "fichero", "ruta": ruta },
     })
     .to_string()
 }
 
-/// Vigila la carpeta de la impresora «PixPin», si esta instalada.
+/// Vigila la carpeta de la impresora «PinDesk», si esta instalada.
 pub fn iniciar_impresora(ubicacion: &Ubicacion) {
     let raiz = ubicacion.raiz();
     let vigilando = impresora::vigilar(
@@ -69,7 +69,7 @@ pub fn iniciar_impresora(ubicacion: &Ubicacion) {
         },
     );
     if vigilando.is_some() {
-        tracing::info!("impresora «PixPin»: vigilando su carpeta");
+        tracing::info!("impresora «PinDesk»: vigilando su carpeta");
     }
 }
 
@@ -82,7 +82,7 @@ mod pruebas {
     #[test]
     fn el_impreso_se_abre_con_el_pedido_de_siempre() {
         let ruta = std::path::Path::new(
-            r"C:\Users\yo\AppData\Roaming\PixPinMax\impresos\Impreso 2026-10-15 14.03.22.pdf",
+            r"C:\Users\yo\AppData\Roaming\PinDesk\impresos\Impreso 2026-10-15 14.03.22.pdf",
         );
         let p = pedido_abrir(ruta);
         let v: serde_json::Value = serde_json::from_str(&p).unwrap();

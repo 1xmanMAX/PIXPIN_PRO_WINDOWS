@@ -174,7 +174,7 @@ chat-clase-pagina = पेज
 chat-clase-proyecto = प्रोजेक्ट
 chat-clase-miniapp = मिनी ऐप
 chat-escribe = कुछ लिखें…
-# The chat, like PixPin Android's (guardados/MensajesActivity.kt).
+# The chat, like PinDesk Android's (guardados/MensajesActivity.kt).
 chat-cosas = { $n ->
     [one] 1 चीज़
    *[other] { $n } चीज़ें
@@ -760,7 +760,7 @@ lienzo-copiar-estilo-ayuda = एक आकृति से रंग, स्ट�
 lienzo-estilo-tomado = स्टाइल लिया गया
 lienzo-estilo-sin-tomar = आपने अभी कोई स्टाइल नहीं लिया है।
 
-# The attachment the document viewer can open without leaving PixPin.
+# The attachment the document viewer can open without leaving PinDesk.
 chat-abrir-aqui = यहाँ खोलें
 
 # The seven mini-apps from the phone, and their panel.
@@ -838,7 +838,7 @@ chat-recordatorio-titulo = रिमाइंडर
 chat-enviar-wifi = Wi-Fi से भेजें
 
 # Turning a voice note into text with Vosk. What is missing is named with its
-# file and link: PixPin never downloads anything on its own.
+# file and link: PinDesk never downloads anything on its own.
 chat-transcribiendo = टेक्स्ट में बदला जा रहा है… { $pct }%
 chat-transcribir-hecha = वॉइस नोट टेक्स्ट में बदल दिया गया
 chat-transcribir-en-marcha = एक दूसरा नोट पहले से बदला जा रहा है; उसके पूरा होने की प्रतीक्षा करें
@@ -1023,7 +1023,7 @@ compartir-originales = मूल फ़ाइलें
 compartir-editable = संपादन योग्य
 compartir-texto = टेक्स्ट
 compartir-csv = टेबल (CSV)
-compartir-pixpin = PinDesk (.pixpin)
+compartir-pindesk = PinDesk (.pindesk)
 compartir-dxf = DXF
 compartir-xlsx = Excel (xlsx)
 compartir-docx = Word (docx)
@@ -1716,7 +1716,7 @@ pedido-ocr-sin-texto = इमेज में कोई टेक्स्ट �
 pedido-ocr-no-disponible = Windows OCR इंस्टॉल नहीं है: सेटिंग्स में टेक्स्ट पहचान वाली कोई भाषा जोड़ें।
 pedido-ocr-fallo = इमेज का टेक्स्ट पढ़ा नहीं जा सका: { $motivo }
 
-## Command line and pixpin:// links (Oct 15)
+## Command line and pindesk:// links (Oct 15)
 orden-titulo = PinDesk
 orden-confirmar-cabecera = एक लिंक PinDesk से यह करने को कहता है:
 orden-confirmar-pregunta = क्या यह करें?
@@ -2538,7 +2538,7 @@ bandeja2-silenciar-sub = गेम या प्रेज़ेंटेशन �
 bandeja2-ultimas = हाल के कैप्चर
 bandeja2-ver-galeria = गैलरी देखें
 bandeja2-sin-capturas = अभी कोई कैप्चर नहीं
-bandeja2-abrir-pixpin = PinDesk खोलें
+bandeja2-abrir-pindesk = PinDesk खोलें
 bandeja2-tareas = कार्य
 bandeja2-lecciones = सबक
 bandeja2-nueva-leccion = नया सबक
@@ -2932,7 +2932,7 @@ asistente-viejos-dejar = इन्हें रखें
 asistente-viejos-borrados = हो गया: लोकल मॉडल हटा दिए गए और जगह खाली है।
 asistente-viejos-no-borrados = सभी लोकल मॉडल हटाए नहीं जा सके। जो इन्हें इस्तेमाल कर रहा है उसे बंद करें और सेटिंग्स → असिस्टेंट से फिर से कोशिश करें।
 ajustes2-asistente-borrar-locales = पुराने लोकल मॉडल
-ajustes2-ayuda-asistente-borrar-locales = लोकल असिस्टेंट के लिए डाउनलोड किया गया, अब इस्तेमाल नहीं होता: %LOCALAPPDATA%\PixPinMax\modelos में { $tamano }।
+ajustes2-ayuda-asistente-borrar-locales = लोकल असिस्टेंट के लिए डाउनलोड किया गया, अब इस्तेमाल नहीं होता: %LOCALAPPDATA%\PinDesk\modelos में { $tamano }।
 
 ## Cloud assistant (13-oct-2026)
 ajustes2-sec-asistente = असिस्टेंट

@@ -92,7 +92,7 @@ impl Accion {
             Accion::Comando(Comando::PinearPortapapeles) => "bandeja2-fav-pinear-copiado",
             Accion::Comando(Comando::Anotar) => "bandeja2-fav-anotar",
             Accion::Comando(Comando::PinearEnVivo) => "bandeja2-fav-pin-vivo",
-            Accion::Comando(Comando::AbrirChat) => "bandeja2-abrir-pixpin",
+            Accion::Comando(Comando::AbrirChat) => "bandeja2-abrir-pindesk",
             Accion::Comando(c) => c.descriptor().clave_titulo,
             otra => OTRAS
                 .iter()

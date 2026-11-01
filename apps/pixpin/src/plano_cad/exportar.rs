@@ -14,7 +14,7 @@
 //! - Original y `.pixpin`: los pone el componente comun.
 //!
 //! El plano **por capas** (para el HTML y el PDF) y el DXF se hacen en el
-//! proceso aparte (`pixpinmax.exe --cad-exportar`), como al abrir: un DWG
+//! proceso aparte (`pindesk.exe --cad-exportar`), como al abrir: un DWG
 //! roto solo tumba a ese proceso. Lo leido por capas queda en la cache.
 
 use std::collections::HashMap;
@@ -99,7 +99,7 @@ fn por_capas(raiz: &Path, plano: &Path) -> Result<PlanoPorCapas> {
     {
         return Ok(p);
     }
-    // En las pruebas no hay `pixpinmax.exe` que llamar: aqui mismo.
+    // En las pruebas no hay `pindesk.exe` que llamar: aqui mismo.
     if cfg!(test) {
         let p = pixpin_cad::convertir::convertir_fichero_por_capas(plano)
             .map_err(|e| anyhow::anyhow!(e))?;

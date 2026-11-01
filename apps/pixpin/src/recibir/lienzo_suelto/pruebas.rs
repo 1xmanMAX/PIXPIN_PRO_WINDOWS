@@ -376,7 +376,7 @@ fn un_lienzo_del_pc_sale_como_lienzo_de_una_hoja_y_no_como_archivo() {
         "con sus codigos"
     );
     assert_eq!(e.bytes, bytes.len() as i64);
-    assert!(nombre_del_paquete(&e).ends_with(".pixpin"));
+    assert!(nombre_del_paquete(&e).ends_with(".pindesk"));
     assert!(!nombre_del_paquete(&e).contains(".excalidraw"));
 
     // El paquete, como lo abre `PaquetePixpin.abrir`.

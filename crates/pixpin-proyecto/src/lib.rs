@@ -1,6 +1,9 @@
-//! El `.pixpin`: un proyecto entero en un fichero.
+//! El `.pindesk`: un proyecto entero en un fichero.
 //!
-//! Es el formato con el que el PixPin de Android pasa un proyecto de un
+//! Hasta nov-2026 se llamaba `.pixpin` ([`EXTENSION_VIEJA`]); el contenido es
+//! el mismo y se sigue abriendo e importando (docs/formato-pindesk.md).
+//!
+//! Es el formato con el que PinDesk de Android pasa un proyecto de un
 //! aparato a otro — su propia documentacion dice, con estas palabras, que es
 //! «con el que un proyecto se pasa de un aparato a otro *o a la version de
 //! escritorio* y se sigue editando alli». Este crate es el lado de aca de esa
@@ -71,8 +74,39 @@ pub enum ErrorProyecto {
     Zip(#[from] zip::result::ZipError),
     #[error("el JSON de {1} tiene un error: {0}")]
     Json(#[source] serde_json::Error, String),
-    #[error("no parece un .pixpin: no tiene proyecto.json")]
+    #[error("no parece un .pindesk: no tiene proyecto.json")]
     SinProyecto,
+}
+
+/// La extension de un proyecto en un fichero, sin el punto.
+pub const EXTENSION: &str = "pindesk";
+/// La de antes de PinDesk (`.pixpin`), que se sigue abriendo e importando.
+pub const EXTENSION_VIEJA: &str = "pixpin";
+/// El `formato` del manifiesto que se escribe; [`FORMATO_VIEJO`] tambien se
+/// lee (nadie lo comprueba al abrir, pero Android y Mac lo pueden mirar).
+pub const FORMATO: &str = "pindesk";
+/// El `formato` de antes de PinDesk.
+pub const FORMATO_VIEJO: &str = "pixpin";
+/// Quien lo escribio, en el manifiesto: la app de Windows. Antes
+/// `"pixpin-max"`.
+pub const APLICACION: &str = "pindesk";
+
+/// Si `ruta` es un proyecto en un fichero: `.pindesk` o el `.pixpin` de antes
+/// (las mayusculas dan igual).
+pub fn es_paquete(ruta: &Path) -> bool {
+    ruta.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(es_extension_de_paquete)
+}
+
+/// Si `ext` (sin punto) es la de un proyecto en un fichero, nueva o vieja.
+pub fn es_extension_de_paquete(ext: &str) -> bool {
+    ext.eq_ignore_ascii_case(EXTENSION) || ext.eq_ignore_ascii_case(EXTENSION_VIEJA)
+}
+
+/// `<tronco>.pindesk`, el nombre de un paquete nuevo.
+pub fn nombre_de_paquete(tronco: &str) -> String {
+    format!("{tronco}.{EXTENSION}")
 }
 
 /// Quien escribio el paquete y cuando.
@@ -93,9 +127,9 @@ pub struct Manifiesto {
 impl Default for Manifiesto {
     fn default() -> Self {
         Self {
-            formato: "pixpin".into(),
+            formato: FORMATO.into(),
             version: 1,
-            aplicacion: "pixpin-max".into(),
+            aplicacion: APLICACION.into(),
             escrito: 0,
             proyecto: String::new(),
             resto: serde_json::Map::new(),
@@ -568,7 +602,7 @@ mod pruebas {
         }
         let p = Paquete::desde_bytes(&salida).unwrap();
         assert_eq!(p.proyecto.nombre, "Sigue valiendo");
-        assert_eq!(p.manifiesto.formato, "pixpin", "se uso el de por defecto");
+        assert_eq!(p.manifiesto.formato, FORMATO, "se uso el de por defecto");
     }
 
     #[test]

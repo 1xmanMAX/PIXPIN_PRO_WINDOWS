@@ -966,6 +966,7 @@ fn actividad(q: &str) -> Option<Orden> {
                     | "mes"
                     | "dia"
                     | "en"
+                    | "pindesk"
                     | "pixpin"
                     | "con"
                     | "escribi"
