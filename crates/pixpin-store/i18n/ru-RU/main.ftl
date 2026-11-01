@@ -3405,3 +3405,17 @@ clase-acta-propuestas = Непринятые предложения
 clase-acta-aceptar = Принять
 clase-acta-aceptada = Добавлено в «Задачи»
 clase-acta-anadidas = Вопросов добавлено во «Входящие» «Задач»: { $n }
+
+## The month inside a date, in the genitive («5 октября»).
+chat-mes-dia-1 = января
+chat-mes-dia-2 = февраля
+chat-mes-dia-3 = марта
+chat-mes-dia-4 = апреля
+chat-mes-dia-5 = мая
+chat-mes-dia-6 = июня
+chat-mes-dia-7 = июля
+chat-mes-dia-8 = августа
+chat-mes-dia-9 = сентября
+chat-mes-dia-10 = октября
+chat-mes-dia-11 = ноября
+chat-mes-dia-12 = декабря
