@@ -93,7 +93,7 @@ fn cargar(raiz: &Path, ruta: &Path) -> Result<pixpin_cad::modelo3d::Modelo3d, St
 }
 
 fn textos(idioma: Idioma) -> pixpin_cad::ventana3d::TextosUi3d {
-    match idioma {
+    match idioma.base() {
         Idioma::Ingles => pixpin_cad::ventana3d::TextosUi3d {
             abriendo: "Opening the model…".into(),
             vacio: "The model has nothing to show".into(),
@@ -128,7 +128,7 @@ fn textos_marcos(idioma: Idioma) -> pixpin_cad::ventana3d::TextosMarcos3d {
 }
 
 fn textos_marcos_sin_menu(idioma: Idioma) -> pixpin_cad::ventana3d::TextosMarcos3d {
-    match idioma {
+    match idioma.base() {
         Idioma::Ingles => pixpin_cad::ventana3d::TextosMarcos3d {
             marcador: "Bookmark here (with the section and what is hidden)\tCtrl+M".into(),
             marcos: "Frames to print\tI".into(),

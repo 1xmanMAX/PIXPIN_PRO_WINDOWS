@@ -55,6 +55,7 @@ pub fn arrancar(
         &pixpin_shell::entorno::locale_del_sistema(),
         Default::default(),
     );
+    pixpin_render::idioma::fijar(lengua.etiqueta(), lengua.es_rtl());
     let rutas = pixpin_shell::mensajero::rutas_de_los_argumentos();
     tracing::info!(nombre, raiz = ?ubicacion.raiz(), ficheros = rutas.len(), "PixPin de prueba (PIXPIN_INSTANCIA)");
     for ruta in &rutas {

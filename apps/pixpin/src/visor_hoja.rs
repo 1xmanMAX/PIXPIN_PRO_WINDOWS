@@ -260,9 +260,10 @@ fn ms(t: Instant) -> u64 {
 /// Los nombres del idioma de PixPin con los separadores y la fecha corta
 /// que el usuario tiene en Windows.
 fn regional_del_usuario(idioma: Idioma) -> Regional {
+    // Los demas idiomas, con el ingles de base y lo de Windows encima.
     let base = match idioma {
-        Idioma::Ingles => Regional::en_us(),
         Idioma::Espanol => Regional::es_pe(),
+        _ => Regional::en_us(),
     };
     logica::regional_de(base, &pixpin_shell::regional::del_usuario())
 }

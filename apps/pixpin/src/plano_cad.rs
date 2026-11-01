@@ -358,7 +358,7 @@ fn textos(idioma: Idioma) -> pixpin_cad::ventana::TextosUi {
 }
 
 fn textos_sin_menu(idioma: Idioma) -> pixpin_cad::ventana::TextosUi {
-    match idioma {
+    match idioma.base() {
         Idioma::Ingles => pixpin_cad::ventana::TextosUi {
             abriendo: "Opening the drawing…".into(),
             vacio: "The drawing has nothing to show".into(),

@@ -22,7 +22,7 @@ pub fn pedido_del_arranque() -> Option<String> {
 }
 
 fn textos(idioma: Idioma) -> Textos {
-    match idioma {
+    match idioma.base() {
         Idioma::Ingles => Textos {
             capturar: "Capture".into(),
             capturar_largo: "Capture an area of the screen".into(),

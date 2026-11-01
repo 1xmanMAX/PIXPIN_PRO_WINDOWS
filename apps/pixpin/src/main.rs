@@ -584,6 +584,9 @@ fn arrancar(
     // 6. Idioma, antes de crear nada con texto.
     let lengua = idioma::resolver_idioma(&entorno::locale_del_sistema(), config.idioma);
     let textos = Catalogo::nuevo(lengua);
+    // DirectWrite, con el locale del idioma (las letras de reserva de cada
+    // escritura) y su direccion (el arabe, de derecha a izquierda).
+    pixpin_render::idioma::fijar(lengua.etiqueta(), lengua.es_rtl());
     // Y un lector de notas con su pagina ya cargada, para que un Markdown o
     // un texto (el espacio en el Explorador) salgan al instante (26-oct).
     if decision.nivel == Nivel::Completo && hechos.ram_fisica_bytes >= 7 * 1024 * 1024 * 1024 {

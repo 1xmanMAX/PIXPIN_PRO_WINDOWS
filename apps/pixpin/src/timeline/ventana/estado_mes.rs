@@ -140,7 +140,7 @@ fn columna_del_mes(
     let (_, nh) = ui::medir_negrita(p, &num, 44.0 * s, 100.0 * s);
     ui::negrita(p, &num, x, y - 4.0 * s, 44.0 * s, 100.0 * s, TEXTO_V);
     y += nh - 4.0 * s;
-    let mut nombre = pixpin_timeline::estilo::mes_corto(mes.mes, e.ingles).to_string();
+    let mut nombre = pixpin_timeline::estilo::mes_corto(mes.mes, e.lengua).to_string();
     if mes.anio != e.hoy().anio {
         nombre.push_str(&format!(" {}", mes.anio));
     }
@@ -286,7 +286,7 @@ pub(super) fn pintar(e: &mut Estado, p: &Pintor, area: RectF, s: f32, textos: &C
             p.rellenar_redondeado(caja, 16.0 * s, TARJETA_MES);
             columna_del_mes(p, e, &pd, t.mes, caja, s);
             // Las iniciales de la semana, encima de sus columnas.
-            let letras = dias::iniciales(e.ingles);
+            let letras = dias::iniciales(e.lengua);
             for (k, r) in t.semana.iter().enumerate() {
                 let (lw, lh) = p.medir_texto(letras[k], 12.0 * s);
                 p.texto(
