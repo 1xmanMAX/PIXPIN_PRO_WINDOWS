@@ -756,6 +756,9 @@ struct Estado {
     colocadas: Vec<tarjetas::Colocada>,
     /// La pieza bajo el raton en el ultimo fotograma.
     encima: Option<tarjetas::Pieza>,
+    /// La chapita de Jev bajo el raton y su porque: su pista va encima de
+    /// todo, al final del fotograma.
+    pista_de_jev: Option<(RectF, String)>,
     /// Desplazar en el proximo fotograma lo justo para ver la tarjeta con
     /// el foco (se movio con las flechas).
     seguir_foco: bool,
@@ -837,6 +840,7 @@ impl Estado {
             alto_contenido: 0.0,
             colocadas: Vec::new(),
             encima: None,
+            pista_de_jev: None,
             seguir_foco: false,
             botones: Botones::default(),
             aviso: None,
@@ -2441,6 +2445,7 @@ fn pintar_todo(e: &mut Estado, p: &Pintor, marco: Rect, s: f32, textos: &Catalog
         alto: h,
     };
     e.botones.zona(todo, Accion::Fondo);
+    e.pista_de_jev = None;
     let m = MARGEN * s;
     let ancho = w - 2.0 * m;
     let (y_caja, arriba) = alturas(s);
@@ -2737,6 +2742,10 @@ fn pintar_todo(e: &mut Estado, p: &Pintor, marco: Rect, s: f32, textos: &Catalog
             pintar_selector(e, p, m, y_caja + CAJA * s + 6.0 * s, ancho, s, textos);
         }
         pintar_vista_de_ficha(e, p, w, s);
+        // El porque de la prioridad de Jev, con el raton en su chapita.
+        if let Some((ancla, texto)) = e.pista_de_jev.take() {
+            crate::v2::pista::pintar(p, ancla, &texto, todo, s);
+        }
     }
 
     // El aviso de abajo, el de todas las ventanas v2 (con su «Deshacer»
@@ -4372,8 +4381,17 @@ fn pintar_cuadrado(
             s,
             textos,
         );
+        let (_, arriba) = alturas(s);
         for (c, k) in cajas {
             e.botones.zona(c, Accion::BuscarChapa(li, fi, k));
+            // La de Jev dice su porque al pasar el raton (no la tapa la
+            // barra de arriba).
+            if let (Some(super::frase::Chapa::Prioridad(_)), Some(m)) = (chapas.get(k), &f.motivo)
+                && dentro(c, e.botones.raton)
+                && e.botones.raton.1 >= arriba
+            {
+                e.pista_de_jev = Some((c, super::chapitas::pista_de_jev(m, textos)));
+            }
         }
     }
 

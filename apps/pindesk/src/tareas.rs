@@ -103,6 +103,9 @@ pub struct Fila {
     /// `jev::urgencia`). `None`: sin Jev, o aun no se sabe; entonces todo
     /// va como siempre.
     pub prioridad: Option<pindesk_typesafe::urgencia::Prioridad>,
+    /// Y su porque, para la pista de la chapita (`None` si la marco el
+    /// usuario o no se sabe).
+    pub motivo: Option<pindesk_typesafe::urgencia::Motivo>,
 }
 
 /// Una lista de tareas de un chat.
@@ -184,6 +187,7 @@ pub fn filas_de(documento: &str) -> Vec<Fila> {
                 hecha: t.hecha,
                 crudo: t.texto,
                 prioridad: None,
+                motivo: None,
             }
         })
         .collect()
