@@ -1,0 +1,153 @@
+//! **Donde esta la ventana de verdad**, para repartir los clics.
+//!
+//! Los eventos de raton del overlay llegan en coordenadas del escritorio
+//! virtual: el WndProc suma al punto del cliente el origen que la ventana
+//! tiene EN ESE MOMENTO. Cada ventana los pasa a las suyas restando su
+//! `marco`. Si ese `marco` es el de cuando se abrio, en cuanto otro mueve la
+//! ventana (AltSnap, Win+flecha, el arrastre del propio Windows por la
+//! barra de titulo) los botones se quedan donde estaba: «mover la ventana
+//! mueve los sitios de los clics» (1-nov-2026). La regla: el origen se
+//! pregunta a Windows en cada vuelta, nunca se guarda del dia que nacio.
+//!
+//! Aqui, la aritmetica pura de esa regla; la llamada al sistema esta en
+//! `pindesk-shell` (`VentanaOverlay::seguir_sitio`).
+
+use crate::punto::Punto;
+use crate::rect::Rect;
+
+/// El `marco` que cree la ventana, llevado al sitio `real` que le da
+/// Windows. Conserva el tamano del `marco`: la superficie y la disposicion
+/// se hicieron para ese, y estirar es cosa de cada ventana. `None` si ya
+/// estaba ahi.
+pub fn al_sitio(marco: Rect, real: Rect) -> Option<Rect> {
+    ((marco.x, marco.y) != (real.x, real.y)).then_some(Rect {
+        x: real.x,
+        y: real.y,
+        ..marco
+    })
+}
+
+/// De un punto del escritorio a uno de la ventana cuyo origen real es
+/// `origen`.
+pub fn a_cliente(p: Punto, origen: Punto) -> Punto {
+    Punto {
+        x: p.x - origen.x,
+        y: p.y - origen.y,
+    }
+}
+
+/// Si un punto del cliente cae en la zona por la que se arrastra la ventana
+/// (su cabecera vacia): dentro de alguna `zona` y fuera de todos los
+/// `botones`. Es lo que decide si `WM_NCHITTEST` contesta `HTCAPTION`.
+pub fn es_arrastre(p: Punto, zonas: &[Rect], botones: &[Rect]) -> bool {
+    zonas.iter().any(|z| z.contiene(p)) && !botones.iter().any(|b| b.contiene(p))
+}
+
+/// El rectangulo de pixeles enteros que cubre uno con decimales (un boton
+/// pintado con Direct2D): hacia fuera, para que el borde del boton nunca
+/// quede del lado de la zona de arrastre.
+pub fn cubrir(x: f32, y: f32, ancho: f32, alto: f32) -> Rect {
+    let (x0, y0) = (x.floor(), y.floor());
+    let (x1, y1) = ((x + ancho.max(0.0)).ceil(), (y + alto.max(0.0)).ceil());
+    Rect {
+        x: x0 as i32,
+        y: y0 as i32,
+        ancho: (x1 - x0) as u32,
+        alto: (y1 - y0) as u32,
+    }
+}
+
+/// **Lo que hay dentro de una ventana movida por otro.** Quien pone la
+/// ventana a partir de su contenido (un pin: la ventana es el contenido mas
+/// su sombra) espera verla en `esperada`; si esta en `real` con el MISMO
+/// tamano y en otro sitio, alguien la llevo (AltSnap, Win+flecha) y el
+/// contenido tiene que ir con ella, el mismo trecho. Con otro tamano no es
+/// un traslado (un zoom, un cambio de DPI) y no se toca: `None`.
+pub fn contenido_seguido(contenido: Rect, esperada: Rect, real: Rect) -> Option<Rect> {
+    if (esperada.ancho, esperada.alto) != (real.ancho, real.alto) {
+        return None;
+    }
+    let (dx, dy) = (real.x - esperada.x, real.y - esperada.y);
+    ((dx, dy) != (0, 0)).then_some(Rect {
+        x: contenido.x + dx,
+        y: contenido.y + dy,
+        ..contenido
+    })
+}
+
+#[cfg(test)]
+mod pruebas {
+    use super::*;
+
+    fn r(x: i32, y: i32, ancho: u32, alto: u32) -> Rect {
+        Rect { x, y, ancho, alto }
+    }
+
+    #[test]
+    fn movida_por_otro_toma_el_sitio_nuevo_y_conserva_su_tamano() {
+        let marco = r(400, 200, 900, 600);
+        // AltSnap la llevo a la izquierda y, de paso, Windows dice otro
+        // tamano: manda el sitio, el tamano es el de la ventana.
+        let real = r(-1500, 30, 905, 610);
+        assert_eq!(al_sitio(marco, real), Some(r(-1500, 30, 900, 600)));
+        assert_eq!(al_sitio(marco, marco), None);
+        // Solo el tamano distinto no la mueve.
+        assert_eq!(al_sitio(marco, r(400, 200, 1, 1)), None);
+    }
+
+    #[test]
+    fn el_clic_se_reparte_con_el_origen_de_ahora_no_con_el_de_al_abrir() {
+        let al_abrir = Punto { x: 400, y: 200 };
+        let ahora = Punto { x: 1200, y: 500 };
+        // El boton esta en el (50, 120) de la ventana: tras moverla, el
+        // clic en pantalla cae en ahora + (50, 120).
+        let clic = Punto { x: 1250, y: 620 };
+        assert_eq!(a_cliente(clic, ahora), Punto { x: 50, y: 120 });
+        // Con el origen viejo se iria a otro sitio: el fallo de antes.
+        assert_ne!(a_cliente(clic, al_abrir), Punto { x: 50, y: 120 });
+        // Origen negativo (un monitor a la izquierda del principal).
+        assert_eq!(
+            a_cliente(Punto { x: -1900, y: -10 }, Punto { x: -1920, y: -40 }),
+            Punto { x: 20, y: 30 }
+        );
+    }
+
+    #[test]
+    fn se_arrastra_por_la_cabecera_vacia_y_no_por_sus_botones() {
+        let cabecera = [r(0, 0, 800, 90)];
+        let botones = [r(600, 20, 150, 40)];
+        assert!(es_arrastre(Punto { x: 300, y: 40 }, &cabecera, &botones));
+        assert!(!es_arrastre(Punto { x: 650, y: 40 }, &cabecera, &botones));
+        // Debajo de la cabecera, el contenido: clic normal.
+        assert!(!es_arrastre(Punto { x: 300, y: 90 }, &cabecera, &botones));
+        assert!(!es_arrastre(Punto { x: 300, y: 40 }, &[], &botones));
+    }
+
+    #[test]
+    fn el_contenido_de_un_pin_movido_por_otro_va_con_su_ventana() {
+        // Contenido 300x200 con 10 de sombra alrededor.
+        let contenido = r(110, 110, 300, 200);
+        let esperada = r(100, 100, 320, 220);
+        let real = r(700, -50, 320, 220);
+        assert_eq!(
+            contenido_seguido(contenido, esperada, real),
+            Some(r(710, -40, 300, 200))
+        );
+        // Donde se la puso: nada que seguir.
+        assert_eq!(contenido_seguido(contenido, esperada, esperada), None);
+        // Otro tamano (la ventana del zoom, un cambio de DPI): no es un
+        // traslado.
+        assert_eq!(
+            contenido_seguido(contenido, esperada, r(700, 0, 400, 220)),
+            None
+        );
+    }
+
+    #[test]
+    fn un_boton_con_decimales_se_cubre_hacia_fuera() {
+        assert_eq!(cubrir(10.4, 20.6, 30.2, 10.0), r(10, 20, 31, 11));
+        assert_eq!(cubrir(0.0, 0.0, 8.0, 8.0), r(0, 0, 8, 8));
+        // Medidas negativas (un boton sin sitio): vacio, no enorme.
+        assert_eq!(cubrir(5.5, 5.5, -3.0, -3.0), r(5, 5, 1, 1));
+    }
+}

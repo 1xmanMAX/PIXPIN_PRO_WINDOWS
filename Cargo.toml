@@ -14,54 +14,54 @@ repository = "https://github.com/1xmanMAX/pixpin-max"
 
 [workspace.dependencies]
 # Internas
-pixpin-geom = { path = "crates/pixpin-geom" }
-pixpin-nivel = { path = "crates/pixpin-nivel" }
-pixpin-shell = { path = "crates/pixpin-shell" }
-pixpin-motor2d = { path = "crates/pixpin-motor2d" }
-pixpin-tinta = { path = "crates/pixpin-tinta" }
-pixpin-render = { path = "crates/pixpin-render" }
-pixpin-codec = { path = "crates/pixpin-codec" }
+pindesk-geom = { path = "crates/pindesk-geom" }
+pindesk-nivel = { path = "crates/pindesk-nivel" }
+pindesk-shell = { path = "crates/pindesk-shell" }
+pindesk-motor2d = { path = "crates/pindesk-motor2d" }
+pindesk-tinta = { path = "crates/pindesk-tinta" }
+pindesk-render = { path = "crates/pindesk-render" }
+pindesk-codec = { path = "crates/pindesk-codec" }
 # Oir y grabar notas de voz: Media Foundation para reproducir, WASAPI para
 # el microfono. Sin dependencias de PixPin: vive con los cimientos.
-pixpin-audio = { path = "crates/pixpin-audio" }
+pindesk-audio = { path = "crates/pindesk-audio" }
 # El motor de grabar: WASAPI para el microfono y el sonido del equipo, la
 # deriva de los relojes, la mezcla y el `.m4a`. Cimiento, sin depender de
 # ningun crate de PixPin (ver docs/motor-de-audio.md).
-pixpin-motor-audio = { path = "crates/pixpin-motor-audio" }
+pindesk-motor-audio = { path = "crates/pindesk-motor-audio" }
 # Pasar una nota de voz a texto y el telepronter. Cimiento como
-# `pixpin-audio`: Media Foundation para decodificar y Vosk cargado al vuelo,
+# `pindesk-audio`: Media Foundation para decodificar y Vosk cargado al vuelo,
 # sin depender de ningun crate de PixPin.
-pixpin-voz = { path = "crates/pixpin-voz" }
+pindesk-voz = { path = "crates/pindesk-voz" }
 # El asistente (Claude o DeepSeek por su API) y sus herramientas. Hasta el
 # 27-oct-2026 tambien un modelo local; ver docs/investigacion/2026-10-13-ia-local.md.
-pixpin-ia = { path = "crates/pixpin-ia" }
-pixpin-capture = { path = "crates/pixpin-capture" }
-pixpin-pin = { path = "crates/pixpin-pin" }
+pindesk-ia = { path = "crates/pindesk-ia" }
+pindesk-capture = { path = "crates/pindesk-capture" }
+pindesk-pin = { path = "crates/pindesk-pin" }
 # La pila de capturas: el icono de la esquina que junta varias capturas
 # seguidas para pegarlas todas de un Ctrl+V. Capa L2 como el pin, y por eso
-# tampoco puede ver pixpin-store: los ajustes le llegan ya masticados.
-pixpin-pila = { path = "crates/pixpin-pila" }
-pixpin-pdf = { path = "crates/pixpin-pdf" }
+# tampoco puede ver pindesk-store: los ajustes le llegan ya masticados.
+pindesk-pila = { path = "crates/pindesk-pila" }
+pindesk-pdf = { path = "crates/pindesk-pdf" }
 # Word, libros y paginas leidos dentro (visor de documentos, tanda 2.1).
-pixpin-docs = { path = "crates/pixpin-docs" }
-pixpin-hojas = { path = "crates/pixpin-hojas" }
-pixpin-office = { path = "crates/pixpin-office" }
-pixpin-ocr = { path = "crates/pixpin-ocr" }
-pixpin-record = { path = "crates/pixpin-record" }
+pindesk-docs = { path = "crates/pindesk-docs" }
+pindesk-hojas = { path = "crates/pindesk-hojas" }
+pindesk-office = { path = "crates/pindesk-office" }
+pindesk-ocr = { path = "crates/pindesk-ocr" }
+pindesk-record = { path = "crates/pindesk-record" }
 # El motor de video (captura por la GPU, codificador de la grafica, MP4 con
 # el sonido que le den). Ver docs/motor-de-video.md.
-pixpin-motor-video = { path = "crates/pixpin-motor-video" }
-pixpin-store = { path = "crates/pixpin-store" }
+pindesk-motor-video = { path = "crates/pindesk-motor-video" }
+pindesk-store = { path = "crates/pindesk-store" }
 # El visor de HTML empotrado (WebView2): abrir dentro de PixPin un .html del
 # chat y dejar que su propio boton de guardar sobrescriba el fichero. Cimiento
-# como pixpin-audio: solo WebView2 y geometria, sin ver ningun otro crate.
-pixpin-web = { path = "crates/pixpin-web" }
-pixpin-ui = { path = "crates/pixpin-ui" }
+# como pindesk-audio: solo WebView2 y geometria, sin ver ningun otro crate.
+pindesk-web = { path = "crates/pindesk-web" }
+pindesk-ui = { path = "crates/pindesk-ui" }
 # El compresor de PDF del autor (github.com/1xmanMAX/Thesis), copiado: el
 # repositorio es privado y una dependencia git no compilaria sin credenciales.
 # Ver crates/pdfsqueeze-core/PROCEDENCIA.md.
 pdfsqueeze-core = { path = "crates/pdfsqueeze-core" }
-pixpin-aligerar = { path = "apps/pixpin-aligerar" }
+pindesk-aligerar = { path = "apps/pindesk-aligerar" }
 
 [profile.release]
 lto = "fat"
@@ -88,7 +88,7 @@ opt-level = 3
 opt-level = 3
 # Y el propio cable: sincronizar un chat de cientos de mensajes recorre su
 # JSON decenas de veces (resumenes, copias, inventarios en los dos lados).
-[profile.dev.package.pixpin-sincro]
+[profile.dev.package.pindesk-sincro]
 opt-level = 2
 # Aligerar un PDF: sin optimizar, pdfsqueeze tarda minutos en lo que en
 # release son segundos (zopfli y las carreras de JPEG), y las pruebas que
@@ -120,18 +120,18 @@ opt-level = 3
 # que bajar de 50 ms tambien en las pruebas (formula/pruebas_funciones.rs), y
 # sin optimizar tardaba ~80 ms. El nivel 1 lo deja en ~15 ms; el resto del
 # crate sigue igual de depurable.
-[profile.dev.package.pixpin-proyecto]
+[profile.dev.package.pindesk-proyecto]
 opt-level = 1
-# El puente del navegador (apps/pixpin-puente) tiene que contestar en menos
+# El puente del navegador (apps/pindesk-puente) tiene que contestar en menos
 # de 50 ms y lo mide su prueba: sin optimizar, decodificar el base64 y el JSON
 # de una captura de pagina de un mega tarda mas de 100 ms y la medida no
 # diria nada del ejecutable de verdad.
-[profile.dev.package.pixpin-puente]
+[profile.dev.package.pindesk-puente]
 opt-level = 3
 [profile.dev.package.serde_json]
 opt-level = 3
 # El motor de audio: sus pruebas remuestrean diez minutos de sonido con el
 # filtro de verdad (la deriva de los relojes solo se ve en tiradas largas), y
 # sin optimizar tardarian minutos. Asi se prueba el mismo codigo que suena.
-[profile.dev.package.pixpin-motor-audio]
+[profile.dev.package.pindesk-motor-audio]
 opt-level = 3

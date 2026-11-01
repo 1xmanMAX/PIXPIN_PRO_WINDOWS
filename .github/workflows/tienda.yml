@@ -1,5 +1,5 @@
 # El paquete de la Microsoft Store (solo en la rama `microsoft-store`, ver
-# docs/tienda.md): compila PinDesk con `--features pixpin/tienda`, junta los
+# docs/tienda.md): compila PinDesk con `--features pindesk/tienda`, junta los
 # ejecutables con tienda/AppxManifest.xml y los logos, y deja
 # PinDesk_<version>_x64.msix SIN FIRMAR (la Store lo firma al publicarlo) como
 # artefacto y como version previa `v<version>-store` en Releases. Si el
@@ -35,7 +35,7 @@ jobs:
       VERSION: ${{ inputs.version }}
       # El onnxruntime.dll va dentro del paquete (junto al exe): asi la app
       # nunca baja una DLL (politica 10.2.2 de la Store). El mismo que baja
-      # main, crates/pixpin-indra/src/catalogo.rs (RUNTIME).
+      # main, crates/pindesk-indra/src/catalogo.rs (RUNTIME).
       ORT_URL: https://github.com/microsoft/onnxruntime/releases/download/v1.31.0/onnxruntime-win-x64-1.31.0.zip
       ORT_SHA256: 0c42dc4e278f0968fdf9ebf1b1e54a74c657a9942e70803e453c91993451cf4c
     steps:
@@ -51,7 +51,13 @@ jobs:
         with:
           key: tienda
       - name: Compilar (release, feature tienda)
-        run: cargo build --release -p pixpin --features pixpin/tienda -p pixpin-aligerar -p pixpin-lanzador -p pixpin-puente -p pixpin-mcp
+        shell: pwsh
+        # Los paquetes se llaman pindesk-* desde que la rama tiene el
+        # renombrado de main; antes, pixpin-* (docs/nombre-pindesk.md).
+        run: |
+          $p = if (Test-Path 'apps/pindesk') { 'pindesk' } else { 'pixpin' }
+          cargo build --release -p $p --features "$p/tienda" -p "$p-aligerar" -p "$p-lanzador" -p "$p-puente" -p "$p-mcp"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Herramientas del SDK de Windows
         shell: pwsh
@@ -83,8 +89,14 @@ jobs:
           } else {
             throw 'No hay ejecutable principal (ni pindesk.exe ni pixpinmax.exe)'
           }
-          foreach ($exe in 'pixpin-aligerar','pixpin-lanzador','pixpin-puente','pixpin-mcp') {
-            Copy-Item "target\release\$exe.exe" $dir
+          # Los ayudantes se llaman pindesk-* desde que la rama tiene el
+          # renombrado de main (docs/formato-pindesk.md); antes, pixpin-*. Se
+          # copia el que haya, con su nombre: el AppxManifest de esa rama lo
+          # nombra igual.
+          foreach ($exe in 'aligerar','lanzador','puente','mcp') {
+            $nuevo = "target\release\pindesk-$exe.exe"
+            if (Test-Path $nuevo) { Copy-Item $nuevo $dir }
+            else { Copy-Item "target\release\pixpin-$exe.exe" $dir }
           }
           Copy-Item 'tienda\Assets' "$dir\Assets" -Recurse
           Copy-Item 'LICENSE' "$dir\LICENSE.txt"

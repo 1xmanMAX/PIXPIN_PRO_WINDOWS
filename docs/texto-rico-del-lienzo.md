@@ -8,7 +8,7 @@ láminas de geometría: «Nos piden m∢COD = **X**» con la X en rojo, «A̅B̅
 raya, «mAC⌒» con su arco, «45° = (2a+2b)/2» con la fracción de verdad.
 
 No es un elemento nuevo: es el mismo `text` de Excalidraw con **una clave
-más**. Código del PC: `crates/pixpin-motor2d/src/texto_rico.rs` (leer,
+más**. Código del PC: `crates/pindesk-motor2d/src/texto_rico.rs` (leer,
 componer, texto plano), `formulas.rs` (el lector de LaTeX, el mismo de las
 notas) y `ecuacion.rs` (el compositor de cajas, el mismo de las ecuaciones
 del asistente).

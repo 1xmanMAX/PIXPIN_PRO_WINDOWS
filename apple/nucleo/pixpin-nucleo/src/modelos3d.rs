@@ -1,5 +1,5 @@
 //! **Los modelos 3D para Metal**: IFC, Revit, LandXML de Civil 3D, ficheros
-//! de puntos y un DWG/DXF visto en 3D (`pixpin_bim::convertir_fichero`, lo
+//! de puntos y un DWG/DXF visto en 3D (`pindesk_bim::convertir_fichero`, lo
 //! mismo que lee el visor 3D de Windows). Cruza a Swift como en
 //! [`crate::planos`]: buferes de bytes en little-endian que Metal sube tal
 //! cual.
@@ -14,7 +14,7 @@
 //!
 //! Lo que se ve se filtra **rehaciendo solo los indices**
 //! ([`Modelo3dApple::visibles`], `Modelo3d::visibles`): los vertices se suben
-//! una vez. La camara es la de Windows ([`pixpin_cad::orbita::Orbita`]): sus
+//! una vez. La camara es la de Windows ([`pindesk_cad::orbita::Orbita`]): sus
 //! funciones van sueltas ([`camara_matriz`]...) y son baratas.
 //!
 //! Elegir lo que hay bajo el raton se hace aqui, en la CPU: un rayo de la
@@ -23,13 +23,13 @@
 //! ni leer un pixel de vuelta.
 //!
 //! El terreno de Civil 3D ya viene coloreado por cota y con sus curvas de
-//! nivel (`pixpin_bim::civil`): Metal solo pinta los colores que trae.
+//! nivel (`pindesk_bim::civil`): Metal solo pinta los colores que trae.
 
 use std::path::Path;
 use std::sync::Arc;
 
-use pixpin_cad::modelo3d::{Modelo3d, V3, tipo_legible};
-use pixpin_cad::orbita::Orbita;
+use pindesk_cad::modelo3d::{Modelo3d, V3, tipo_legible};
+use pindesk_cad::orbita::Orbita;
 
 use crate::ErrorNucleo;
 
@@ -135,7 +135,7 @@ pub struct Eleccion3d {
     pub distancia: f64,
 }
 
-/// La camara del visor 3D (`pixpin_cad::orbita::Orbita`).
+/// La camara del visor 3D (`pindesk_cad::orbita::Orbita`).
 #[derive(Debug, Clone, Copy, PartialEq, uniffi::Record)]
 pub struct Camara3d {
     pub objetivo: Punto3d,
@@ -224,9 +224,9 @@ pub fn clase_de_modelo(ruta: String) -> ClaseDeModelo {
         .unwrap_or_default();
     if matches!(ext.as_str(), "dwg" | "dxf") {
         ClaseDeModelo::Plano
-    } else if pixpin_bim::se_abre(&ext)
-        || (ext == "landxml" && pixpin_bim::civil::es_landxml(ruta))
-        || pixpin_bim::es_de_civil(ruta)
+    } else if pindesk_bim::se_abre(&ext)
+        || (ext == "landxml" && pindesk_bim::civil::es_landxml(ruta))
+        || pindesk_bim::es_de_civil(ruta)
     {
         ClaseDeModelo::Modelo3d
     } else {
@@ -276,9 +276,9 @@ impl Modelo3dApple {
         // Un `.landxml`: `convertir_fichero` solo mira la extension `xml`.
         let m = if ext == "landxml" {
             let t = std::fs::read(ruta)?;
-            pixpin_bim::civil::de_landxml(&String::from_utf8_lossy(&t))
+            pindesk_bim::civil::de_landxml(&String::from_utf8_lossy(&t))
         } else {
-            pixpin_bim::convertir_fichero(ruta)
+            pindesk_bim::convertir_fichero(ruta)
         }
         .map_err(|e| ErrorNucleo::Argumento { detalle: e })?;
         if m.vacio() {
@@ -594,12 +594,12 @@ pub fn camara_cerca_de(camara: Camara3d, destino: Camara3d) -> bool {
 #[cfg(test)]
 mod pruebas {
     use super::*;
-    use pixpin_cad::modelo3d::Constructor3d;
+    use pindesk_cad::modelo3d::Constructor3d;
 
     fn puntos() -> Arc<Modelo3dApple> {
         let texto =
             "1,100,200,10,A\n2,100,210,11,B\n3,110,200,12,C\n4,110,210,10,D\n5,105,205,15,E\n";
-        Modelo3dApple::de_modelo(pixpin_bim::civil::de_puntos(texto, "PNEZD.csv").unwrap())
+        Modelo3dApple::de_modelo(pindesk_bim::civil::de_puntos(texto, "PNEZD.csv").unwrap())
     }
 
     #[test]
@@ -724,7 +724,7 @@ mod pruebas {
         let a = c.elemento("IfcWall", "Muro 1");
         let b = c.elemento("IfcSlab", "Losa");
         c.niveles(
-            vec![pixpin_cad::modelo3d::Nivel {
+            vec![pindesk_cad::modelo3d::Nivel {
                 nombre: "1ER PISO".into(),
                 cota: 0.0,
             }],

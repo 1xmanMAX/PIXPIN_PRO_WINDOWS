@@ -1,6 +1,6 @@
 //! El lienzo cruzando a Swift como **un solo bufer plano**.
 //!
-//! `pixpin_motor2d::pintado` ya convierte una escena en ordenes de dibujo
+//! `pindesk_motor2d::pintado` ya convierte una escena en ordenes de dibujo
 //! (poligonos, polilineas, textos, imagenes) sin pintar nada. Aqui esas
 //! ordenes se empaquetan en un unico bloque de numeros para que Swift las
 //! recorra en una pasada y construya sus `CGPath`: **una llamada al puente
@@ -56,12 +56,12 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 
-use pixpin_motor2d::Escena;
-use pixpin_motor2d::camara::Camara;
-use pixpin_motor2d::elemento::{ColorRgba, EstiloTrazo, RecorteImagen};
-use pixpin_motor2d::excalidraw;
-use pixpin_motor2d::pintado::{self, Orden};
-use pixpin_motor2d::vector::Punto2;
+use pindesk_motor2d::Escena;
+use pindesk_motor2d::camara::Camara;
+use pindesk_motor2d::elemento::{ColorRgba, EstiloTrazo, RecorteImagen};
+use pindesk_motor2d::excalidraw;
+use pindesk_motor2d::pintado::{self, Orden};
+use pindesk_motor2d::vector::Punto2;
 
 use crate::{ErrorNucleo, Nucleo};
 
@@ -148,7 +148,7 @@ impl Lienzo {
     }
 
     /// Un lienzo desde un fichero `.excalidraw` o `.pixpin2d` (el dibujo
-    /// propio de PixPin, `pixpin_motor2d::formato`; se mira la extension).
+    /// propio de PixPin, `pindesk_motor2d::formato`; se mira la extension).
     /// Lo usa tambien la vista previa de Quick Look.
     #[uniffi::constructor]
     pub fn de_fichero(ruta: String) -> Result<Arc<Lienzo>, ErrorNucleo> {
@@ -215,7 +215,7 @@ fn leer_fichero(ruta: &Path) -> Result<Arc<Lienzo>, ErrorNucleo> {
     let es_pixpin2d = ruta
         .extension()
         .and_then(|e| e.to_str())
-        .is_some_and(|e| e.eq_ignore_ascii_case(pixpin_motor2d::formato::EXTENSION));
+        .is_some_and(|e| e.eq_ignore_ascii_case(pindesk_motor2d::formato::EXTENSION));
     if es_pixpin2d {
         return Lienzo::de_pixpin2d(&texto);
     }
@@ -248,7 +248,7 @@ impl Nucleo {
                 });
             }
         }
-        leer_fichero(&pixpin_proyecto::almacen::lienzo(
+        leer_fichero(&pindesk_proyecto::almacen::lienzo(
             self.ruta(),
             &chat,
             &dibujo,
@@ -820,7 +820,7 @@ mod pruebas {
         .unwrap();
         let escena = excalidraw::a_escena(&l);
         let ruta = dir.join("dibujo.pixpin2d");
-        pixpin_motor2d::formato::guardar(&ruta, &escena).unwrap();
+        pindesk_motor2d::formato::guardar(&ruta, &escena).unwrap();
         let leido = Lienzo::de_fichero(ruta.display().to_string()).unwrap();
         assert_eq!(leido.cuantos_elementos(), 1);
         assert!(leido.imagenes().is_empty());

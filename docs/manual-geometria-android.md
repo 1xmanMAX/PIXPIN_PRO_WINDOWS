@@ -7,7 +7,7 @@ letra). Todo viaja en el `.excalidraw` de siempre con **claves nuevas y reserva*
 un Android que todavía no las entienda sigue viendo algo razonable en el mismo
 sitio, y al guardar las conserva (como cualquier clave que no conoce).
 
-El código del PC: `crates/pixpin-motor2d/src/geometria_exacta.rs` (figuras, pintado,
+El código del PC: `crates/pindesk-motor2d/src/geometria_exacta.rs` (figuras, pintado,
 lectura y escritura), `gesto/geometria.rs` (las herramientas) y `enganche.rs` (el imán).
 
 ## Ninguna figura nueva: tres variables del arco
@@ -70,7 +70,7 @@ Nuevos en el PC (Android tiene `Iman.kt`):
 
 ## Para el asistente
 
-`geometria_precisa` (crate `pixpin-ia`, `edicion.rs`) acepta `figura`:
+`geometria_precisa` (crate `pindesk-ia`, `edicion.rs`) acepta `figura`:
 `semicircunferencia` (`puntos` del diámetro, `lado`), `cuadrante`, `sector`, `segmento`
 (`centro` + `radio` + `inicio`/`fin`/`sentido`, o `centro` + `puntos` de las puntas de
 los radios), `arco` por tres `puntos`, `marca_angulo` (`vertice`, `puntos` de cada lado,

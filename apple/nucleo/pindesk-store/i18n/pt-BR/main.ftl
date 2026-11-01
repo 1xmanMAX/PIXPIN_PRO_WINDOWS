@@ -1,0 +1,3089 @@
+# pt-BR: generado por `herramientas/idiomas.py apple` a partir de
+# crates/pindesk-store/i18n/pt-BR/main.ftl, con las claves de Apple.
+# No se edita a mano: se traduce en crates/ y se vuelve a generar.
+app-nombre = PinDesk
+resultado-copiar = Copiar
+resultado-guardar-como = Salvar como…
+resultado-guardar = Salvar
+resultado-descartar = Descartar
+error-otra-instancia = O PinDesk já está em execução.
+error-atajo-ocupado = Não foi possível registrar { $atajo }: outro aplicativo está usando esse atalho.
+captura-guardada = Captura salva em { $ruta }
+captura-fallo = Não foi possível capturar a tela: { $motivo }
+barra-copiar = Copiar
+barra-guardar = Salvar
+barra-guardar-como = Salvar como…
+barra-descartar = Descartar
+pin-no-encontrado = Não encontrado
+pin-copiar = Copiar
+pin-guardar-como = Salvar como…
+pin-abrir-ubicacion = Abrir local
+pin-tamano-original = Tamanho original
+pin-grupo = Grupo
+pin-sin-grupo = Sem grupo
+pin-color-rojo = Vermelho
+pin-color-naranja = Laranja
+pin-color-ambar = Âmbar
+pin-color-verde = Verde
+pin-color-cian = Ciano
+pin-color-azul = Azul
+pin-color-violeta = Violeta
+pin-color-rosa = Rosa
+pin-ocultar-grupo = Ocultar este grupo
+pin-cerrar = Fechar
+pin-eliminar = Excluir do armazenamento…
+pin-eliminar-confirmar = Será apagado do armazenamento para sempre. Tem certeza?
+grupos-ocultos = Grupos ocultos
+capa-guardar-titulo = Anotação de tela
+capa-guardar-pregunta = Salvar o desenho como um pin?
+pin-reproducir = Reproduzir
+pin-pausar = Pausar
+pin-sonido = Som
+barra-todo = Selecionar tudo
+pin-sin-codec = sem codec de vídeo
+comando-capturar-region = Capturar
+comando-capturar-y-copiar = Capturar e copiar
+comando-capturar-con-scroll = Captura longa com rolagem
+comando-cuentagotas = Conta-gotas
+comando-pinear = Recortar e fixar
+comando-pinear-en-vivo = Pin ao vivo (ver uma área em tempo real)
+comando-pinear-portapapeles = Fixar a área de transferência
+comando-anotar = Anotar na tela
+comando-anotar-congelada = Anotar uma captura da tela
+comando-abrir-chat = Abrir o chat de projetos
+comando-abrir-ajustes = Configurações
+comando-salir = Sair
+comando-alternar-pines = Ocultar ou mostrar os pins
+comando-restaurar-ultimo-pin = Restaurar o último pin fechado
+comando-cerrar-todos-los-pines = Fechar todos os pins
+comando-ventana-encima = Manter no topo a janela sob o mouse
+comando-copiar-texto = Copiar o texto de uma área
+comando-capturar-y-anotar = Capturar e anotar
+comando-capturar-ultima-region = Repetir a última captura
+comando-grabar-gif = Gravar uma área como GIF
+grabar-empezar = Gravar
+grabar-parar = Parar
+grabar-pausa = Pausar
+grabar-seguir = Continuar
+grabar-cerrar = Fechar
+grabar-por-segundo = { $ritmo }/s
+grabar-cuenta-atras = { $segundos }...
+editor-ver = Ver
+editor-pausar = Pausar
+editor-anterior = Anterior
+editor-siguiente = Próximo
+editor-velocidad = { $veces }x
+editor-guardar = Salvar
+editor-guardado-rapido = Rápido
+editor-copiar = Copiar
+editor-descartar = Descartar
+comando-alternar-paso-de-clics = Deixar os cliques atravessarem os pins
+pin-dejar-pasar-clic = Deixar o clique atravessar
+comando-silenciar-atajos = Silenciar os atalhos
+bandeja-silenciada = PinDesk — atalhos silenciados
+aviso-atajos-silenciados = Atalhos silenciados
+aviso-atajos-silenciados-detalle = Reative-os neste mesmo menu.
+aviso-atajos-activos = Atalhos ativos
+aviso-atajos-activos-detalle = { $cuantos } atalhos voltaram a responder.
+comando-capturar-con-retardo = Capturar após uma contagem regressiva
+cuenta-atras-cancelar = Esc para parar
+comando-pinear-seleccion = Fixar a seleção do Explorador de Arquivos
+ajustes-pestana-atajos = Atalhos
+ajustes-pestana-general = Geral
+ajustes-pestana-captura = Captura
+ajustes-pestana-dibujo = Desenho
+ajustes-iman = Ajustar aos pontos notáveis
+ajustes-iman-esquinas = Cantos e extremidades
+ajustes-iman-medios = Pontos médios
+ajustes-iman-centros = Centros
+ajustes-iman-radio = Distância de atração (px)
+ajustes-idioma = Idioma
+ajustes-idioma-sistema = O do Windows
+ajustes-arranque = Iniciar com o Windows
+ajustes-color = Formato da cor do conta-gotas
+ajustes-nivel = Desempenho
+ajustes-nivel-auto = Automático
+ajustes-nivel-completo = Completo
+ajustes-nivel-ligero = Leve
+ajustes-pdf-aligerar = Compactar os PDFs ao enviá-los ao chat
+ajustes-pdf-nivel = Quanto compactar (Pequeno e Máx.: só manualmente)
+ajustes-pdf-nivel-sin-perdida = Exato
+ajustes-pdf-nivel-equilibrado = Médio
+ajustes-pdf-nivel-pequeno = Pequeno
+ajustes-pdf-nivel-extremo = Máx.
+ajustes-retardo-captura = Segundos de contagem regressiva antes de capturar
+ajustes-limite-scroll = Altura máxima da captura com rolagem, em pixels
+ajustes-gif-ritmo = Quadros por segundo ao gravar
+ajustes-gif-retardo = Segundos de espera antes de gravar
+ajustes-sin-atajo = Sem atalho
+ajustes-pulsa-combinacion = Pressione a combinação…
+ajustes-choca = repetido
+ajustes-cerrar = Fechar
+ajustes-abrir-fichero = Abrir o arquivo de configurações
+pin-copiar-texto = Copiar o texto da imagem
+pin-abrir-en-lienzo = Abrir na tela de desenho
+pin-congelar = Congelar como imagem
+pin-manejar = Controlar a distância
+pin-dejar-de-manejar = Parar de controlar a distância
+pin-pagina-siguiente = Próxima página
+pin-pagina-anterior = Página anterior
+pin-extraer-pagina = Extrair esta página como pin
+pin-extraer-todas = Extrair todas as páginas
+aviso-paginas-extraidas = Páginas extraídas
+aviso-paginas-extraidas-detalle = { $hechas } de { $total }. O restante ficou de fora para não lotar a tela.
+chat-titulo = Projetos
+chat-sin-proyectos = Ainda não há projetos
+chat-elige-proyecto = Escolha um projeto para vê-lo
+chat-hojas = { $cuantas ->
+    [one] 1 folha
+   *[other] { $cuantas } folhas
+  }
+chat-sin-mensajes = Este projeto ainda está vazio
+chat-clase-imagen = Imagem
+chat-clase-archivo = Arquivo
+chat-clase-voz = Nota de voz
+chat-clase-dibujo = Desenho
+chat-clase-pagina = Página
+chat-clase-proyecto = Projeto
+chat-clase-miniapp = Miniaplicativo
+chat-escribe = Escreva algo…
+chat-cosas = { $n ->
+    [one] 1 item
+   *[other] { $n } itens
+}
+chat-elegidos = { $n ->
+    [one] 1 selecionado
+   *[other] { $n } selecionados
+}
+chat-lienzo = Tela
+chat-tabla = Tabela
+chat-viene-de = Vem de
+chat-comentar = Comentar isto
+chat-copiar = Copiar
+chat-fijar = Fixar no topo
+chat-soltar = Desafixar do topo
+chat-compartir = Compartilhar…
+chat-abrir-con = Abrir com…
+abrir-con = Abrir com…
+abrir-con-no-existe = O arquivo “{ $nombre }” não foi encontrado: ele pode ter sido movido ou excluído.
+abrir-con-fallo = O Windows não conseguiu mostrar “Abrir com…” para este arquivo.
+chat-aligerar = Compactar o PDF
+chat-renombrar = Renomear
+chat-renombrar-barra = Nome:
+chat-renombrar-teclas = Enter salva · Esc mantém o anterior
+chat-describir = Adicionar descrição
+chat-describir-editar = Editar descrição
+chat-describir-barra = Descrição:
+chat-describir-teclas = Enter salva · Esc deixa como estava
+chat-pinear = Fixar
+chat-recordar = Lembrar-me disto
+chat-rescatar = Salvar isto
+chat-solo-la-foto = Ver só a foto
+chat-ver-hilo = Ver comentários
+chat-etiquetar = Adicionar uma etiqueta
+chat-quitar-etiqueta = Remover a etiqueta
+chat-reenviar = Encaminhar
+chat-unir = Adicionar ao projeto
+chat-transcribir = Transcrever
+chat-letra = Letra ou texto
+chat-elegir = Selecionar
+chat-borrar = Excluir
+chat-borrar-aviso = Será removido da conversa. Um arquivo anexado é excluído junto. Continuar?
+chat-biblioteca-audio = Biblioteca de áudio
+chat-fondo = Fundo do chat
+chat-escala-puesta = Escala da interface: { $cuanto } %
+chat-fondo-mar = Mar
+chat-fondo-arena = Areia
+chat-fondo-brezo = Urze
+chat-fondo-bosque = Floresta
+chat-fondo-ocaso = Pôr do sol
+chat-fondo-pizarra = Lousa
+chat-adj-archivo = Um arquivo
+chat-adj-pagina = Uma página de um projeto
+chat-adj-proyecto = Um projeto inteiro
+chat-adj-conversacion = Uma conversa
+chat-adj-telepronter = Teleprompter
+chat-adj-pronunciar = Pronunciar
+chat-adj-miniapp = Um miniaplicativo
+chat-reenviado = Encaminhado
+chat-copiado = Copiado
+chat-compartido = Copiado para a área de transferência: cole onde quiser compartilhar
+chat-compartir-sin-panel = O Windows não abriu o painel Compartilhar: deixei na área de transferência para você colar onde quiser
+chat-pineado = Fixado
+chat-foto-en-la-nota = Foto adicionada ao texto: tudo será enviado em uma única nota
+chat-sin-archivo = Esta mensagem não tem um arquivo neste computador
+lector-lectura-veloz-con = ⚡ Leitura rápida · { $pct } %
+lector-lectura-veloz-sin-codigo = Este documento não pode ser lido no Lectura Veloz: não é um arquivo do chat nem uma nota salva (não tem código de mensagem).
+lector-lectura-veloz-formato = Este documento não pode ser lido no Lectura Veloz: ele não lê arquivos “.{ $ext }”.
+lector-lectura-veloz-falta-archivo = Este documento não pode ser lido no Lectura Veloz: o arquivo não está mais neste computador ({ $nombre }).
+chat-lectura-veloz-chapa = Leitura rápida · { $pct } %
+chat-escaneado = Digitalizado
+chat-sin-origen = Não encontrei essa tela neste projeto
+chat-sin-proyectos-otros = Não há outro projeto para onde enviar
+chat-ajustes-bandeja = As configurações abrem pelo ícone do PinDesk na bandeja
+chat-proyectos-lista = Os projetos são a lista à esquerda
+chat-no-hay-voz = Gravar notas de voz ainda não existe no Windows
+chat-no-hay-aligerar = Compactar um PDF ainda não existe no Windows
+chat-no-hay-unir = No Windows cada chat já é um projeto: use Encaminhar para levá-lo a outro
+chat-no-hay-biblioteca = A biblioteca de áudio ainda não existe no Windows
+chat-ver-dibujo-entero = Ver o desenho inteiro
+chat-no-hay-pagina = Anexar uma página de um projeto ainda não existe no Windows
+chat-no-hay-telepronter = O teleprompter ainda não existe no Windows
+chat-no-se-pudo = Não foi possível: veja o log do PinDesk
+chat-fecha = { $dia } de { $mes }
+chat-fecha-con-ano = { $dia } de { $mes } de { $ano }
+chat-mes-1 = janeiro
+chat-mes-2 = fevereiro
+chat-mes-3 = março
+chat-mes-4 = abril
+chat-mes-5 = maio
+chat-mes-6 = junho
+chat-mes-7 = julho
+chat-mes-8 = agosto
+chat-mes-9 = setembro
+chat-mes-10 = outubro
+chat-mes-11 = novembro
+chat-mes-12 = dezembro
+chat-hoy = Hoje
+chat-ayer = Ontem
+chat-buscar = Pesquisar
+chat-adjuntar = Anexar
+chat-fijado = Mensagem fixada
+info-galeria = Galeria
+info-todo = Tudo
+info-fotos = Fotos
+info-archivos = Arquivos
+info-voz = Voz
+info-dibujos = Desenhos
+info-fijados = Fixados
+info-buzon = Caixa de entrada
+info-videos = Vídeos
+info-enlaces = Links
+info-resumen = { $n ->
+    [one] 1 item
+   *[other] { $n } itens
+}  ·  { $codigo }
+info-previa-posicion = { $k } de { $n }
+info-vacia = Ainda não há nada aqui
+info-mes = { $mes } de { $ano }
+info-vacia-galeria = As folhas do projeto aparecerão aqui
+info-vacia-fotos = As fotos do chat aparecerão aqui
+info-vacia-videos = Os vídeos do chat aparecerão aqui
+info-vacia-archivos = Os arquivos do chat aparecerão aqui
+info-vacia-enlaces = Os links do chat aparecerão aqui
+info-vacia-voz = As notas de voz aparecerão aqui
+info-vacia-dibujos = Os desenhos do chat aparecerão aqui
+info-vacia-fijados = O que você fixar aparecerá aqui
+info-vacia-buzon = A caixa de entrada está vazia
+info-abrir = Abrir
+info-abrir-enlace = Abrir link
+info-reproducir = Reproduzir
+info-ver-en-el-chat = Ver no chat
+info-titulo = Informações
+adjuntar-imagen = Foto ou vídeo
+adjuntar-archivo = Arquivo
+adjuntar-lienzo = Nova tela
+confirmar-titulo = { $cuantos ->
+    [one] Adicionar um arquivo
+   *[other] Adicionar { $cuantos } arquivos
+}
+confirmar-resto = e mais { $cuantos }
+confirmar-pie = Adicione uma descrição…
+confirmar-cancelar = Cancelar
+confirmar-aceptar = Adicionar
+adjuntar-tabla = Nova tabela
+tabla-nueva = Tabela
+chat-nombre-nuevo = Nome do projeto…
+hoja-volver = Esc para voltar
+menu-foto-lienzo = Abrir na tela
+menu-foto-pin = Fixar de novo
+menu-foto-abrir = Abrir com o Windows
+recibir-titulo = Receber do celular
+recibir-como = Escaneie o código com o PinDesk no celular
+recibir-esperando = Aguardando o celular…
+recibir-hecho = Chegaram { $cuantos } itens
+recibir-salir = Esc para fechar
+comando-recibir-del-movil = Receber do celular…
+comando-sincronizar = Sincronizar
+adjuntar-del-movil = Trazer do celular…
+menu-foto-aqui = Desenhar aqui mesmo
+proyecto-renombrar = Renomear
+proyecto-logo-poner = Definir imagem de logotipo…
+proyecto-logo-quitar = Remover imagem de logotipo
+proyecto-logo-error = Não foi possível definir essa imagem de logotipo
+foto-chat-menu = Alterar foto do chat…
+foto-chat-titulo = Foto do chat
+foto-chat-imagen = Escolher imagem…
+foto-chat-pegar = Colar imagem
+foto-chat-quitar = Padrão
+foto-chat-buscar = Pesquisar emoji
+foto-chat-sin-emojis = Nenhum emoji tem esse nome
+foto-chat-fondo = Fundo
+foto-chat-recorte = Arraste para mover · roda do mouse para aproximar
+foto-chat-guardar = Salvar
+foto-chat-cancelar = Cancelar
+foto-chat-sin-imagen = Não há nenhuma imagem copiada
+foto-chat-error = Não foi possível salvar a foto do chat
+proyecto-borrar = Excluir projeto
+proyecto-borrar-varios = Excluir os marcados
+proyecto-borrar-aviso = Será removido da lista e a pasta irá para a lixeira do PinDesk. Continuar?
+proyecto-papelera = Projetos excluídos…
+ubicacion-cambiar = Alterar local…
+ubicacion-habitual = Voltar ao local padrão
+ubicacion-abrir = Abrir pasta do projeto
+ubicacion-elegir-titulo = Escolha onde salvar o projeto
+ubicacion-nuevo = Novo projeto
+ubicacion-nuevo-en = Novo projeto em uma pasta…
+ubicacion-no-disponible = Local indisponível
+ubicacion-no-disponible-abrir = A pasta deste projeto não está disponível ({ $ruta }). Conecte o disco e tente novamente.
+ubicacion-movido = Projeto salvo em { $ruta }
+ubicacion-vuelto = O projeto voltou ao local padrão
+ubicacion-error-red = Só é possível salvar em um disco deste computador, não em uma unidade de rede.
+ubicacion-error-no-es-carpeta = Essa pasta não existe neste computador.
+ubicacion-error-dentro = Essa pasta está dentro do próprio projeto ou dos dados do PinDesk.
+ubicacion-error-mover = Não foi possível mover o projeto; ele continua onde estava.
+ubicacion-error-abrir = Não foi possível abrir a pasta do projeto.
+
+## Sync (copy of the phone's SincronizarActivity.kt)
+sinc-titulo = Sincronizar
+sinc-subtitulo = Pelo Wi-Fi, sem internet.
+sinc-este-aparato = Este dispositivo
+sinc-tus-aparatos = Seus dispositivos
+sinc-sin-grupo = Crie um grupo em um dos seus dispositivos e entre pelos outros com o código dele. Só os dispositivos do grupo sincronizam entre si.
+sinc-crear-grupo = Criar um grupo
+sinc-unirme = Entrar com um código
+sinc-grupo-vacio = Ainda não há outro dispositivo no grupo. Adicione um com o código abaixo.
+sinc-disponible = Disponível
+sinc-no-encontrado = Não encontrado
+sinc-sincronizar = Sincronizar
+sinc-probar = Testar
+sinc-con-todos = Sincronizar com todos ({ $n })
+sinc-con-todos-como = Sem perguntar nada: usa o que você escolheu da última vez com cada um.
+sinc-si-no-aparece = Se não aparecer: verifique se ele está com o PinDesk aberto e neste Wi-Fi.
+sinc-con-direccion = Conectar com um endereço
+sinc-anadir = Adicionar outro dispositivo
+sinc-anadir-como = No outro dispositivo: Sincronizar → “Entrar com um código”.
+sinc-toca-codigo = Toque para ver o código
+sinc-salir = Sair do grupo
+sinc-pasar = Passar algo para outra pessoa
+sinc-pasar-como = Uma única vez, para qualquer pessoa com o PinDesk no mesmo Wi-Fi. Não precisa de grupo.
+sinc-recibir = Receber
+sinc-enviar = Enviar
+sinc-pasar-tambien = O que chega vai para a lista de projetos ou para “Mensagens salvas”.
+sinc-actividad = Atividade
+sinc-escuchando = Este computador pode ser encontrado em { $dir } enquanto esta janela estiver aberta.
+sinc-nombre-titulo = Nome deste dispositivo
+sinc-nombre-como = É assim que seus outros dispositivos vão vê-lo.
+sinc-unirme-titulo = Entrar em um grupo
+sinc-unirme-como = Digite o código que aparece em “Adicionar outro dispositivo” em um dispositivo do grupo. Esse dispositivo precisa estar com o PinDesk aberto e no mesmo Wi-Fi que você.
+sinc-codigo = Código
+sinc-direccion = Endereço (só se não encontrar)
+sinc-direccion-titulo = Conectar com um endereço
+sinc-direccion-como = Digite o endereço que aparece no outro dispositivo, nesta mesma janela.
+sinc-la-de-este = O deste dispositivo:
+sinc-salir-titulo = Sair do grupo?
+sinc-salir-como = Este dispositivo deixará de sincronizar com os demais. Nada é excluído. Se você entrar de novo, na primeira vez será perguntado sobre o que mudou nos dois lados.
+sinc-salir-boton = Sair
+sinc-un-momento = Um momento
+sinc-no-se-pudo = Não foi possível
+sinc-guardar = Salvar
+sinc-unirme-boton = Entrar
+sinc-conectar = Conectar
+sinc-cancelar = Cancelar
+sinc-ocultar = Ocultar
+sinc-vale = OK
+sinc-con-todos-rondas = Sem perguntar nada, um após o outro e em duas rodadas, para que todos terminem com tudo.
+sinc-elegir-titulo = O que sincronizar?
+sinc-elegir-con = Com { $otro }. O que estiver marcado fica igual nos dois.
+sinc-en-los-dos = Nos dois
+sinc-solo-en-uno = Só em um
+sinc-este-aparato-n = Este dispositivo · { $n }
+sinc-elegir-como = O que mudou nos dois é mesclado: forma por forma, célula por célula, parágrafo por parágrafo. Se os dois alteraram a mesma coisa, vence a última alteração, e a anterior fica em “Backups”.
+sinc-todo = Tudo
+sinc-nada = Nada
+sinc-sincronizar-n = Sincronizar { $n }
+sinc-sincronizando = Sincronizando
+sincro-borrado-alli-vuelve = Excluído em { $otro } · será enviado de novo
+sincro-borrado-alli-se-borra = Excluído em { $otro } · SERÁ EXCLUÍDO AQUI (fica uma cópia)
+sincro-borrado-alli-se-queda = Excluído em { $otro } · desmarcado: fica aqui
+sincro-se-borran-aqui = Será excluído AQUI, porque foi excluído em { $otro }: { $lista }. Desmarque para manter, ou escolha “O meu prevalece” para enviá-lo de novo.
+sincro-se-borran-alli = Será excluído em { $otro }, porque você excluiu aqui: { $lista }.
+sincro-juntar = Mesclar
+sincro-lo-mio-manda = O meu prevalece
+sincro-lo-mio-manda-como = Em uma só direção: o de { $yo } substitui o de { $otro }. Aqui nada é excluído nem alterado; lá, o que for diferente fica como aqui e o que foi excluído volta. O que só { $otro } tiver é mantido. Fica uma cópia do que foi substituído.
+sincro-mandar-n = Enviar { $n }
+
+## Receive over Wi-Fi (copy of the phone's RecibirActivity.kt)
+rw-titulo = Receber por Wi-Fi
+rw-misma-wifi = Você precisa estar no mesmo Wi-Fi de quem envia (ou conectado ao ponto de acesso Wi-Fi dessa pessoa).
+rw-o-escribe = ou digite o código
+rw-pista-pega = O computador não tem câmera: digite os seis dígitos ou cole o texto do QR com Ctrl+V.
+rw-recibir = Receber
+rw-prefieres = Prefere ser escaneado? Mostre seu próprio código e deixe quem envia apontar a câmera para ele.
+rw-ensenar = Mostrar meu código para receberem de mim
+rw-que-te-escaneen = Peça para escanearem isto
+rw-esperando-mio = Aguardando alguém enviar algo. Também dá para ditar este código em “Enviar → Escanear quem recebe”.
+rw-buscando = Procurando quem envia…
+rw-conectando = Conectando…
+rw-no-encontrado = Ninguém está enviando com esse código. Confira o código e se vocês dois estão no mesmo Wi-Fi (ou no ponto de acesso Wi-Fi de um dos dois).
+rw-codigo-malo = O código não está correto. Confira.
+rw-se-corto = A conexão caiu: { $motivo }
+rw-quiere = { $de } quer enviar para você
+rw-aparato = Dispositivo { $codigo }
+rw-proyecto = Projeto “{ $nombre }”
+rw-lienzo = Tela “{ $nombre }”
+rw-nada-coincide = Nada disto coincide com o que você tem: entra como novo, sem mexer em nada seu.
+rw-no-gracias = Não, obrigado
+rw-aceptar = Aceitar
+rw-recibiendo = Recebendo de { $de }
+rw-de = { $hechos } de { $total }
+rw-recibido = Recebido de { $de }
+rw-no-guardado = Chegou, mas não foi possível salvar.
+rw-en-proyectos = { $nombre }: na lista de projetos
+rw-en-guardados = { $nombre }: em “Mensagens salvas”
+rw-en-carpeta = { $nombre }: só na pasta “recebidos”
+rw-no-se-pudo = Não foi possível
+rw-probar-otra-vez = Tentar novamente
+rw-cerrar = Fechar
+
+## Send over Wi-Fi (copy of the phone's EnviarActivity.kt)
+ew-titulo = Enviar por Wi-Fi
+ew-que = O que você quer enviar?
+ew-que-como = No celular, você escolhe ao compartilhar; aqui, arquivos do seu computador ou um projeto inteiro do chat.
+ew-archivos = Arquivos
+ew-un-proyecto = Um projeto
+ew-elige-proyecto = Escolha o projeto
+ew-sin-proyectos = Ainda não há projetos.
+ew-preparando = Preparando…
+ew-no-preparado = Não foi possível preparar o que você queria enviar.
+ew-vas-a-enviar = Você vai enviar
+ew-vas-a-enviar-n = Você vai enviar { $n } itens
+ew-y-mas = e mais { $n }
+ew-un-aparato = Um dispositivo
+ew-n-aparatos = { $n } dispositivos
+ew-pidiendo = Quer receber o que você envia
+ew-enviando = Enviando · { $hechos } de { $total }
+ew-esperando-acepte = Aguardando a aceitação…
+ew-enviado = Enviado
+ew-no-acepto = Não aceitou
+ew-no-aprobado = Não aprovado
+ew-no = Não
+ew-enviar = Enviar
+ew-enviar-a-todos = Enviar para todos que estão aguardando
+ew-pegar = Colar o código de quem recebe
+ew-pegar-como = No outro dispositivo: Receber por Wi-Fi → “Mostrar meu código para receberem de mim”. Digite aqui os seis dígitos ou cole o texto do QR com Ctrl+V.
+ew-mandar = Enviar
+ew-dejar-de-pegar = Parar de colar
+ew-en-el-otro = No outro telefone: PinDesk → Sincronizar → Receber
+ew-o-escribe = ou digite este código
+ew-misma-wifi = Os dois no mesmo Wi-Fi
+ew-misma-wifi-como = Se não houver Wi-Fi, um pode ativar o ponto de acesso Wi-Fi e o outro se conectar a ele. A internet não é usada.
+ew-malos = Alguém tentou com um código errado ({ $n } de { $de }).
+ew-esperando = Aguardando… Vários dispositivos podem se conectar; você aperta o botão para cada um. O código deixa de valer ao fechar esta tela.
+ew-quemado = Alguém tentou várias vezes com um código errado, então este código não vale mais. Envie de novo para gerar outro.
+ew-cerrar = Fechar
+
+## «Update mine / Create as new» when receiving (RecibirActivity.kt)
+rw-ya-tienes = Você já tem “{ $nombre }” com os mesmos códigos
+rw-actualizar = Atualizar o que eu tenho
+rw-como-nuevo = Criar como novo
+rw-encima-de-lo-tuyo = Substitui o que é seu. A versão anterior fica em “Backups”.
+rw-entra-aparte = Entra separado, com códigos novos: a partir de agora é outra coisa.
+rw-proyecto-al-dia = “{ $nombre }” atualizado
+rw-guardados-al-dia = “{ $nombre }” atualizado em Mensagens salvas
+chat-buscar-aqui = Pesquisar aqui…
+chat-buscar-nada = Nada encontrado
+chat-buscar-resultados = { $n ->
+    [one] 1 resultado
+   *[other] { $n } resultados
+}
+chat-buscar-en-contexto = Ver no contexto
+chat-buscar-mensajes = { $n ->
+    [one] Mensagens · 1
+   *[other] Mensagens · { $n }
+}
+chat-buscar-ver-mas = Ver mais { $n }
+chat-buscar-en = em { $chat }
+chat-pagina-n = Página { $n }
+chat-unido-a = Adicionado a “{ $nombre }”
+chat-unir-nada = Não há nada que possa ser adicionado: só fotos, desenhos, notas e PDF
+chat-devolver = Adicionar de novo ao projeto
+chat-devuelto = De volta em “{ $nombre }”
+chat-devolver-no = Não foi possível adicionar de novo
+unir-pdf-como-imagenes = Adicionar como imagens
+unir-pdf-empezado = Adicionando o PDF ao projeto…
+unir-pdf-ya-va = Esse PDF já está sendo adicionado
+unir-pdf-no = Não foi possível adicionar o PDF
+unir-pdf-hecho = { $hojas ->
+    [one] 1 folha adicionada ao projeto
+   *[other] { $hojas } folhas adicionadas ao projeto
+}
+unir-pdf-pintadas = { $hojas ->
+    [one] 1 folha adicionada (o PDF não permitia cópia: vai como imagem)
+   *[other] { $hojas } folhas adicionadas (o PDF não permitia cópia: vão como imagem)
+}
+unir-pdf-fotos = { $hojas ->
+    [one] 1 página adicionada como imagem
+   *[other] { $hojas } de { $paginas } páginas adicionadas como imagens
+}
+unir-pdf-pintando = Renderizando páginas… { $hechas } de { $total }
+unir-pdf-imagenes-progreso = Convertindo em imagens… { $hechas } de { $total }
+
+## Backups (copy of sincro/CopiasActivity.kt from the phone)
+cop-titulo = Backups
+cop-portada-como = Como estava cada conversa antes de receber algo por Wi-Fi e antes de cada sincronização.
+cop-ver = Ver os backups
+cop-versiones = Versões anteriores
+cop-como-estaba = Como estava o projeto antes de cada envio recebido e de cada sincronização. Voltar a uma versão não apaga o que você fez depois.
+cop-todavia-nada = Ainda não há backups. Eles são feitos automaticamente antes de receber algo por Wi-Fi e antes de sincronizar.
+cop-como-se-hacen = São guardados os 30 últimos de cada conversa. Arquivos com mais de 40 MB não entram no backup: deles não é possível voltar atrás.
+cop-hojas-mensajes = { $hojas } folhas · { $mensajes } mensagens
+cop-sin-grandes =  · sem o PDF (grande demais)
+cop-volver = Restaurar
+cop-cancelar = Cancelar
+cop-volver-titulo = Restaurar este backup?
+cop-volver-texto = “{ $nombre }” volta a ser como era em { $cuando } ({ $motivo }): { $hojas } folhas. As telas que você adicionou depois são mantidas. Antes é feito um backup do estado atual, então você pode desfazer.
+cop-ha-vuelto = “{ $nombre }” foi restaurado do backup
+cop-no-se-pudo = Não foi possível restaurar o backup: { $motivo }
+papelera-titulo = Projetos excluídos
+papelera-como = São recuperados inteiros: com o nome, as folhas na ordem, o PDF e o chat. E deixam de estar excluídos, então sincronizar não os remove de novo.
+papelera-detalle = { $hojas } folhas · { $mensajes } mensagens · excluído em { $cuando }
+papelera-recuperar = Recuperar
+papelera-recuperar-todos = Recuperar todos
+papelera-ha-vuelto = “{ $nombre }” voltou inteiro
+papelera-no-se-pudo = Não foi possível recuperar “{ $nombre }”: { $motivo }
+papelera-recuperados = { $n } de { $total } projetos recuperados
+
+## The document viewer: Word, EPUB books and web pages (task 2.1)
+visor-html-titulo = PinDesk — página
+
+## The Office pin: Office's preview as a pin (2026-10-10)
+office-titulo = visualização do Office
+office-abriendo = Abrindo com a visualização do Office…
+office-tarda = O Office está demorando para abrir (ele precisa iniciar). Você pode esperar ou escolher com o que abrir em “Abrir com…” (o botão ↗ da barra).
+office-fallo = O Office não conseguiu mostrar a visualização deste arquivo. Abra-o com outro aplicativo em “Abrir com…” (o botão ↗ da barra).
+office-internet = Este arquivo veio da internet e, por segurança, o Windows não permite visualizá-lo. Abra-o com outro aplicativo em “Abrir com…” (o botão ↗ da barra) ou desbloqueie-o nas Propriedades.
+visor-titulo =Visualizador do PinDesk
+visor-marcador = Marcador aqui
+visor-ajustes = Configurações de leitura
+visor-tamano = Tamanho da letra
+visor-quitar-marcadores = Remover os marcadores
+visor-guardar-pagina = Salvar como página da web
+visor-guardar-pdf = Salvar como PDF
+visor-abrir-carpeta = Abrir a pasta
+visor-guardado = Salvo em “{ $nombre }”
+visor-no-guardado = Não foi possível salvar
+visor-vacio = Este documento não tem texto para mostrar
+visor-ayuda = Roda para ler · +/− tamanho · M marcador · G configurações · Esc sair
+visor-elige-emoticono = Com o que você quer marcar?
+visor-sin-marcadores = Ainda não há marcadores
+
+## The readers: comfortable reading, annotating on top and the PDF reader
+lector-listo = Pronto
+lector-indice = Sumário
+lector-letra-fijada = A letra está fixa: há anotações por cima
+lector-letra-normal = Letra normal
+lector-letra-fija = Largura fixa
+lector-grosor-normal = Normal
+lector-grosor-gruesa = Grossa
+lector-quitar-tinta = Remover as anotações
+lector-tinta-quitada = Anotações removidas (Ctrl+Z as traz de volta enquanto você estiver aqui)
+lector-ayuda-docs = Roda ler · Ctrl+roda aproximar · L ouvir · A anotar · M marcador · I sumário · +/− letra · T tipo · B espessura · Esc sair
+lector-pdf-titulo = Leitor de PDF do PinDesk
+lector-pdf-no-se-abre = Não foi possível abrir o PDF
+lector-pdf-abriendo = Abrindo o PDF…
+lector-exportando = Salvando o PDF anotado… { $hechas } de { $total }
+lector-exportar-pdf = Salvar o PDF com as anotações
+lector-anotado = anotado
+lector-ayuda-pdf = Roda virar folhas · Ctrl+roda aproximar · Ctrl+[ Ctrl+] espaço para anotar · L ouvir · A anotar · M marcador · Esc sair
+lector-office-titulo = Word e PowerPoint no PinDesk
+lector-ayuda-office = Roda virar folhas · Ctrl+roda aproximar · arrastar sobre o texto selecionar · Ctrl+C copiar · Ctrl+F localizar · Ctrl+P imprimir · F5 apresentar · A anotar · N negativo · Esc sair
+lector-presentar = Apresentar (F5)
+lector-modo-lectura = Modo de leitura (texto refluído)
+lector-imprimir = Imprimir… (Ctrl+P)
+lector-no-imprime = Não foi possível abrir a caixa de diálogo de impressão
+lector-copiado = Copiado
+lector-escuchar = Ouvir (L)
+lector-sin-texto = Este documento não tem texto para ler
+lector-leyendo-texto = Extraindo o texto do PDF para lê-lo…
+lector-sin-voz = O Windows não tem voz para “{ $idioma }”: adicione uma em Configurações > Hora e idioma > Fala
+lector-voz-idioma = pt-BR
+lector-voces-microsoft-no = ☐ Vozes da Microsoft · muito naturais e gratuitas; não é um serviço oficial e o texto vai para a Microsoft
+lector-voces-microsoft-si = ☑ Vozes da Microsoft · muito naturais e gratuitas; não é um serviço oficial e o texto vai para a Microsoft
+lector-voz-de-microsoft = Voz da Microsoft: { $voz }
+lector-voz-del-pais = a do país
+lector-voz-pidiendo = Pedindo as vozes à Microsoft… clique de novo em um momento
+lector-voz-sin-voces = Sem rede, ou a Microsoft não tem vozes neste idioma
+lector-voz-de-ia = de IA, lê qualquer idioma
+lector-voz-mujer = mulher
+lector-voz-hombre = homem
+lector-voz-parrafo = Parágrafo { $n } de { $total }
+lector-voz-preparando = Preparando a voz…
+lector-voz-no-respondio = A Microsoft não respondeu
+lector-voz-sin-voz = Sem voz
+lector-verde-aqui = Marcador verde aqui: a leitura começará deste ponto
+lector-espacio-tope = Não cabe mais espaço desse lado
+lector-espacio-nada = Esse lado não tem mais espaço
+lector-sin-lado = Lateral bloqueado: só sobe e desce
+lector-con-lado = Move-se em todas as direções
+lector-auto = Rolagem automática (D)
+lector-auto-ppm = { $ppm } palavras/min
+lector-auto-quedan = Você termina em { $cuanto } · às { $hora }
+lector-auto-menos-de-un-minuto = menos de 1 min
+lector-auto-terminado = Concluído
+lector-auto-contando = Contando as palavras…
+lector-ver-como-texto = Ver como texto (como um Word)
+lector-pasando-a-texto = Convertindo o PDF em texto…
+lector-texto-escaneo = Este PDF não tem texto que possa ser extraído: provavelmente é uma digitalização (uma foto das folhas)
+lector-texto-cifrado = O PDF está protegido por senha
+lector-texto-no-se-lee = Não foi possível ler o PDF
+lector-ver-pdf-original = Ver o PDF original, em folhas
+lector-hoja = Folha
+sinc-presencia-apagada = A presença está desativada nas configurações ([sincro] presencia = false): daqui você pode sincronizar, mas o celular não poderá encontrar nem chamar este computador.
+bandeja-abrir-documento = Abrir documento…
+
+## Canvas shapes and ink: arrowheads, fills and text style (group A)
+lienzo-punta-ninguna = Sem ponta
+lienzo-punta-flecha = Seta
+lienzo-punta-barra = Barra
+lienzo-punta-circulo = Círculo
+lienzo-punta-circulo-hueco = Círculo vazado
+lienzo-punta-triangulo = Triângulo
+lienzo-punta-triangulo-hueco = Triângulo vazado
+lienzo-punta-rombo = Losango
+lienzo-punta-rombo-hueco = Losango vazado
+lienzo-punta-inicio = Ponta do início
+lienzo-punta-fin = Ponta do fim
+lienzo-trama-zigzag = Zigue-zague
+lienzo-trama-tiralineas = Tira-linhas
+lienzo-texto-negrita = Negrito
+lienzo-texto-cursiva = Itálico
+lienzo-texto-tachado = Tachado
+lienzo-presion-firme = Traço de largura fixa
+lienzo-flecha-codos = Seta com cotovelos
+lienzo-flecha-libre = Seta à mão livre
+lienzo-arco-guia = Oval guia sem contorno
+lienzo-luces-fuerza = Intensidade das luzes
+
+## Build and measure: fill, trim, extend, points and angles (group C)
+lienzo-bote = Balde de tinta
+lienzo-bote-ayuda = Clique dentro de uma área fechada e ela é preenchida, mesmo que seja formada por várias formas diferentes.
+lienzo-bote-abierto = Esta área não está fechada: a tinta escaparia por uma fresta.
+lienzo-recortar = Aparar
+lienzo-recortar-ayuda = Clique no trecho de traço que sobra e ele some, até onde os outros o cruzam.
+lienzo-extender = Estender
+lienzo-extender-ayuda = Clique na ponta que ficou curta e ela chega até o primeiro obstáculo.
+lienzo-extender-sin-tope = Nada no caminho: uma linha esticada no vazio não é uma linha estendida.
+lienzo-punto = Ponto com letra
+lienzo-punto-ayuda = Clique em um cruzamento, uma extremidade ou o centro de uma circunferência e aparece o ponto com sua letra.
+lienzo-punto-sin-sitio = Não há nada para nomear aí: o ponto vai em um cruzamento, uma extremidade ou um centro.
+lienzo-punto-serie-mayusculas = Letras maiúsculas (A, B, C…)
+lienzo-punto-serie-minusculas = Letras minúsculas (a, b, c…)
+lienzo-punto-serie-numeros = Números (1, 2, 3…)
+lienzo-angulos = Ângulos ao vivo
+lienzo-angulos-ayuda = Enquanto você move algo, mostra quanto medem os cantos que você está tocando.
+lienzo-area = Área
+
+## Select, transform and bind (group B)
+lienzo-lazo = Laço
+lienzo-lazo-ayuda = Contorne à mão o que quiser selecionar. Entra o que ficar inteiro dentro; com Shift, também o que o traço tocar.
+lienzo-lazo-encerrar = Só o que ficar dentro
+lienzo-lazo-rozar = Também o que o traço tocar
+lienzo-voltear-horizontal = Inverter na horizontal
+lienzo-voltear-vertical = Inverter na vertical
+lienzo-voltear-ayuda = Espelha a seleção em relação ao centro do conjunto, não cada forma em relação a si mesma.
+lienzo-rejilla = Papel quadriculado
+lienzo-rejilla-ninguna = Sem pauta
+lienzo-rejilla-lineas = Quadriculado
+lienzo-rejilla-puntos = Pontilhado
+lienzo-rejilla-imanta = Ajustar o cursor à grade
+lienzo-rejilla-ayuda = A referência que está lá antes do primeiro traço. Não aparece ao exportar.
+lienzo-iman-intersecciones = Cruzamentos entre formas
+lienzo-iman-intersecciones-ayuda = O ponto onde dois traços se cortam, que não existe como vértice de nenhum dos dois.
+lienzo-iman-bordes = Borda das formas
+lienzo-iman-bordes-ayuda = O esquadro: o cursor desliza por toda a borda, não só pelos cantos.
+lienzo-iman-eje = Origem e eixos de coordenadas
+lienzo-enganche = Prender a seta à forma
+lienzo-enganche-ayuda = Solte a ponta sobre uma forma e a seta vai segui-la quando você a mover.
+lienzo-enganche-soltar = Soltar a ponta
+lienzo-tirador-punta = Mover a ponta
+lienzo-tirador-anadir = Dobrar aqui
+lienzo-copiar-estilo = Copiar estilo
+lienzo-copiar-estilo-ayuda = Pega a cor, o traço e o preenchimento de uma forma e aplica em outras. Só passa o que os dois tipos aceitam.
+lienzo-estilo-tomado = Estilo copiado
+lienzo-estilo-sin-tomar = Você ainda não copiou nenhum estilo.
+chat-abrir-aqui = Abrir aqui
+mini-moneda = BRL
+mini-tareas = Lista de tarefas
+mini-gastos = Despesas
+mini-cronometro = Cronômetro
+mini-temporizador = Temporizador
+mini-contador = Contador
+mini-ruleta = Roleta
+mini-alarma = Alarme
+mini-tarea-nueva = Algo para fazer e Enter · ↑↓ selecionar, Espaço riscar, F2 corrigir
+mini-gasto-nuevo = Descrição e valor (Jantar 42,50) e Enter · ↑↓ selecionar, F2 corrigir
+mini-nombre-nuevo = Um nome e Enter · Enter vazio sorteia, Del remove
+mini-limpiar-hechas = Remover as concluídas
+mini-ocultar-hechas = Ocultar as concluídas
+mini-mostrar-hechas = Ver as concluídas
+mini-avance = { $hechas } de { $de } concluídas
+mini-tarea-edad = { $dias ->
+    [0] hoje
+    [one] há 1 dia
+   *[other] há { $dias } dias
+  }
+mini-arrancar = Iniciar
+mini-parar = Parar
+mini-vuelta = Volta
+mini-reiniciar = Reiniciar
+mini-sortear = Sortear
+mini-alarma-encender = Ativar
+mini-alarma-apagar = Desativar
+mini-guia-titulo = Novo nome e pressione Enter (Esc mantém o anterior)
+mini-guia-cambiar = Corrija e pressione Enter (Esc deixa como estava)
+mini-guia-duracion = Minutos ou m:ss e pressione Enter · Espaço inicia
+mini-guia-hora = Hora (7:30) e pressione Enter · Espaço ativa
+chat-biblioteca-vacia = Ainda não há nenhuma nota de voz nem nenhuma música.
+chat-biblioteca-musica = Música
+chat-biblioteca-notas = Notas de voz
+chat-voz-muy-corta = Curta demais: mantenha pressionado um pouco mais.
+chat-voz-sin-microfono = Não há microfone, ou o PinDesk não tem permissão para usá-lo. Veja em Configurações › Privacidade › Microfone.
+chat-voz-sin-codec = Este Windows não tem o codificador de áudio (geralmente é uma edição N sem o pacote de mídia).
+chat-voz-fallo = Não foi possível gravar a nota de voz.
+pdf-aligerado = Compactado: de { $antes } para { $despues }
+pdf-aligerar-cifrado = O PDF está criptografado e não pode ser reescrito sem o risco de danificá-lo.
+pdf-aligerar-indice-comprimido = Este PDF guarda seu índice compactado, e ainda não é possível refazê-lo aqui.
+pdf-aligerar-objetos-comprimidos = Este PDF guarda seus objetos compactados, e ainda não é possível refazê-los aqui.
+pdf-aligerar-sin-trailer = O PDF não tem um trailer legível.
+pdf-aligerar-sin-objetos = Nenhum objeto foi reconhecido dentro do PDF.
+pdf-aligerar-largo-indirecto = Um fluxo do PDF não informa o próprio tamanho.
+pdf-aligerar-objetos-sin-entender = Há partes do PDF que este leitor não entende; mexer nele poderia perdê-las.
+pdf-aligerar-sin-fotos = Não tem fotos que possam ser reduzidas: o que pesa é o texto ou os vetores.
+pdf-aligerar-ya-al-minimo = As fotos já estão no mínimo.
+pdf-aligerar-no-compensa = Só cairia de { $antes } para { $despues }: não compensa.
+pdf-aligerar-no-se-lee = O arquivo compactado não podia ser lido corretamente; o original foi mantido.
+aligerar-progreso = Compactando… { $por } %
+aligerar-empezado = Compactando o PDF…
+aligerar-sin-mejora = Este PDF já estava leve: ficou como estava.
+chat-recordar-10-min = Em 10 minutos
+chat-recordar-1-hora = Em 1 hora
+chat-recordar-3-horas = Em 3 horas
+chat-recordar-esta-tarde = Hoje à tarde (18:00)
+chat-recordar-manana = Amanhã (9:00)
+chat-recordatorio-puesto = Vou avisar você às { $cuando }
+chat-recordatorio-quitar = Remover o lembrete
+chat-recordatorio-quitado = Lembrete removido
+chat-recordatorio-titulo = Lembrete
+chat-enviar-wifi = Enviar por Wi-Fi
+chat-transcribiendo = Transcrevendo… { $pct } %
+chat-transcribir-hecha = Nota transcrita
+chat-transcribir-en-marcha = Outra nota já está sendo transcrita; aguarde até terminar
+chat-transcribir-sin-mensaje = A nota não está mais na conversa: o texto não tem para onde ir
+chat-transcribir-cancelada = A transcrição foi cancelada
+chat-transcribir-otra-vez = Transcrever novamente
+chat-transcripcion-no = Não foi possível transcrever: nada do áudio foi entendido.
+chat-letra-vacia = Esta nota ainda não tem texto.
+chat-letra-copiada = Texto copiado, com os minutos
+
+## Music with its lyrics (karaoke, 27-Oct-2026)
+chat-adj-musica = Música
+musica-anadida = Música adicionada. Clique no lápis para escrever ou colar a letra
+musica-anadidas = { $n } músicas adicionadas
+musica-no-es-audio = “{ $nombre }” não é um áudio que possa ser tocado
+musica-sin-letra = Esta música ainda não tem letra
+musica-escribir-letra = Clique no lápis para escrever ou colar a letra (vale texto normal ou LRC)
+musica-sinc-primero-letra = Primeiro escreva ou cole a letra
+musica-sinc-empieza = Pressione Espaço (ou “Marcar”) exatamente quando cada linha começar
+musica-sinc-siguiente = Próxima: { $linea }
+musica-sinc-todas = Todas marcadas. Salve a letra.
+musica-sinc-marcar = Marcar { $n }/{ $total }
+musica-sinc-deshacer = Desfazer
+musica-sinc-guardar = Salvar
+musica-sinc-cancelar = Cancelar
+musica-sinc-guardada = Letra sincronizada
+musica-sinc-teclas = Espaço marca · Backspace desfaz · Enter salva · Esc cancela
+musica-lrc-copiada = Letra copiada em LRC
+musica-sola-empieza = Sincronizando a letra automaticamente: ouvindo a música…
+musica-sola-avance = Sincronizando a letra… { $pct } %
+musica-sola-bajando = Baixando o reconhecedor de voz… { $pct } %
+musica-sola-parada = Sincronização interrompida
+musica-sola-ocupada = Outra música já está sendo sincronizada
+musica-sola-sin-reconocedor = Este computador não consegue ouvir a música: falta o ONNX Runtime
+musica-sola-falta-modelo = Para marcar os tempos automaticamente, clique em “Sincronizar sozinha” (as legendas): o reconhecedor de voz é baixado uma vez (cerca de 160 MB)
+musica-sola-no-se-oye = A letra não foi reconhecida na música. Sincronize-a com toques no relógio
+musica-sola-fallo = Não foi possível sincronizar a letra
+musica-sola-cambio = A letra mudou durante a sincronização: clique de novo em “Sincronizar sozinha”
+musica-sola-hecha = Letra sincronizada automaticamente ({ $n } de { $total } linhas ouvidas). Se alguma estiver errada, corrija-a com o relógio
+musica-sola-hecha-poca = Letra sincronizada por estimativa: só { $n } de { $total } linhas foram ouvidas. Corrija-a com o relógio
+chat-recordar-hora = Escolher o horário…
+chat-recordar-hora-a-las = Avisar às
+chat-recordar-hora-teclas = Digite o horário · Enter define · Esc cancela
+chat-recordar-hora-queda = Enter: { $cuando }
+chat-recordar-hora-mal = Isso não é um horário: escreva como 18:30
+chat-voz-sin-motor = Falta o reconhecedor de voz: copie { $motor } para { $donde }
+chat-voz-sin-modelo = Falta o modelo de voz { $modelo }: baixe-o de { $enlace } e descompacte-o dentro de { $donde }
+chat-voz-idioma-sin-modelo = O Vosk não tem modelo de voz para este idioma
+chat-voz-ruta-imposible = A pasta do modelo ({ $donde }) tem caracteres que o reconhecedor não consegue abrir; mova-a para um caminho sem acentos
+chat-voz-modelo-ilegible = O modelo em { $donde } está incompleto ou não pôde ser carregado
+chat-voz-no-es-audio = Não foi possível ler o áudio desta nota
+chat-voz-audio-vacio = O áudio está vazio: não há nada para transcrever
+chat-voz-no-se-entiende = Nada do que é dito na nota foi entendido
+chat-voz-sin-reconocedor = O Windows não tem reconhecedor de voz para este idioma: adicione-o em Configurações › Hora e idioma › Fala.
+chat-voz-bajar-whisper = Para transcrever é necessário o modelo de voz Whisper (cerca de { $megas } MB). Ele é baixado agora, só desta vez, e depois a nota é transcrita.
+chat-voz-bajando-whisper = Baixando o modelo de voz… { $pct } %
+chat-voz-sin-modelo-whisper = Falta o modelo de voz Whisper (cerca de { $megas } MB): clique de novo em “Transcrever” para baixá-lo.
+chat-voz-sin-modelo-qwen3 = Falta baixar o Qwen3-ASR (cerca de { $megas } MB): escolha-o em Configurações › Voz para baixá-lo, ou volte ao Whisper.
+chat-voz-sin-onnx = Este Windows não tem o mecanismo de IA (onnxruntime.dll): copie-o para { $donde } ou junto ao PinDesk.
+chat-voz-descarga = Não foi possível baixar o modelo de voz ({ $que }). Verifique a conexão e clique de novo em “Transcrever”.
+chat-voz-onnx = O mecanismo de voz Whisper falhou: { $detalle }
+chat-dictado-oyendo = Estou ouvindo… fale e clique no microfone ao terminar
+chat-dictado-fallo = Não foi possível ditar: { $razon }
+chat-anotar-en = Anotar em “{ $chat }”: { $texto }
+chat-anotar-donde = Em qual chat anoto “{ $texto }”? Escolher chat
+chat-anotar-tecla = Enter
+chat-anotado-en = Anotado em “{ $chat }”
+chat-dictado-preparando = Preparando o microfone…
+telepronter-titulo = Ler em voz alta
+telepronter-ensayar = Ensaiar
+telepronter-parar = Parar
+telepronter-grabar = Gravar
+telepronter-terminar = Concluir
+telepronter-tirar = Descartar
+telepronter-velocidad = velocidade e letra
+telepronter-preparate = Prepare-se
+telepronter-muy-corta = A leitura ficou curta demais
+telepronter-sin-micro = Não há microfone disponível
+chat-telepronter-borrador = O que está escrito na caixa
+chat-telepronter-sin-texto = Não há nenhum texto para ler: escreva algo na caixa ou anexe um .txt ou um .md
+chat-telepronter-abierto = O teleprompter já está aberto
+chat-telepronter-hecha = Leitura salva como nota de voz
+pila-titulo-una = 1 captura
+pila-titulo-varias = { $cuantas } capturas empilhadas
+pila-copiar-elegidas = Copiar selecionadas
+pila-copiar-todas = Copiar todas
+pila-quitar = Remover
+pila-copiadas = { $cuantas } capturas copiadas: cole-as com Ctrl+V
+panel-trazo = Traço
+panel-fondo = Fundo
+panel-relleno = Preenchimento
+panel-grosor = Espessura do traço
+panel-estilo-trazo = Estilo do traço
+panel-presion = Pressão
+panel-trazo-a-mano = Estilo de traço à mão
+panel-bordes = Bordas
+panel-tipo-flecha = Tipo de seta
+panel-fuente = Fonte
+panel-tamano-fuente = Tamanho da fonte
+panel-alineacion-texto = Alinhamento do texto
+panel-puntas = Pontas de seta
+panel-opacidad = Opacidade
+panel-capas = Camadas
+panel-alinear = Alinhar
+panel-acciones = Ações
+panel-colores = Cores
+panel-tonos = Tons
+panel-codigo-hex = Código hexadecimal
+
+## The canvas paper (Excalidraw viewBackgroundColor)
+fondo-lienzo = Fundo da tela
+fondo-papeles-del-movil = Papéis do celular
+fondo-lienzo-menu = Fundo da tela…
+
+## Export and print the canvas (G1, G2, G3, F11)
+exportar-menu = Exportar…	Ctrl+Shift+E
+exportar-copiar-png = Copiar como PNG	Ctrl+Shift+C
+exportar-titulo = Exportar a tela
+exportar-que = O quê
+exportar-todo = A tela inteira
+exportar-seleccion = A seleção
+exportar-marcos = Cada quadro
+exportar-escala = Escala
+exportar-transparente = Fundo transparente
+exportar-tipo-png = Imagem PNG
+exportar-tipo-svg = Desenho SVG
+exportar-tipo-pdf = Documento PDF
+exportar-tipo-html = Página da web em um único arquivo
+exportar-vacio = Não há nada para exportar com isto.
+exportar-fallo = Não foi possível exportar a tela.
+exportar-hecho = Exportado: { $nombre }
+imprimir-menu = Imprimir…	Ctrl+P
+imprimir-vacio = Não há nada para imprimir.
+imprimir-fallo = Não foi possível imprimir a tela.
+exportar-chat = Exportar…
+imprimir-chat = Imprimir…
+imprimir-pista = Imprimir… (Ctrl+P)
+imprimir-que = O que imprimir
+imprimir-que-marcos = Cada quadro em sua folha
+imprimir-que-todo = A tela inteira em uma folha
+imprimir-que-seleccion = Só a seleção
+marca-elige = Com o que você quer marcar? (1-9, 0) · Esc para cancelar
+marca-plantar = Clique na tela onde vai a marca · Esc cancela
+marca-vista-guardada = Vista salva na marca · Shift+clique nela para atualizar
+hojita-borrar = Excluir
+hojita-insertar = Inserir
+hojita-pegar = Como pin
+compartir-titulo = Compartilhar
+compartir-menu = Compartilhar…	Ctrl+Shift+S
+compartir-proyecto = Compartilhar…
+compartir-lector = Compartilhar…  (Ctrl+Shift+S)
+compartir-boton = Compartilhar
+compartir-guardar = Salvar como…
+compartir-copiar = Copiar para a área de transferência
+compartir-wifi = Por Wi‑Fi para meus dispositivos
+compartir-boton-copiar = Copiar
+compartir-boton-wifi = Wi-Fi
+compartir-boton-enlace = Link
+compartir-enlace-pista = Envia para o litterbox (3 dias) e copia o link: qualquer pessoa com ele pode abrir
+compartir-enlace-subiendo = Enviando…
+compartir-enlace-copiado = Link copiado · é apagado em 3 dias
+compartir-enlace-fallo = Não foi possível enviar: { $motivo }
+compartir-web = Página da web (HTML)
+compartir-adjuntos = Anexos
+compartir-pdf = PDF
+compartir-png = Imagem PNG
+compartir-jpg = Imagem JPG
+compartir-svg = Desenho SVG
+compartir-original = Original
+compartir-originales = Originais
+compartir-editable = Editável
+compartir-texto = Texto
+compartir-csv = Tabela (CSV)
+compartir-pindesk = PinDesk (.pindesk)
+compartir-dxf = DXF
+compartir-xlsx = Excel (xlsx)
+compartir-docx = Word (docx)
+compartir-md = Markdown
+compartir-exportar = Exportar…
+compartir-paginas-de = O que incluir · { $marcadas } de { $total }
+compartir-una-pagina = Qual página
+compartir-va-entero = Vai inteiro, como está
+compartir-todas = Todas
+compartir-ninguna = Nenhuma
+compartir-preparando = Preparando…
+compartir-marca-alguna = Marque alguma página
+compartir-en-cuanto-este = Assim que estiver pronto
+compartir-peso-ficheros = { $peso } · { $n } arquivos
+compartir-panel-abierto = Escolha para onde enviar
+compartir-guardado = Salvo: { $nombre }
+compartir-copiado = Copiado para a área de transferência
+compartir-no-se-pudo = Não foi possível preparar
+compartir-nada = Não há nada para compartilhar aqui.
+compartir-coma-decimal = ,
+compartir-lienzo = Tela
+compartir-lienzo-entero = Tela completa
+compartir-marco = Quadro
+compartir-pagina = Página
+compartir-anotada = Com as anotações
+compartir-sin-nombre = Sem nome
+compartir-tipo-lienzo = Tela
+compartir-tipo-pagina = Página do PDF
+compartir-tipo-foto = Foto
+compartir-tipo-tabla = Tabela
+compartir-tipo-miniapp = Miniaplicativo
+compartir-tipo-voz = Nota de voz
+compartir-tipo-nota = Nota
+ajustes-pestana-herramientas = Ferramentas
+herramientas-lazo = Laço
+herramientas-rectangulo = Retângulo
+herramientas-rombo = Losango
+herramientas-elipse = Elipse
+herramientas-flecha = Seta
+herramientas-flecha-codos = Seta com cotovelos
+herramientas-flecha-libre = Seta à mão livre
+herramientas-linea = Linha
+herramientas-lapiz = Lápis
+herramientas-grafito = Grafite
+herramientas-texto = Texto
+herramientas-borrador = Borracha
+herramientas-resaltador = Marca-texto
+herramientas-foco = Holofote
+herramientas-lupa = Lupa
+herramientas-mosaico = Mosaico
+herramientas-arco = Arco
+herramientas-serie = Passos numerados
+herramientas-punto = Ponto com letra
+herramientas-cota = Cota
+herramientas-escalar = Calibrar a escala
+herramientas-escala-grafica = Escala gráfica
+herramientas-marco = Quadro
+herramientas-relleno = Balde de tinta
+herramientas-recortar = Aparar
+herramientas-extender = Estender
+herramientas-copiar-estilo = Copiar estilo
+
+## D10: a PowerPoint in the chat (diapositivas.rs)
+diapositivas-titulo = Apresentação
+diapositivas-no-es = Isto não é uma apresentação
+diapositivas-keynote = O Keynote não é lido diretamente: exporte-o para PowerPoint ou PDF
+diapositivas-sin-powerpoint = Para apresentar um PowerPoint é preciso ter o PowerPoint instalado
+diapositivas-abrir-con-otra = Abrir com outro aplicativo?
+diapositivas-preparando = Preparando a apresentação com o PowerPoint…
+diapositivas-no-se-pudo = Não foi possível preparar a apresentação
+diapositivas-no-esta = A apresentação não está mais neste computador
+diapositivas-siguiente = Próximo
+diapositivas-notas = Anotações
+diapositivas-sin-notas = Este slide não tem anotações
+diapositivas-fin = Fim da apresentação
+diapositivas-transiciones-si = Transições ativadas (T)
+diapositivas-transiciones-no = Transições desativadas (T)
+
+## Chat: a page from a project, the link card, «Received from» and the inbox
+chat-sin-paginas = Nenhum projeto tem páginas para anexar
+chat-recibido-de = Recebido de { $de }
+chat-version-sola = Versão
+chat-version-sola-n = Versão { $n }
+chat-version-de = Versão de { $quien }
+chat-version-de-n = Versão { $n } de { $quien }
+chat-version-de-lo-tuyo = Versão do que é seu
+chat-version-de-lo-tuyo-n = Versão { $n } do que é seu
+chat-version-de-otro = Versão de outra mensagem
+chat-version-de-otro-n = Versão { $n } de outra mensagem
+chat-version-de-la-lista = Versão { $n } · { $quien }
+chat-version-tuya = Versão { $n } · sua
+chat-versiones = { $cuantas ->
+    [one] 1 versão
+   *[other] { $cuantas } versões
+  }
+chat-version-es-de = É de { $quien }: se você alterar, será salvo como sua versão e o original não é tocado
+chat-version-guardada = Salvo como sua versão; o original não foi alterado
+chat-version-no = Não foi possível preparar sua versão
+chat-fecha-corta = { $dia } { $mes }
+chat-enlace-no-abre = Não foi possível abrir o link
+
+## D11: a spreadsheet in the chat is a book of tables (ventana_chat/libro.rs)
+libro-titulo = Planilha
+libro-xls-antiguo = Arquivos .xls antigos não podem ser lidos: abra e salve como .xlsx
+libro-abrir-fuera = Abrir com outro aplicativo?
+libro-no-es = O arquivo não é uma pasta de trabalho de planilha válida
+libro-sin-hojas = A pasta de trabalho não tem nenhuma planilha com dados
+hoja-preparando = Preparando a planilha para edição…
+hoja-editar-aviso = As alterações são salvas na planilha do chat; o arquivo original não muda
+hoja-editando = Editando · Esc para visualizar
+hoja-rango-grande = São células demais para fazer de uma só vez
+hoja-no-editable = Esta planilha não tem tabela: não pode ser editada
+hoja-fondo-sin = Sem cor
+hoja-letra-automatica = Automático
+hoja-color-amarillo = Amarelo
+hoja-color-verde = Verde
+hoja-color-azul = Azul
+hoja-color-rosa = Rosa
+hoja-color-morado = Roxo
+hoja-color-naranja = Laranja
+hoja-color-gris = Cinza
+hoja-color-celeste = Azul-claro
+hoja-color-rojo = Vermelho
+hoja-numero-general = Geral
+hoja-numero-numero = Número (1,234.50)
+hoja-numero-moneda = Moeda
+hoja-numero-porcentaje = Porcentagem (12.50 %)
+hoja-numero-fecha = Data
+
+## D9: find in the document (buscador.rs, visor.rs, lector_pdf.rs)
+buscar-pista = Pesquisar no documento
+buscar-cuenta = { $n } de { $total }
+buscar-nada = Nenhum resultado
+buscar-leyendo = Lendo o texto…
+buscar-sin-texto = Este PDF não tem texto (é uma imagem)
+buscar-cifrado = Não é possível pesquisar em um PDF criptografado
+
+## D5: rename from the reader (renombrar_doc.rs)
+renombrar-hecho = Agora se chama “{ $nombre }”
+renombrar-ya-existe = Já existe um arquivo chamado “{ $nombre }”
+renombrar-no-se-pudo = Não foi possível renomear
+
+## Canvas: zone, laser, image, shapes, graph and present (F8, F12, F14, G5)
+herramientas-zona = Zona (cópia recortada)
+herramientas-laser = Ponteiro laser
+herramientas-imagen = Imagem
+herramientas-figuras = Formas
+figuras-grafica = Gráfico de uma função…
+figuras-tabla-en-blanco = Tabela em branco
+figuras-pegar-tabla = Colar tabela (do Excel)
+figuras-recta = Reta de funções
+figuras-plano = Plano de funções
+figuras-espacio = Espaço xyz
+figuras-coordenadas = Tabela de coordenadas…
+figuras-coordenadas-serie = Coordenadas: série
+figuras-coordenadas-nueva = Nova série de coordenadas…
+figuras-coordenadas-esconder = Ocultar a série
+figuras-coordenadas-ver = Mostrar a série
+coordenadas-titulo = Tabela de coordenadas
+coordenadas-ayuda = X e Y com vírgula ou ponto, o Y para cima · Colar: do Excel ou de um CSV · sem linhas, a série é removida · Enter: aceitar · Esc: cancelar
+figuras-guardar-seleccion = Salvar a seleção como forma…
+figuras-quitar = Remover
+figuras-nombre-titulo = Salvar como forma
+figuras-nombre = Nome
+figuras-nombre-ayuda = Enter: salvar · Esc: cancelar
+figuras-sin-tabla = A área de transferência não contém uma tabela
+grafica-titulo = Gráfico de uma função
+grafica-formulas = y = (uma curva por linha)
+grafica-x-desde = x de
+grafica-x-hasta = x até
+grafica-y-desde = y de
+grafica-y-hasta = y até
+grafica-escala = Pixels por unidade
+grafica-ayuda = Enter: inserir · Shift+Enter: outra curva · Tab: próximo campo · Esc: cancelar · por partes: x^2 se x<0; 2x se x>=0
+grafica-limites-mal = Os limites não fazem sentido: “de” tem que ser menor que “até”
+grafica-sin-formula = Escreva uma fórmula
+grafica-formula-mal = Não foi entendido:
+grafica-solo-x = Só pode usar o x:
+presentar-ayuda = ← → Page Down: avançar · B: preto · J: laser · L: lápis · Esc: sair
+vista-mirando = Só visualizar · o lápis à direita edita · F5: apresentar
+
+## --- Voice: two languages, lyrics, teleprompter, pronounce, conversation, call (B6-B11) ---
+ajustes-voz-segundo = Segundo idioma das notas de voz
+ajustes-voz-modo = Com dois idiomas
+ajustes-voz-modo-cada-uno = Cada trecho como foi dito
+ajustes-voz-modo-todo-en-uno = Tudo no primeiro
+ajustes-voz-ninguno = Nenhum
+ajustes-voz-ingles = Inglês
+ajustes-voz-espanol = Espanhol
+ajustes-voz-portugues = Português
+chat-letra-editar = Editar a letra
+chat-letra-editando = A letra já está sendo editada
+chat-letra-guardar = Salvar
+chat-letra-guardada = Letra salva
+chat-cancelar-caja = Cancelar
+chat-llamada-secreta = Chamada secreta
+telepronter-pausa = Pausar
+telepronter-seguir = Continuar
+telepronter-velocidad-muy-lenta = muito lenta
+telepronter-velocidad-lenta = lenta
+telepronter-velocidad-normal = normal
+telepronter-velocidad-rapida = rápida
+telepronter-velocidad-muy-rapida = muito rápida
+pronunciar-titulo = Pronunciar
+pronunciar-manten = Mantenha pressionada a barra de espaço (ou o microfone) e fale
+pronunciar-suelta = Solte para se ouvir
+pronunciar-otra-vez = Mantenha de novo para repetir
+pronunciar-guia = Guia
+pronunciar-guia-texto = Escrever um texto
+pronunciar-guia-fichero = Uma imagem, um PDF ou uma nota do computador
+pronunciar-sin-guia = Sem guia: escreva, ou traga uma imagem, um PDF ou uma nota
+pronunciar-repetir = Ouvir de novo (R)
+pronunciar-guardar = Salvar no chat (Ctrl+G)
+pronunciar-ya-guardada = Salva
+pronunciar-guardado = Salvo; será transcrito para você ver o que foi entendido
+pronunciar-idioma = Idioma que você pratica
+pronunciar-idioma-ajustes = O de sempre
+pronunciar-oir-texto = Ouvir o texto
+pronunciar-sin-voz = O Windows não tem voz para esse idioma
+pronunciar-no-se-pudo = Não foi possível abrir isso
+pronunciar-toma = Última gravação: { $duracion }
+pronunciar-pagina = Página { $pagina } de { $paginas }
+pronunciar-abierto = Pronunciar já está aberto
+conversacion-titulo = Conversa
+conversacion-explicacion = A gravação é contínua; cada pessoa aperta seu número (1 a 9) quando começa a falar, e o 0 quando ninguém fala. A transcrição sai com os nomes.
+conversacion-cuantos = Quantas pessoas falam?
+conversacion-persona = Pessoa { $n }
+conversacion-empezar = Começar a gravar
+conversacion-terminar = Concluir e transcrever
+conversacion-turnos = { $n } turnos
+conversacion-hablando = Falando…
+conversacion-teclas = Aperte o número de quem fala · 0: ninguém
+conversacion-transcribiendo = Transcrevendo a conversa…
+conversacion-abierta = A conversa já está aberta
+llamada-titulo = Chamada
+llamada-entrante = Chamada recebida
+llamada-contestar = Atender
+llamada-colgar = Desligar
+llamada-altavoz = Alto-falante
+llamada-perdida = Chamada perdida
+
+## PDF zone (E9): merge PDF pages into one canvas, as on the phone
+fusionar-paginas = Mesclar em uma tela
+fusionar-paginas-empieza = Juntando as páginas em uma tela…
+fusionar-paginas-hecho = Pronto: “{ $nombre }” já está no projeto
+fusionar-paginas-no = Não foi possível juntar essas páginas
+
+## Universe zone (batch 2: H2, H3, M1): the Cosmos theme outside the universe
+ajustes-tema-cosmos = Tema Cosmos (céu estrelado no chat)
+
+## Zona pines (tanda 2: C3, C4, L3): magic word, board, sheet and tools
+pin-convertir-en = Converter em
+pin-herramienta-temporizador = Temporizador
+pin-herramienta-cronometro = Cronômetro
+pin-herramienta-tareas = Lista de tarefas
+pin-herramienta-contador = Contador
+pin-herramienta-gastos = Despesas
+pin-herramienta-pizarra = Quadro
+pin-herramienta-ruleta = Roleta
+pin-herramienta-lienzo = Tela
+pin-herramienta-hoja = Folha
+pin-herramienta-tabla = Tabela
+pin-fondo-pizarra = Fundo do quadro
+pin-pizarra-blanca = Branco
+pin-pizarra-negra = Preto
+pin-pizarra-azul = Azul lousa
+pin-pizarra-verde = Verde lousa
+pin-pauta-lisa = Lisa
+pin-pauta-cuadros = Quadriculada
+pin-pauta-rayas = Pautada
+pin-pauta-columnas = Colunas
+pin-pauta-puntos = Pontilhada
+pin-tiempo-cumplido = Tempo esgotado
+pin-hoja-nombre = Folha
+
+## Window groups (H9) and Markdown note editor (H12)
+bandeja-grupos-ventanas = Grupos de janelas…
+chat-adj-nota-md = Nota
+chat-editar-nota = Abrir no editor de notas
+grupos-nada-abierto = Não há telas, documentos nem notas abertos para salvar
+grupos-guardar = { $n ->
+    [one] Salvar a janela aberta como grupo…
+   *[other] Salvar as { $n } janelas abertas como grupo…
+}
+grupos-abrir = Abrir “{ $nombre }” · { $n }
+grupos-borrar = Excluir “{ $nombre }”
+grupos-alguna-falta = Alguma janela do grupo não pode mais ser aberta
+grupos-sin-nombre = Grupo
+grupos-nombre = Nome do grupo de janelas
+grupos-guardar-boton = Salvar
+nota-md-nueva = Nova nota
+nota-md-sufijo = Nota do PinDesk
+nota-md-negrita = Negrito
+nota-md-cursiva = Itálico
+nota-md-tachado = Tachado
+nota-md-codigo = Código
+nota-md-enlace = Link
+nota-md-titulo1 = Título
+nota-md-titulo2 = Subtítulo
+nota-md-titulo3 = Seção
+nota-md-lista = Lista
+nota-md-numerada = Lista numerada
+nota-md-casilla = Lista de tarefas
+nota-md-marcar = Marcar ou desmarcar a tarefa
+nota-md-cita = Citação
+nota-md-bloque = Bloco de código
+nota-md-raya = Linha horizontal
+nota-md-formula = Fórmula
+nota-md-cortar = Recortar
+nota-md-copiar = Copiar
+nota-md-pegar = Colar
+nota-md-guardar = Salvar
+nota-md-copia = Salvar uma cópia .md…
+nota-md-tipo = Nota Markdown
+nota-md-no-guardada = Não foi possível salvar a nota. Fechar mesmo assim e perder as alterações?
+nota-md-mayus = Shift
+nota-md-intro = Enter
+nota-md-compartir = Compartilhar
+nota-md-tabla = Tabela
+nota-md-imagen = Imagem
+nota-md-fecha = Data de hoje
+nota-md-pista-barra = Digite / na nota para ver mais
+nota-md-cambiar-titulo = Alterar o título
+nota-md-fila-encima = Inserir linha acima
+nota-md-fila-debajo = Inserir linha abaixo
+nota-md-quitar-fila = Remover a linha
+nota-md-columna-izquierda = Inserir coluna à esquerda
+nota-md-columna-derecha = Inserir coluna à direita
+nota-md-quitar-columna = Remover a coluna
+nota-md-quitar-tabla = Remover a tabela
+nota-md-boton-fila-mas = + Linha
+nota-md-boton-fila-menos = − Linha
+nota-md-boton-columna-mas = + Coluna
+nota-md-boton-columna-menos = − Coluna
+nota-md-meses = jan fev mar abr mai jun jul ago set out nov dez
+
+## Note tables: merge and colour cells (H12)
+nota-md-boton-combinar = Mesclar
+nota-md-boton-color = Cor
+nota-md-combinar-celdas = Mesclar células
+nota-md-separar-celdas = Dividir células
+nota-md-color-fondo = Cor de fundo
+nota-md-color-letra = Cor da fonte
+nota-md-aplicar-a = Células|Linha inteira|Coluna inteira
+nota-md-nombres-fondo = Sem cor|Vermelho|Verde|Azul|Amarelo
+nota-md-nombres-letra = Automático|Vermelho|Verde|Azul|Laranja
+nota-md-pista-color = Linhas e colunas inteiras: clique com o botão direito
+nota-md-imagen-no-copiada = Não foi possível copiar a imagem junto à nota.
+
+## Note comments (H12, Sep 30): the panel on the right
+nota-md-com-titulo = Comentários
+nota-md-com-comentar = Comentar
+nota-md-com-ninguno = Não há comentários
+nota-md-com-pista = Selecione um trecho do texto e clique em Comentar (Ctrl+Alt+M)
+nota-md-com-sin-ancla = O texto dele não está mais na nota
+nota-md-com-responder-pista = Responder…
+nota-md-com-responder = Responder
+nota-md-com-guardar = Salvar
+nota-md-com-cancelar = Cancelar
+nota-md-com-editar = Editar
+nota-md-com-borrar = Excluir
+nota-md-com-resuelto = resolvido
+nota-md-com-ver-resueltos = Ver resolvidos
+nota-md-com-ocultar-resueltos = Ocultar resolvidos
+nota-md-com-editado = editado
+nota-md-com-borrar-hilo = Excluir o comentário e as respostas?
+
+## Markdown notes: images and live pages (H12)
+nota-md-pagina-viva = Página de um projeto
+nota-md-enlace-hoja = Link para uma folha
+nota-md-captura = Captura
+nota-md-ver-grande = Ver em tamanho grande
+nota-md-abrir-hoja = Abrir a folha
+nota-md-foto-pequena = Pequena
+nota-md-foto-mediana = Média
+nota-md-foto-grande = Grande
+nota-md-foto-columna = Na largura da coluna
+nota-md-quitar-foto = Remover a imagem
+nota-md-hoja-borrada = A folha não existe mais: esta é a última cópia
+nota-md-otros-proyectos = Outros projetos
+nota-md-sin-hojas = Ainda não há folhas nos projetos para inserir na nota.
+nota-md-solo-imagenes = Aqui só é possível soltar imagens.
+chat-insertar-en-nota = Inserir em uma nota
+
+## Canvas: weld vertices and number points (lienzo-geometria, 26-sep)
+herramientas-nudo = Soldar vértices
+herramientas-bolita = Bolinha: passe por cima para selecionar
+lienzo-nudo = Soldar vértices
+lienzo-nudo-ayuda = Clique onde duas formas se tocam e elas ficam presas: não se separam mais e, com um só pino, giram em torno dele. Clique no pino para removê-lo; com a mão, arraste-o para levar o que está preso.
+lienzo-punto-serie = Letras dos pontos
+lienzo-cota-pedir = Pedir a medida ao traçar
+lienzo-panel-dureza = Dureza do lápis
+lienzo-guia-corto = Guia
+lienzo-panel-guias = Linhas de referência
+lienzo-cota-titulo = Quanto mede e para onde vai? (Tab muda de campo)
+lienzo-cota-largo = Comprimento
+lienzo-cota-angulo = Ângulo
+
+## Canvas: image (zone, magnifier, pixelate, share and reference; Sep 26)
+lienzo-referencia-menu = Imagem de referência…
+lienzo-pegar-menu = Colar
+lienzo-pista-compartir = Compartilhar… (Ctrl+Shift+S)
+lienzo-pista-lupa = Lupa (Q): na tela, toque em uma forma fechada e ela mostra ampliado o que está por baixo; na tela do computador, amplia sob o cursor
+lienzo-pista-mosaico = Pixelizar (mosaico): arraste sobre o que quiser cobrir
+lienzo-pista-zona = Zona (Z): arraste um retângulo e sai uma cópia recortada para levar
+lienzo-panel-mosaico = Cobrir
+lienzo-panel-aumento = Ampliação
+lienzo-panel-guia = Guia
+lienzo-panel-oscurecer = Escurecer
+lienzo-panel-zona-foco = Área iluminada
+lienzo-pista-foco = Holofote (F): toque em uma forma fechada e o entorno escurece, dentro do quadro dela
+lienzo-pista-serie = Passos numerados: cada clique coloca o próximo número
+
+## The Chat / Functions switch in the chat title bar
+proyectos-interruptor-chat = Chat
+proyectos-interruptor-funciones = Funções
+
+## The Functions screen: its tiles, in order
+funciones-titulo = Funções
+funciones-grabar = Gravar reunião
+funciones-grabar-detalle = Aula ou reunião, com capturas e transcrição
+funciones-lienzo = Nova tela
+funciones-lienzo-detalle = Uma tela em branco para desenhar ou decalcar
+funciones-tareas = Tarefas
+funciones-tareas-detalle = As listas de tarefas de todos os seus chats
+funciones-timeline = Timeline
+funciones-timeline-detalle = Seu dia minuto a minuto, e as lições
+funciones-horario = Horário
+funciones-horario-detalle = Suas aulas da semana, com aviso antes
+funciones-galeria = Capturas
+funciones-galeria-detalle = Todas as capturas que você salvou
+funciones-figuras = Formas
+funciones-figuras-detalle = Sua biblioteca de formas para as telas
+figuras-mias = Minhas formas
+figuras-todas = Todas
+figuras-vacia = Ainda não há formas. Em uma tela, selecione algo e use “Salvar como forma”.
+figuras-cerrar = Fechar
+figuras-borrar = Excluir a forma
+figuras-borrar-seguro = Clique de novo para excluir
+figuras-elegir-para = Escolha uma forma para “{ $chat }”
+figuras-adjuntar-a = Anexar a “{ $chat }”
+figuras-adjuntar-pista = Ou clique duas vezes na forma, ou Enter.
+figuras-adjuntada = Anexada a “{ $chat }” ✓
+asistente-adj-figura = Forma
+asistente-adj-pedir-figura = Pedir uma forma nova
+asistente-pide-figura = Faça uma forma de
+asistente-mejora-figura = Melhore a forma “{ $figura }”:
+chat-guardar-en-figuras = Salvar em minhas formas
+chat-figura-sin-nombre = Forma de { $chat }
+chat-figura-guardada = Salva nas suas formas como “{ $nombre }”
+chat-figura-vacia = Essa tela está vazia: não há nada para salvar
+figuras-titulo = Formas
+figuras-buscar = Pesquisar uma forma…
+figuras-dia = Dia
+figuras-noche = Noite
+figuras-sin-resultados = Nenhuma forma tem isso no nome nem nos textos.
+figuras-de-serie = padrão
+figuras-tuya = sua
+figuras-mide = Mede
+figuras-piezas = Peças
+figuras-textos = Textos que contém
+figuras-lineas = { $n } linhas
+figuras-formas = { $n } formas
+figuras-de-texto = { $n } textos
+figuras-trazos = { $n } traços à mão
+figuras-otras = { $n } outras
+bandeja-figuras = Formas…
+
+## --- Canvas: graph and table dialogs, put into a cell (F12/F14) ---
+cajetin-cancelar = Cancelar
+grafica-insertar = Inserir
+figuras-guardar = Salvar
+figuras-editar-tabla = Editar a tabela… (Enter)
+figuras-meter-en-celda = Colocar a seleção na célula
+tabla-blanco-titulo = Tabela em branco
+tabla-pegada-titulo = Tabela colada
+tabla-editar-titulo = Editar a tabela
+tabla-insertar = Inserir
+tabla-aplicar = Aplicar
+tabla-mas-fila = + Linha
+tabla-menos-fila = − Linha
+tabla-mas-columna = + Coluna
+tabla-menos-columna = − Coluna
+tabla-cabecera = Cabeçalho
+tabla-pegar = Colar
+tabla-ayuda = Tab e setas: outra célula · − remove a linha ou a coluna da célula ativa · Enter: aceitar · Esc: cancelar
+
+## --- Canvas: the Zone to the project chat (F8, mandarLaZona on the phone) ---
+zona-arrastra-copia = Arraste: sai uma cópia
+zona-arrastra-chat = Arraste: vai para o chat do projeto
+zona-al-chat = Para o chat
+zona-mandada = Zona enviada ao chat de “{ $proyecto }”
+zona-no-mandada = Não foi possível enviar a zona
+zona-viene-pdf = PDF “{ $proyecto }” → página { $pagina }
+zona-viene-lienzo = Tela “{ $nombre }”
+zona-nombre-pagina = Zona da página { $pagina }
+zona-nombre-lienzo = Zona de { $nombre }
+zona-lienzo = tela
+zona-hoja-lienzo = Tela
+zona-enlace-roto = Esta zona não leva a nenhuma tela deste projeto
+
+## The canvas toolbar grouped like the phone's (GRUPOS_DE_FABRICA)
+herramientas-mano = Selecionar e mover
+herramientas-imprimir = Imprimir
+herramientas-compartir = Compartilhar
+barra-grupo-elegir = Selecionar de outra forma
+barra-grupo-trazar = Traçar à mão
+barra-grupo-formas = Formas
+barra-grupo-flechas = Setas e linhas
+barra-grupo-arreglar = Ajustar o traçado
+barra-grupo-nombrar = Texto e nomes
+barra-grupo-tapar = Cobrir e destacar
+barra-grupo-medir = Medir
+barra-grupo-marco = Quadro e imagem
+barra-grupo-sacar = Compartilhar e imprimir
+barra-pista-mano = Selecionar e mover (M)
+barra-pista-deshacer = Desfazer (Ctrl+Z)
+barra-pista-rehacer = Refazer (Ctrl+Y)
+barra-pista-salir = Sair (Esc)
+ajustes-herramientas-sueltas = Sempre visíveis
+ajustes-herramientas-donde = Ferramentas em
+ajustes-herramientas-donde-ayuda = Escolha um lugar para desativar ali as que você não usa sem removê-las dos outros.
+ajustes-herramientas-sitio-todos = Todos
+ajustes-herramientas-sitio-pantalla = Tela do computador
+ajustes-herramientas-sitio-pin = Pins
+ajustes-herramientas-sitio-lienzo = Tela de desenho
+ajustes-herramientas-sitio-lector = Leitor
+
+## PDF reader: «To project» (the notes move to a project's sheets and travel when syncing)
+lector-al-proyecto = Para o projeto
+lector-al-proyecto-hecho = Já está nos projetos, com as anotações
+lector-al-proyecto-fallo = Não foi possível criar o projeto
+
+## «Save» in the viewers of files opened from outside (passing mode, Android 15a52aed)
+guardar-de-paso = Salvar em um chat
+guardar-de-paso-guardados = Em “Mensagens salvas”
+guardar-de-paso-en = Em “{ $chat }”
+guardar-de-paso-hecho = Salvo em “{ $chat }”, com as anotações
+guardar-de-paso-fallo = Não foi possível salvar no chat
+
+## Word and book reader: the four types and four weights of the phone (K16)
+lector-letra-serif = Serif
+lector-letra-sans = Sans
+lector-letra-cursiva = Cursiva
+lector-grosor-fina = Fina
+lector-grosor-negra = Black
+
+## Screen annotator: its pill (CapaPantalla.kt on the phone) and saving to «Saved messages»
+anotador-rotulo-dibujando = Alt + duplo clique do meio: clicar através
+anotador-rotulo-atravesando = Alt + duplo clique do meio: voltar a desenhar
+anotador-globo-titulo = Tela anotada
+anotador-globo-guardado = Salvo em Mensagens salvas
+anotador-globo-fallo = Não foi possível salvar em Mensagens salvas
+anotador-globo-copiado = Copiada para a área de transferência
+anotador-boton-atravesar = Clicar através
+anotador-pista-atravesar = Clicar através (Espaço): o mouse passa para o que está por baixo e o desenho continua visível. Volte com a mão da pílula ou com Alt + duplo clique do meio
+compartir-con-anotaciones = Com anotações
+compartir-con-anotaciones-detalle = Tinta, margens e marcadores sobre o PDF; desmarcado, o PDF limpo
+compartir-texto-buscable = Texto pesquisável
+compartir-texto-buscable-detalle = Folhas em linhas e com o texto; desmarcado, como imagem
+chat-quien-llama = Quem liga: { $nombre }
+chat-quien-llama-barra = Quem liga:
+chat-quien-llama-teclas = Enter: escolher o horário · Esc cancela
+llamada-volver-en = Ligar de novo em
+llamada-vuelve-a-las = Vai ligar de novo às { $hora }
+
+## H12: editing without marks, the floating toolbar and the note font (Sep 30)
+nota-md-texto-normal = Texto normal
+nota-md-quitar-formato = Limpar formatação
+nota-md-enlace-pista = Cole ou digite um link e pressione Enter
+nota-md-emojis = Sorriso|Risada|Adoro|Legal|Curti|Não curti|Obrigado|Aplausos|Festa|Feito|Não|Atenção|Coração|Fogo|Estrela|Ideia
+nota-md-letra-texto = Fonte do texto
+nota-md-letra-titulos = Fonte dos títulos
+nota-md-tamano = Tamanho da fonte
+nota-md-tamanos = Pequena|Normal|Grande|Muito grande
+nota-md-solo-esta-nota = Só nesta nota
+nota-md-pista-tamano = Com Ctrl + roda, de um em um
+nota-md-documento = Documento
+nota-md-del-chat = Do chat
+nota-md-audio = Áudio
+nota-md-abrir = Abrir
+nota-md-quitar = Remover da nota
+nota-md-ir-al-mensaje = Ir para a mensagem no chat
+nota-md-mensaje-borrado = Mensagem excluída
+nota-md-no-esta = Não está neste computador
+nota-md-pasar-a-texto = Transcrever
+nota-md-pasando-a-texto = Transcrevendo { $pct } %
+nota-md-sin-mensajes = O chat deste projeto não tem mensagens para inserir (uma nota avulsa não tem chat).
+nota-md-nota-de-voz = Nota de voz
+
+## Export a note to Word (H12, 1-oct)
+nota-md-exportar-word = Exportar para Word…
+nota-md-tipo-word = Documento do Word
+compartir-word = Word
+
+## Requests from other programs (Flow Launcher, scripts; docs/protocolo-pedidos.md)
+pedido-tareas = Tarefas
+pedido-escrito = Escrito em “{ $proyecto }”.
+microfono-abriendo = Abrindo o microfone…
+microfono-guardando = Salvando…
+microfono-parar = Clique para parar · Esc descarta
+microfono-guardada = Nota de voz salva
+microfono-convertir = Converter em chamada
+microfono-listo = Pronto
+microfono-cuando = A que horas eu ligo para você?
+microfono-en-15-min = Em 15 min
+microfono-en-1-hora = Em 1 h
+microfono-manana = Amanhã 9:00
+microfono-poner = Agendar a chamada
+microfono-volver = Voltar
+microfono-sonara = Vai ligar: { $cuando }
+microfono-puesta = Pronto: vai ligar { $cuando }
+microfono-teclas = Digite o horário (18:30) ou use as setas · Enter define
+soltar-aqui = Solte aqui para adicionar a “{ $proyecto }”
+soltar-anadiendo = Adicionando…
+soltar-anadido-uno = 1 adicionado ao chat
+soltar-anadidos = { $n } adicionados ao chat
+soltar-ninguno = Não foi possível adicionar nada
+chat-anadir-arrastrando = Adicionar arrastando…
+pedido-lista-hecha = Lista “{ $lista }” criada em “{ $proyecto }”.
+pedido-tabla-hecha = Tabela “{ $tabla }” criada em “{ $proyecto }”.
+pedido-tarea-anadida = “{ $tarea }” adicionada a “{ $lista }”.
+pedido-tarea-hecha = “{ $tarea }” marcada como concluída.
+pedido-tarea-pendiente = “{ $tarea }” voltou a ficar pendente.
+pedido-roto = Chegou um pedido de outro programa com informações faltando; nada foi feito.
+pedido-sin-proyecto = Esse projeto não está mais no PinDesk.
+pedido-sin-mensaje = Essa mensagem não está mais no chat.
+pedido-no-es-lista = Essa mensagem não é uma lista de tarefas.
+pedido-sin-tarea = A lista não tem a tarefa número { $indice }.
+pedido-tarea-vacia = Uma tarefa sem texto não é anotada.
+pedido-sin-fichero = Esse arquivo não está mais no disco.
+pedido-fallo-disco = Não foi possível salvar o que foi pedido. Veja o log do PinDesk.
+pedido-tarea-movida = “{ $tarea }” movida para “{ $lista }”.
+pedido-tarea-cambio = A lista mudou enquanto a tarefa era movida; nada foi alterado. Procure-a de novo.
+pedido-tarea-quitada = “{ $tarea }” removida da lista.
+pedido-tarea-corregida = Tarefa alterada: “{ $tarea }”.
+pedido-lista-borrada = Lista “{ $lista }” excluída de “{ $proyecto }”.
+pedido-sin-capturas = Ainda não há nenhuma captura.
+pedido-fuera-de-capturas = Esse arquivo não está na pasta de capturas; não será tocado.
+pedido-no-es-imagen = Esse arquivo não é uma imagem.
+pedido-imagen-no-se-pudo = Não foi possível copiar a imagem: { $motivo }
+pedido-sin-imagen = A imagem { $ruta } não foi encontrada; a tarefa não foi anotada.
+
+## Capture gallery (2-oct)
+galeria-titulo = Capturas
+galeria-vacia = Ainda não há capturas. As que você copiar com Alt + arrastar aparecerão aqui.
+galeria-abrir-carpeta = Abrir pasta
+galeria-copiada = Copiada para a área de transferência
+galeria-pineada = Fixada
+galeria-borrada = Enviada para a lixeira do PinDesk
+galeria-no-se-pudo = Não foi possível: { $motivo }
+galeria-conservada-aviso = Mantida: está em Mensagens salvas e não será mais excluída
+bandeja-galeria-capturas = Galeria de capturas…
+chat-galeria-capturas = Galeria de capturas
+chat-lecciones = Lições
+chat-leccion-nueva = Nova lição
+chat-hacer-leccion = Criar lição
+bandeja-lecciones = 💡 Lições…
+bandeja-leccion-nueva = Nova lição…
+bandeja-tareas = ☑ Tarefas…
+bandeja-timeline = 🕒 Timeline e lições…
+
+## Tareas (ventana)
+tareas-titulo = Tarefas
+tareas-apuntar-boton = Anotar
+tareas-hechas = Concluídas ({ $n })
+tareas-vacia = Ainda não há tarefas. Escreva acima e pressione Enter: ela vai para o Inbox e de lá você a passa para o grupo dela.
+tareas-cambio = A lista mudou enquanto isso; já está atualizada. Marque de novo.
+tareas-mover = Mover para…
+tareas-mover-titulo = Mover “{ $tarea }” para…
+tareas-sin-grupos = Ainda não há outros grupos de tarefas. Crie uma lista de tarefas em um chat e ela aparecerá aqui.
+tareas-movida = Movida para { $lista }
+tareas-imagen-no-esta = Essa imagem ainda não está neste computador: chegará com a sincronização.
+tareas-pegar-no-imagen = Em uma tarefa só é possível colar imagens ou texto.
+tareas-pegar-repetida = Essa imagem já está como { $ficha }.
+abrir-falta-extension = Não é possível abrir { $nombre }: o Windows precisa de “{ $extension }”, grátis na Microsoft Store. Instale e abra de novo.
+
+## v2-menus
+v2menus-responder = Responder
+v2menus-anotar-encima = Anotar por cima
+v2menus-mas = Mais
+v2menus-elegir-varios = Selecionar vários
+v2menus-tecla-supr = Del
+v2menus-tecla-clic = clique
+v2menus-adj-buscar = Pesquisar: tabela, cronômetro, PDF…
+v2menus-adj-mas = MAIS
+v2menus-adj-nada = Nada corresponde à pesquisa
+v2menus-adj-lienzo = Tela
+v2menus-adj-tareas = Lista de tarefas
+v2menus-adj-tabla = Tabela
+v2menus-adj-conversacion = Conversa
+v2menus-adj-captura = Captura
+v2menus-adj-pagina = Página de um projeto
+v2menus-adj-proyecto = Projeto inteiro
+v2menus-adj-movil = Trazer do celular
+v2menus-envio-enviar = Enviar
+v2menus-envio-anadir = Adicionar
+v2menus-envio-fotos = { $cuantos ->
+    [one] 1 foto
+   *[other] { $cuantos } fotos
+} · para { $proyecto }
+v2menus-envio-archivos = { $cuantos ->
+    [one] 1 arquivo
+   *[other] { $cuantos } arquivos
+} · para { $proyecto }
+
+## v2-ajustes
+ajustes2-titulo = Configurações
+ajustes2-buscar = Pesquisar uma configuração…
+ajustes2-nota = São salvas ao fechar com Pronto ou Esc.
+ajustes2-nota-punto = = diferente do valor padrão.
+ajustes2-deshacer = Desfazer
+ajustes2-listo = Pronto
+ajustes2-restablecer = Redefinir { $seccion }
+ajustes2-resultados = Resultados para “{ $busqueda }”
+ajustes2-resultados-sub = { $n ->
+    [one] 1 configuração encontrada em todas as seções.
+   *[other] { $n } configurações encontradas em todas as seções.
+  }
+ajustes2-sin-resultados = Nenhuma configuração fala de “{ $busqueda }”. Tente outra palavra.
+ajustes2-sec-general = Geral
+ajustes2-sec-general-sub = Como o PinDesk inicia e o que faz com os PDFs do chat.
+ajustes2-sec-captura = Captura
+ajustes2-sec-captura-sub = Como uma captura é feita e o que acontece com ela depois.
+ajustes2-sec-lienzo = Tela e ferramentas
+ajustes2-sec-lienzo-sub = O ímã, o traço à mão e quais ferramentas aparecem na barra.
+ajustes2-sec-voz = Voz e transcrição
+ajustes2-sec-voz-sub = Transcrever as notas de voz com dois idiomas.
+ajustes2-sec-atajos = Atalhos
+ajustes2-sec-atajos-sub = Clique em uma caixa e depois na combinação. Del deixa sem atalho; Esc cancela.
+ajustes2-sec-sincro = Sincronizar
+ajustes2-sec-sincro-sub = Como este computador se encontra com o celular.
+ajustes2-sec-apps = Aplicativos padrão
+ajustes2-sec-apps-sub = Abrir imagens e vídeos com o PinDesk a partir do Explorador de Arquivos.
+ajustes2-sec-apariencia = Aparência
+ajustes2-sec-apariencia-sub = A aparência do chat.
+ajustes2-sec-avanzado = Avançado
+ajustes2-sec-avanzado-sub = Desempenho, o filtro do lápis e o arquivo de configurações.
+ajustes2-g-arranque = Ao iniciar
+ajustes2-g-pdf = Documentos PDF
+ajustes2-g-ocr = Reconhecer texto (OCR)
+ajustes2-ocr-motor = Mecanismo de OCR
+ajustes2-ocr-windows = Windows
+ajustes2-ocr-indra = Indra
+ajustes2-ayuda-ocr = Usado pela captura de texto, “Decalque isto”, os pins, a galeria, os PDFs digitalizados e o assistente. O do Windows vem com o sistema. O Indra (Datalab) lê muito melhor fotos, digitalizações, páginas tortas e letra pequena, no seu PC e sem conexão; ao escolhê-lo são baixados { $megas } MB. Os pesos têm licença OpenRAIL-M da Datalab: grátis para uso pessoal, pesquisa e empresas com menos de US$ 20 milhões; para outro uso comercial é preciso a licença deles.
+ajustes2-ayuda-ocr-indra-listo = O Indra está baixado e lê todo o texto do aplicativo. Se falhar, é usado o do Windows.
+ajustes2-ayuda-ocr-windows-con-indra = Usa o OCR do Windows. O Indra continua baixado: escolha-o para usar, ou exclua-o abaixo.
+ajustes2-ocr-bajando = Baixando o Indra… { $por-ciento } %. Enquanto isso, é usado o do Windows.
+ajustes2-ocr-fallo = Não foi possível baixar o Indra: { $fallo }. Escolha-o de novo para tentar novamente; enquanto isso, é usado o do Windows.
+ajustes2-ocr-licencia = Licença do Indra
+ajustes2-ayuda-ocr-licencia = O código do Indra é Apache 2.0; os pesos, OpenRAIL-M modificada da Datalab. O PinDesk não os inclui: você os baixa do Hugging Face ao escolher o Indra.
+ajustes2-ocr-corregir = Corrigir com o dicionário
+ajustes2-ayuda-ocr-corregir = Só com o Indra e em páginas em espanhol: corrige acentos e letras lidas com pouca confiança. Nunca mexe em números, códigos nem nomes.
+ajustes2-ocr-vocabulario = Meu vocabulário
+ajustes2-ocr-vocabulario-ninguno = Nenhum. Nomes, siglas ou termos que o Indra deve preferir (E030, Arequipa…).
+ajustes2-ocr-vocabulario-marcador = termo, outro termo…
+ajustes2-ocr-borrar = Excluir o Indra
+ajustes2-ayuda-ocr-borrar = Remove os 26 MB dele do disco; volta a ser usado o do Windows.
+ajustes2-ocr-borrar-boton = Excluir
+ajustes2-voz-motor = Transcrever com
+ajustes2-voz-motor-whisper = Whisper base
+ajustes2-voz-motor-qwen3 = Qwen3-ASR
+ajustes2-ayuda-voz-motor = Para notas de voz e gravações de aulas ou reuniões. O Whisper base vem de fábrica (160 MB, rápido). O Qwen3-ASR entende muito melhor o espanhol, reuniões e salas de aula (metade dos erros ou menos); escolhê-lo baixa { $megas } MB, exige cerca de { $ram } GB de memória durante a transcrição e demora umas quatro vezes mais que o Whisper. Licença { $licencia }.
+ajustes2-ayuda-voz-motor-qwen3-listo = O Qwen3-ASR está baixado ({ $total } MB, licença { $licencia }) e transcreve as notas e gravações. Exige cerca de { $ram } GB de memória durante a transcrição; se alguma vez falhar, é usado o Whisper.
+ajustes2-ayuda-voz-motor-whisper-con-qwen3 = Usa o Whisper. O Qwen3-ASR está baixado: escolha-o para usar, ou exclua-o abaixo.
+ajustes2-ayuda-voz-motor-sin-memoria = Usa o Whisper. O Qwen3-ASR precisa de um computador com 4 GB de memória ou mais.
+ajustes2-voz-motor-bajando = Baixando o Qwen3-ASR… { $por-ciento } %. Enquanto isso, é usado o Whisper.
+ajustes2-voz-motor-fallo = Não foi possível baixar o Qwen3-ASR: { $fallo }. Escolha-o de novo para tentar novamente; enquanto isso, é usado o Whisper.
+ajustes2-voz-qwen3-licencia = Ficha do Qwen3-ASR
+ajustes2-ayuda-voz-qwen3-licencia = Modelo Qwen3-ASR-0.6B da Qwen (Alibaba), com licença Apache-2.0: pode ser usado livremente, inclusive no trabalho.
+ajustes2-voz-qwen3-borrar = Excluir o Qwen3-ASR
+ajustes2-ayuda-voz-qwen3-borrar = Remove os 988 MB dele do disco; as notas voltam a ser transcritas com o Whisper.
+ajustes2-g-al-capturar = Ao capturar
+ajustes2-g-gif = Gravar GIF
+ajustes2-g-guardar = Salvar e limpar
+ajustes2-g-pila = A pilha de capturas
+ajustes2-g-ignorados = Programas ignorados
+ajustes2-g-regiones = Regiões salvas
+ajustes2-g-iman = Ímã
+ajustes2-g-trazo = Traço à mão
+ajustes2-g-voz = Notas de voz
+ajustes2-g-atajos = Atalhos gerais
+ajustes2-g-sincro = Na rede local
+ajustes2-g-apps = Abrir imagens e vídeos
+ajustes2-g-tema = Tema
+ajustes2-g-rendimiento = Desempenho
+ajustes2-g-lapiz = Filtro do lápis (modo Natural)
+ajustes2-g-fichero = O arquivo de configurações
+ajustes2-ayuda-arranque = Fica na bandeja sem abrir nenhuma janela. Não é possível no modo portátil.
+ajustes2-ayuda-idioma = Vale a partir da próxima inicialização.
+ajustes2-g-ventanas = Janelas
+ajustes2-escala = Escala da interface
+ajustes2-ayuda-escala = O tamanho de tudo no chat. É aplicado na hora; no chat, também com Ctrl + “+”, “-” e “0”.
+ajustes2-grupos-ventanas = Grupos de janelas
+ajustes2-ayuda-grupos-ventanas = Salva as janelas que você tem abertas como um grupo para abri-las juntas de novo.
+ajustes2-ayuda-pdf-aligerar = Depois de enviá-lo ao chat, em segundo plano.
+ajustes2-pdf-nivel = Quanto compactar
+ajustes2-ayuda-pdf-nivel = Ao entrar só são usados Exato e Médio; Pequeno e Máx. ficam para “Compactar o PDF” manualmente.
+ajustes2-retardo = Captura com atraso
+ajustes2-ayuda-retardo = Contagem regressiva para abrir um menu ou uma dica antes de capturar.
+ajustes2-color = Formato da cor
+ajustes2-ayuda-color = Como a cor é copiada com o conta-gotas.
+ajustes2-scroll = Altura máxima com rolagem
+ajustes2-ayuda-scroll = Limite da captura longa, para que uma página infinita não esgote a memória.
+ajustes2-gif-ritmo = Quadros por segundo
+ajustes2-ayuda-gif-ritmo = Menos = arquivo mais leve. Para tutoriais, 10 ou 15 bastam.
+ajustes2-gif-retardo = Espera antes de gravar
+ajustes2-ayuda-gif-retardo = Segundos entre clicar em “Gravar” e o primeiro quadro.
+ajustes2-carpeta = Pasta das capturas
+ajustes2-abrir = Abrir
+ajustes2-caducidad = Dias até excluir
+ajustes2-ayuda-caducidad = Passado o prazo, vão para a Lixeira do Windows, exceto as mantidas.
+ajustes2-apilar = Empilhar no canto
+ajustes2-ayuda-apilar = Cada captura deixa um quadrinho no canto; um clique nele junta as seguintes e um Ctrl+V cola todas.
+ajustes2-esquina = Canto do quadrinho
+ajustes2-ayuda-esquina = No monitor onde a captura foi feita.
+ajustes2-icono = Tempo visível
+ajustes2-ayuda-icono = Quanto tempo o quadrinho fica sem ser usado depois da última captura.
+ajustes2-ayuda-ignorado = Com este em primeiro plano, os atalhos do PinDesk não fazem nada.
+ajustes2-anadir-programa = Adicionar um programa
+ajustes2-ayuda-anadir-programa = Digite o nome do executável e pressione Enter.
+ajustes2-anadir = Adicionar
+ajustes2-ayuda-region = { $x }, { $y } · { $ancho } × { $alto } px
+ajustes2-ayuda-iman = Ao desenhar, o cursor se prende ao que já existe.
+ajustes2-ayuda-iman-esquinas = Os cantos das formas e as extremidades das linhas.
+ajustes2-ayuda-iman-medios = O ponto médio de cada lado.
+ajustes2-ayuda-iman-centros = O centro de cada forma.
+ajustes2-iman-radio = Distância de atração
+ajustes2-ayuda-iman-radio = Em pixels de tela.
+ajustes2-suavizado = Suavização do traço
+ajustes2-ayuda-suavizado = Natural remove o tremor da mão parada sem atrasar a ponta.
+ajustes2-ayuda-voz-segundo = O Whisper também entende este idioma dentro da mesma nota.
+ajustes2-ayuda-voz-modo = O que fazer com o que foi dito no segundo idioma.
+ajustes2-presencia = Ser encontrado
+ajustes2-ayuda-presencia = O celular vê este computador assim que abre Sincronizar. Desativado, nenhuma porta é aberta na rede.
+ajustes2-lo-mio = O meu prevalece
+ajustes2-ayuda-lo-mio = Ao sincronizar, o deste computador prevalece: do outro lado só chega o que não existe aqui.
+ajustes2-vista-rapida = Visualização rápida com a barra de espaço
+ajustes2-ayuda-vista-rapida = No Explorador de Arquivos ou na área de trabalho, selecione arquivos e pressione Espaço: eles abrem na hora no PinDesk (fotos, vídeos, PDF, Word, plantas DWG, modelos IFC e Revit…). Outro Espaço fecha.
+ajustes2-abrir-con = Oferecer o PinDesk para imagens e vídeos
+ajustes2-ayuda-abrir-con = Aparece em “Abrir com” e em Aplicativos padrão. Desativar apaga o que foi escrito no Registro.
+ajustes2-predeterminada = Aplicativo padrão
+ajustes2-ayuda-predeterminada = O Windows só permite escolhê-lo em Configurações: lá, PinDesk → Definir como padrão.
+ajustes2-hacer-predeterminada = Tornar o PinDesk o aplicativo padrão…
+ajustes2-ayuda-cosmos = Céu estrelado atrás da lista de projetos do chat. Vale a partir do próximo chat.
+ajustes2-nivel = Nível de desempenho
+ajustes2-ayuda-nivel = Automático mede o computador ao iniciar. Vale a partir da próxima inicialização.
+ajustes2-medir = Medir os quadros do editor
+ajustes2-ayuda-medir = Registra no log quanto demora cada quadro. Só para diagnóstico.
+ajustes2-ritmo = Desenhar logo antes da atualização
+ajustes2-ayuda-ritmo = A ponta do lápis fica menos atrasada; um cálculo errado perde uma atualização.
+ajustes2-paneo = Deslocar sem redesenhar
+ajustes2-ayuda-paneo = Mover e aproximar a tela fica a cargo do compositor do Windows. Desativado, cada quadro é redesenhado.
+ajustes2-corte = Corte com o lápis parado
+ajustes2-ayuda-corte = Mais baixo = menos tremor e mais atraso ao começar. Auto = 1 Hz.
+ajustes2-beta = Quanto acompanha a velocidade
+ajustes2-ayuda-beta = Mais alto = ponta mais colada ao cursor e mais tremor. Auto = 0,007.
+ajustes2-fichero = Arquivo de configurações
+ajustes2-ayuda-fichero = O que não está aqui continua lá, com seus comentários. O que for alterado à mão vale ao reiniciar.
+ajustes2-abrir-fichero = Abrir o arquivo
+ajustes2-u-s = { $n } s
+ajustes2-u-px = { $n } px
+ajustes2-u-dias = { $n ->
+    [one] 1 dia
+   *[other] { $n } dias
+  }
+ajustes2-u-hz = { $n } Hz
+ajustes2-nunca = Nunca
+ajustes2-siempre = Sempre
+ajustes2-auto = Auto
+
+## v2-buscar
+comando-buscar = 🔍 Pesquisar no PinDesk…
+comando-grabar-clase = 🎙 Gravar aula ou reunião…
+clase-titulo = Gravar aula ou reunião
+clase-sub = Grava o áudio e coloca capturas no minuto certo
+clase-microfono = Microfone
+clase-equipo = Som do computador (Meet, Zoom…)
+clase-guardar-en = Salvar em: { $proyecto }
+clase-empezar = Começar a gravar
+clase-nada = Escolha o microfone, o som do computador ou os dois
+clase-captura = Captura
+clase-terminar = Concluir
+clase-capturas = Capturas: { $n } · a área se repete com um clique
+clase-pista = “Captura” salva uma área da tela neste minuto
+clase-elige-zona = Escolha a área na tela…
+clase-captura-hecha = Captura salva em { $minuto }
+clase-zona-cambiada = Área alterada
+clase-en-pausa = Em pausa: nada está sendo gravado
+clase-tirar = Clique em ✕ de novo para descartar a gravação
+clase-sin-zona = Não foi possível capturar a área
+clase-abriendo = Abrindo o áudio…
+clase-guardando = Salvando a aula…
+clase-texto = Transcrevendo… { $avance } %
+clase-bajando = Baixando o reconhecedor (só na primeira vez)… { $avance } %
+clase-lista = Salva em “{ $proyecto }”
+clase-lista-con-texto = Com { $n } capturas e a transcrição. Abra no chat para ver junto às imagens.
+clase-lista-sin-texto = Com { $n } capturas. Para o texto, clique em “Transcrever” na nota do chat.
+clase-sin-texto = Deixar sem texto
+clase-listo = Pronto
+clase-nombre = Aula { $fecha }
+clase-sin-sonido-equipo = Não se ouve nada do computador: não há alto-falantes nem fones ativos
+clase-video = Vídeo desta tela
+clase-video-corto = Gravando vídeo
+clase-video-roto = O vídeo foi interrompido; o áudio continua sendo gravado
+clase-video-guardado = Com o vídeo da tela.
+clase-calidad-ligero = Leve
+clase-calidad-normal = Normal
+clase-calidad-nitido = Nítido
+clase-calidad-ligero-pista = Vídeo em 720p e 10 fps: o mais leve (cerca de 180 MB por hora)
+clase-calidad-normal-pista = Vídeo em 1080p e 15 fps: no máximo cerca de 300 MB por hora
+clase-calidad-nitido-pista = A tela como está a 30 fps: o texto pequeno fica legível, ocupa mais
+clase-video-con = Vídeo com { $codificador }
+clase-codificador-grafica = a placa de vídeo (quase sem usar o processador)
+clase-codificador-software = o processador
+clase-codificador-cpu = o processador, em modo simples
+clase-zona-perdida = Nenhuma área foi escolhida: clique em “Captura” de novo
+clase-salvado = O restante foi salvo: { $n } capturas
+clase-disco-poco = Resta pouco espaço no disco (menos de 2 GB)
+clase-disco-lleno = Disco quase cheio: o vídeo foi fechado e o áudio continua sendo gravado
+clase-suspendido = O computador ficou suspenso por { $minutos } min; a gravação continuou ao voltar
+clase-recuperar-titulo = Gravação interrompida
+clase-recuperar-pregunta =
+    Uma gravação foi interrompida ({ $nombre }, { $minutos } min) em “{ $chat }”.
+    Sim: Recuperar · Não: Descartar · Cancelar: perguntar ao abrir o PinDesk de novo
+clase-recuperar-sin-nada = Da gravação “{ $nombre }” só restou um vídeo que não pode ser aberto. Excluí-lo?
+clase-recuperar-descartar = Descartar “{ $nombre }”? O que foi gravado será excluído e não poderá ser recuperado.
+clase-recuperar-fallo = Não foi possível recuperar “{ $nombre }”. O que foi gravado continua seguro e será oferecido de novo ao abrir o PinDesk.
+clase-texto-de-fondo = Fechar (continua em segundo plano)
+clase-modo-pantalla = Tela e som
+clase-modo-capturas = Áudio e capturas
+clase-modo-pantalla-sub = Grava o vídeo desta tela com os sons que você escolher
+clase-modo-capturas-sub = Grava o áudio; “Captura” salva a tela inteira
+clase-captura-entera = Captura: a tela inteira, na hora
+clase-pista-entera = “Captura” salva a tela inteira neste minuto; a área, só um pedaço
+clase-capturas-entera = Capturas: { $n } · a tela inteira
+clase-abrir-para-estudiar = Abrir para estudar
+clase-camara-movil = 📱 Câmera do celular
+clase-camara-movil-n = 📱 Câmera do celular · { $n }
+clase-camara-movil-apagada = 📱 Câmera do celular: desligada
+clase-foto-movil = Foto do celular · { $minuto }
+clase-clip-movil = Clipe do celular · { $minuto }
+camara-movil-tarde = Do celular para “{ $titulo }” · { $minuto }
+aporte-captura-al-movil = Captura para a gravação do celular
+aporte-de-la-grabacion = { $movil } grava · { $minuto }
+aporte-enviada = Enviada ao celular · { $minuto }
+aporte-pendiente = Sem conexão: será enviada ao reconectar
+aporte-fallo = Não foi possível capturar a tela
+chat-adjuntar-a-la-grabacion = Anexar à gravação…
+chat-adjuntada-a-la-grabacion = Na gravação · { $minuto }
+chat-sin-grabacion = Não há nenhuma gravação neste chat
+chat-colaboradores-todos = Todos do chat podem contribuir com fotos
+chat-colaboradores-nadie = Só minhas fotos nesta gravação
+clase-hora-sin-comprobar = horário não verificado
+baliza-movil-aislado = Seu celular não aparece, e vocês estão na mesma rede: talvez este Wi-Fi isole os dispositivos (as redes de convidados, hotel ou empresa fazem isso) ou um firewall bloqueie o PinDesk. Conecte o PC ao ponto de acesso do celular, ou os dois a outro Wi-Fi. As fotos que você tirar esperam no celular e entram no minuto certo quando se encontrarem.
+baliza-movil-otra-red = Seu celular está em outra rede, diferente da deste PC. Conecte-os ao mesmo Wi-Fi (ou o PC ao ponto de acesso do celular). As fotos que você tirar esperam no celular e entram no minuto certo quando se encontrarem.
+clase-modo-presencial = Presencial
+clase-modo-presencial-sub = Grava o microfone; “Foto” usa a câmera na resolução máxima
+clase-camara = Câmera: { $camara }
+clase-camara-buscando = Procurando as câmeras…
+clase-camara-ninguna = Não há câmera: Foto e Clipe não vão funcionar (o áudio é gravado do mesmo jeito)
+clase-foto = Foto
+clase-fotos = Fotos: { $n } · com a câmera, na resolução máxima
+clase-pista-foto = “Foto” tira uma foto com a câmera neste minuto; a câmera de vídeo grava um clipe
+clase-foto-hecha = Foto salva em { $minuto }
+clase-camara-abriendo = Abrindo a câmera…
+clase-camara-lista = Câmera pronta: fotos em { $medida }
+clase-camara-sin = Não há nenhuma câmera conectada
+clase-camara-en-uso = A câmera está sendo usada por outro aplicativo (Teams, Zoom…): feche-o e tente novamente
+clase-camara-sin-permiso = O Windows não permite usar a câmera: ative-a em Configurações › Privacidade › Câmera
+clase-camara-fallo = A câmera não respondeu; tente novamente
+clase-clip-empezado = Gravando um clipe com a câmera… clique em ■ para parar
+clase-clip-guardado = Clipe salvo em { $minuto }
+clase-clip-corto = Não foi possível fechar o clipe
+clase-unica-sub = O som sempre; na barra, Foto, Captura, Tela e Clipe
+clase-pantalla-al-empezar = Começar gravando a tela
+clase-pantalla = Tela
+clase-clip = Clipe
+clase-pantalla-encendida = Gravando a tela; o áudio continua
+clase-pantalla-apagada = Tela desligada; o áudio continua sendo gravado
+clase-pista-unica = Clique no relógio: pausa · mantenha pressionado: concluir · mantenha “Captura”: uma área
+clase-imagenes = { $n } imagens e clipes
+clase-completa-temas = O que vou dizer
+clase-completa-sin-temas = Sem tópicos: adicione-os em “Tópicos da reunião” antes de começar
+clase-completa-dice = O que está sendo dito
+clase-completa-sin-frases = Ouvindo… as frases aparecem aqui assim que são ditas
+clase-completa-sin-escucha = A transcrição ao vivo precisa da chave do Jev (TypeSafe) e do reconhecedor de voz; o texto completo sai ao terminar
+clase-descartar = Descartar
+clase-descartar-otra = Clique em “Descartar” de novo para excluir a gravação
+estudiar-clip = Vídeo da câmera · { $duracion }
+bandeja-grabando = PinDesk — Gravando…
+salir-grabando-titulo = Uma reunião está sendo gravada
+salir-grabando-mensaje =
+    Concluir e salvar a gravação antes de sair?
+    Sim: conclui, salva no chat e sai (o texto é solicitado depois na nota).
+    Não: continua gravando.
+chat-estudiar-clase = Estudar a aula
+estudiar-titulo = Estudar a aula
+estudiar-transcripcion = Transcrição
+estudiar-capturas = Capturas
+estudiar-marcadores = Marcadores
+estudiar-marcador = Marcador
+estudiar-seguir = Acompanhar
+estudiar-pista-teclas = Espaço reproduz · ←/→ 5 s · J/L 10 s · M marcador
+estudiar-nota-del-marcador = Escreva uma nota e pressione Enter (Esc cancela)
+estudiar-sin-marcadores = Clique em “Marcador” ou aperte M para anotar algo neste minuto.
+estudiar-marcador-sin-nota = Marcador
+estudiar-repasar = Revisar em voz alta
+repaso-titulo = Revisar em voz alta
+repaso-cabecera = Revisar em voz alta · { $clase }
+repaso-explicacion = Explique a aula com suas palavras, como se estivesse contando para alguém. O Jev vai marcando cada ponto-chave: ✓ você cobriu, ✗ você disse errado, · falta, ? não ficou claro. O que você disse errado ou faltou vem com o minuto para voltar à aula.
+repaso-sin-puntos = Esta aula ainda não tem pontos-chave. Eles vêm do que o Jev marca como importante ao transcrevê-la, dos marcadores com nota (M) e dos tópicos tratados.
+repaso-recuento = { $cubiertos } de { $total } cobertos · { $mal } errados · { $faltan } faltando · { $dudosos } duvidosos
+repaso-preparando = Preparando o microfone…
+repaso-te-escucho = Estou ouvindo: comece a explicar.
+repaso-pulsa-hablar = Clique em “Começar a falar” (ou espaço) e explique a aula.
+repaso-hablar = Começar a falar
+repaso-parar = Parar
+repaso-otra-vez = Começar de novo
+repaso-cerrar = Fechar
+repaso-jev-fallo = O Jev não respondeu: os pontos ficam como estavam.
+estudiar-marcador-guardado = Marcador salvo
+estudiar-no-se-guardo = Não foi possível salvar
+estudiar-sin-texto = Ainda não há transcrição: clique em “Transcrever” na nota do chat e ela aparecerá aqui automaticamente.
+estudiar-sin-capturas = Esta aula não tem capturas.
+estudiar-sin-video = Este vídeo não pode ser exibido aqui; toca a nota de voz
+estudiar-sin-sonido = O áudio desta aula não foi encontrado
+estudiar-solo-audio = Só áudio
+estudiar-cargando = Carregando…
+estudiar-ver-video = Ver o vídeo
+estudiar-ver-captura = Ver a captura
+estudiar-anotar = Anotar
+estudiar-ver-texto = Texto
+estudiar-fotograma-guardado = Quadro salvo como captura: anote-o na tela
+estudiar-nada-que-anotar = Ainda não há nada para anotar aqui
+estudiar-clip-movil = Vídeo do celular · { $duracion }
+estudiar-sin-hevc = Para ver este clipe falta a “Extensões de Vídeo HEVC” da Microsoft Store
+anki-enviar = Enviar para o Anki
+anki-pregunta-clase = O que foi explicado aqui?
+anki-nada = Aqui não há cartões. Escreva um por linha como “pergunta :: resposta”, ou “P: …” e “R: …”, ou com lacunas {"{{"}c1::assim{"}}"}.
+anki-hecho = { $n } cartões no Anki, baralho “{ $mazo }”
+anki-ya-estaban = Esses cartões já estavam em “{ $mazo }”
+anki-fichero = O Anki não está aberto (ou falta o AnkiConnect). Salvei { $n } cartões em { $donde }: no Anki, Arquivo → Importar.
+anki-fallo = O Anki não os aceitou: { $motivo }
+compartir-anki = Anki
+compartir-tipo-grabacion = Gravação
+grabacion-idioma = pt-BR
+grabacion-fecha = { $dia }/{ $mes }/{ $ano } { $hora }
+grabacion-transcripcion = Transcrição
+grabacion-capturas = Capturas
+grabacion-captura = Captura
+grabacion-marcadores = Marcadores
+grabacion-marcador = Marcador
+grabacion-duracion = Duração
+grabacion-sin-texto = Esta gravação ainda não tem transcrição.
+grabacion-buscar = Pesquisar na transcrição
+grabacion-seguir = Acompanhar o áudio
+grabacion-reproducir = Reproduzir ou pausar
+grabacion-velocidad = Velocidade
+grabacion-ir-al-minuto = Ir para este minuto
+grabacion-cerrar = Fechar
+grabacion-audio = Áudio
+grabacion-video = Vídeo
+buscar-todo-titulo = Pesquisar no PinDesk
+buscar-todo-pista = Pesquise arquivos, tarefas, lições, capturas… ou uma letra
+buscar-todo-pestana-todo = Tudo
+buscar-todo-pestana-archivos = Arquivos
+buscar-todo-pestana-tareas = Tarefas
+buscar-todo-pestana-lecciones = Lições
+buscar-todo-pestana-capturas = Capturas
+buscar-todo-pestana-acciones = Ações
+buscar-todo-cambia = alterna
+buscar-todo-resultados = { $n ->
+    [one] 1 resultado
+   *[other] { $n } resultados
+  }
+buscar-todo-ninguno = Nada com “{ $consulta }”
+buscar-todo-vacia = Ainda não há nada aqui
+buscar-todo-ninguno-pista = Tente com menos letras, ou veja em outra guia (Tab)
+buscar-todo-recientes = Pesquisas recentes
+buscar-todo-borrar-todas = Limpar todas
+buscar-todo-abierto-hace-poco = Aberto recentemente
+buscar-todo-letras = Digite uma letra e espaço
+buscar-todo-mejor = Melhor resultado
+buscar-todo-grupo-tareas = Tarefas e lições
+buscar-todo-grupo-archivos = Arquivos
+buscar-todo-grupo-capturas = Capturas
+buscar-todo-grupo-acciones = Ações
+buscar-todo-n-de-m = { $n } de { $total }
+buscar-todo-pegar = Cole uma imagem com
+buscar-todo-pegar-2 = e ela é anexada ao que você escrever:
+buscar-todo-pegar-ejemplo = t revisar rachadura
+buscar-todo-letra-t = Nova tarefa
+buscar-todo-letra-t-sub = para o Inbox · “t comprar cimento”
+buscar-todo-letra-n = Nova nota
+buscar-todo-letra-n-sub = em Mensagens salvas · “n ideia @projeto”
+buscar-todo-letra-l = Nova tela
+buscar-todo-letra-l-sub = em branco · “l planta @projeto”
+buscar-todo-letra-g = Galeria de capturas
+buscar-todo-letra-g-sub = “g muro” pesquisa dentro
+buscar-todo-letra-c = Capturar
+buscar-todo-letra-c-sub = uma área da tela
+buscar-todo-letra-u = Fixar a última captura
+buscar-todo-letra-u-sub-nada = ainda não há capturas
+buscar-todo-letra-a = Nova lição
+buscar-todo-letra-a-sub = o que você aprendeu · “a revisar a escala”
+buscar-todo-accion-pinear = Fixar
+buscar-todo-accion-abrir = Abrir
+buscar-todo-accion-apuntar = Anotar
+buscar-todo-accion-capturar = Capturar
+buscar-todo-accion-crear = Criar
+buscar-todo-accion-grabar = Gravar
+buscar-todo-accion-enviar = Enviar
+buscar-todo-accion-copiar = Copiar
+buscar-todo-accion-reproducir = Reproduzir
+buscar-todo-accion-hecha = Concluída
+buscar-todo-accion-desmarcar = Desmarcar
+buscar-todo-accion-entrar = Entrar
+buscar-todo-accion-mostrar = Mostrar
+buscar-todo-accion-pegar = Colar
+buscar-todo-ver-chat = Ver no chat
+buscar-todo-mas = Mais ações
+buscar-todo-pie-moverse = mover-se
+buscar-todo-pie-abrir = abrir
+buscar-todo-pie-adjuntar = anexar imagem
+buscar-todo-pie-cerrar = fechar
+buscar-todo-pie-borrar = excluir
+buscar-todo-pie-mas = mais ações
+buscar-todo-pie-volver = voltar
+buscar-todo-pie-flow = Igual no Flow Launcher com “p”
+buscar-todo-abrir-con = Abrir com…
+buscar-todo-borrar = Excluir (pode ser desfeito)
+buscar-todo-medidas = Captura · { $ancho } × { $alto } · { $peso }
+buscar-todo-caduca = Expira em { $dias ->
+    [one] 1 dia
+   *[other] { $dias } dias
+  }
+buscar-todo-caduca-hoy = Expira hoje
+buscar-todo-conservada = Mantida: não expira
+buscar-todo-conservada-ya = Mantida
+buscar-todo-conservar = Manter
+buscar-todo-borrada = Captura excluída
+buscar-todo-deshacer = Desfazer
+buscar-todo-copiado = Copiado
+
+## v2-lecciones
+lec2-que-aprendiste = O que você aprendeu? Escreva ou dite e pressione Enter
+lec2-guardar = Salvar
+lec2-rellena-solo = Preenchido automaticamente, altere com um clique:
+lec2-rellena-solo-vacio = A área, o projeto e a gravidade são preenchidos automaticamente ao escrever.
+lec2-area-de = Área: { $area }
+lec2-proyecto-de = Projeto: { $proyecto }
+lec2-ya-la-tienes = Você já tem: “{ $titulo }” · Aconteceu de novo
+lec2-pega-capturas = cole capturas
+lec2-guardada = Lição salva em { $donde }
+lec2-apuntado-otra-vez = Anotado: aconteceu de novo
+lec2-no-se-pudo = Não foi possível. Tente novamente.
+lec2-solo-imagenes = Só é possível adicionar imagens a uma lição.
+lec2-sin-area = Sem área
+lec2-sin-proyecto = Sem projeto (chat geral)
+lec2-buscar = Pesquisar: palavra, situação, etiqueta…
+lec2-todas = Todas
+lec2-repetidas = Repetidas
+lec2-graves = Graves
+lec2-para-repasar = Para revisar hoje · { $n }
+lec2-que-harias-si = O que você faria se acontecesse de novo?
+lec2-repasar = Revisar
+lec2-este-mes = Este mês
+lec2-antes = Antes
+lec2-lista-vacia = Ainda não há lições. Escreva acima o que você aprendeu.
+lec2-nada-con-filtro = Nada com este filtro.
+lec2-nada-con = Nada com “{ $q }”. Tente outra palavra ou anote-a acima.
+lec2-moverse = mover-se
+lec2-leve = Leve
+lec2-importante = Importante
+lec2-grave = Grave
+lec2-hoy = hoje
+lec2-ayer = ontem
+lec2-manana = amanhã
+lec2-hace-dias = há { $n } dias
+lec2-hace-semanas = { $n ->
+    [one] há 1 semana
+   *[other] há { $n } semanas
+  }
+lec2-hace-meses = { $n ->
+    [one] há 1 mês
+   *[other] há { $n } meses
+  }
+lec2-hace-anios = { $n ->
+    [one] há 1 ano
+   *[other] há { $n } anos
+  }
+lec2-en-dias = em { $n } dias
+lec2-meses = jan fev mar abr mai jun jul ago set out nov dez
+lec2-clic-para-editar = Clique em qualquer texto para editá-lo · é salvo automaticamente
+lec2-mas-campos = Mais campos…
+lec2-que-paso = O que aconteceu
+lec2-por-que = Por quê
+lec2-proxima = Da próxima vez
+lec2-que-paso-vacio = Adicione o que aconteceu…
+lec2-por-que-vacio = Adicione por que aconteceu…
+lec2-proxima-vacio = Adicione o que você fará diferente da próxima vez…
+lec2-editar = Editar
+lec2-escribe-aqui = Escreva aqui
+lec2-ayuda-linea = Enter salva · Esc termina
+lec2-ayuda-bloque = Enter salva · Shift+Enter quebra a linha · Tab vai para o próximo
+lec2-nota-de-voz = Nota de voz
+lec2-anadir-foto = Adicionar uma foto
+lec2-ver-en-chat = Ver no chat
+lec2-pinear = Fixar
+lec2-pineado = Fixada na tela
+lec2-borrar = Excluir
+lec2-borrada = Lição excluída
+lec2-deshacer = Desfazer
+lec2-veces = { $n ->
+    [one] vez que aconteceu comigo
+   *[other] vezes que aconteceu comigo
+  }
+lec2-la-ultima = A última: { $fecha }
+lec2-me-volvio = Aconteceu de novo
+lec2-gravedad = Gravidade
+lec2-area = Área
+lec2-proyecto = Projeto
+lec2-etiquetas = Etiquetas
+lec2-anadir = + Adicionar
+lec2-nueva-etiqueta = etiqueta e Enter
+lec2-relacionadas = Relacionadas
+lec2-proximo-repaso = Próxima revisão: { $cuando }
+lec2-vacia-titulo = Anote o que você aprende para não repetir erros
+lec2-vacia-texto = Escreva acima de uma vez: “aconteceu que…, porque…, da próxima vez…”. O PinDesk divide, define área, projeto e gravidade, e avisa se já aconteceu antes.
+lec2-comprobacion = Antes de começar, revise: { $hechas } de { $total }
+lec2-comprobacion-vacia = Ainda não há nada de “da próxima vez…”. É preenchido no terceiro bloco de cada lição.
+lec2-nada-que-repasar = Hoje não há nenhuma para revisar.
+lec2-repaso-titulo = Revisão de hoje
+lec2-repaso-de = { $va } de { $total }
+lec2-salir = Sair
+lec2-paso-pensar = Pense no que você faria
+lec2-paso-mirar = Veja o que você anotou
+lec2-paso-recordar = Você lembrava?
+lec2-situacion = A situação
+lec2-repaso-cuando = Quando { $pista }…
+lec2-repaso-recuerda = Lembre-se desta lição
+lec2-repaso-veces = aconteceu { $n } vezes
+lec2-que-harias = O que você faria?
+lec2-escribe-o-dicta = Escreva ou dite
+lec2-dictar = Ditar
+lec2-mostrar = Mostrar a resposta
+lec2-mostrada = Resposta visível
+lec2-lo-que-apuntaste = O que você anotou
+lec2-oculta = Pense antes de olhar: lembrar fixa muito mais do que reler.
+lec2-por-que-paso = Por que aconteceu: { $causa }
+lec2-abrir-completa = Abrir a lição completa
+lec2-lo-recordabas = Você lembrava? Escolha com o mouse ou com
+lec2-nota-recordaba = Eu lembrava
+lec2-nota-a-medias = Mais ou menos
+lec2-nota-olvide = Esqueci
+lec2-vuelve-manana = Volta amanhã
+lec2-vuelve-en = Volta em { $dias } dias
+lec2-saltar = Pular esta
+lec2-repaso-pie = Sua resposta serve para comparar: não é salva.
+lec2-siguiente = Próxima
+lec2-repaso-elige = Escolha 1, 2 ou 3: você lembrava?
+lec2-repaso-hecho = Revisão concluída
+lec2-repaso-hechas = { $n ->
+    [one] Você revisou 1 lição. Volte quando for a hora.
+   *[other] Você revisou { $n } lições. Elas voltam quando for a hora.
+  }
+lec2-repaso-volver = Voltar à lista
+
+## v2-galeria
+galeria-subtitulo = { $cuantas } · duram 7 dias
+galeria-buscar = Pesquisar, inclusive o texto das capturas
+galeria-buscar-sin-ocr = Pesquisar por nome ou data
+galeria-elegir = Selecionar
+galeria-sin-resultados = Nenhuma captura com “{ $texto }”.
+galeria-hoy = Hoje
+galeria-ayer = Ontem
+galeria-dia-0 = segunda-feira
+galeria-dia-1 = terça-feira
+galeria-dia-2 = quarta-feira
+galeria-dia-3 = quinta-feira
+galeria-dia-4 = sexta-feira
+galeria-dia-5 = sábado
+galeria-dia-6 = domingo
+galeria-elegir-dia = Selecionar o dia inteiro
+galeria-chip-video = Vídeo
+galeria-pinear = Fixar
+galeria-copiar = Copiar
+galeria-conservar = Manter
+galeria-borrar = Excluir
+galeria-elegidas = { $cuantas ->
+    [one] 1 selecionada
+   *[other] { $cuantas } selecionadas
+}
+galeria-elegir-todas = Todas
+galeria-deshacer = Desfazer
+galeria-borradas = { $cuantas } enviadas para a lixeira do PinDesk
+galeria-recuperadas = { $cuantas ->
+    [one] Recuperada
+   *[other] { $cuantas } recuperadas
+}
+galeria-pineadas = { $cuantas } fixadas na tela
+galeria-copiadas = { $cuantas } copiadas como arquivos
+galeria-conservadas-aviso = { $cuantas } mantidas: estão em Mensagens salvas
+galeria-prorrogada = Mais sete dias: será excluída mais tarde
+
+## v2-pines
+pin-v2-anotar = Anotar
+pin-v2-mas = Mais
+pin-v2-opacidad = Opacidade
+pin-v2-pines-abiertos = Pins abertos…
+pin-v2-abrir = Abrir
+pin-v2-pinear-pagina = Fixar esta página
+pin-v2-pinear-todas = Fixar todas as páginas
+pin-v2-cerrar-pin = Fechar o pin
+pin-v2-alejar = Afastar
+pin-v2-acercar = Aproximar
+pin-v2-en-vivo = AO VIVO
+pin-v2-tecla-espacio = Espaço
+pin-v2-tecla-rueda = Roda
+pin-v2-tecla-re-pag = PgUp
+pin-v2-tecla-av-pag = PgDn
+pin-v2-tecla-mayus-rueda = Shift+Roda
+pin-v2-panel-titulo = Pins abertos
+pin-v2-panel-buscar = Pesquisar um pin
+pin-v2-panel-mostrar-todos = Mostrar todos
+pin-v2-panel-ocultar-todos = Ocultar todos
+pin-v2-panel-cerrar-todos = Fechar todos · pode ser desfeito
+pin-v2-panel-deshacer = Desfazer: abri-los de novo
+pin-v2-panel-sin-grupo = Sem grupo
+pin-v2-panel-oculto = Oculto
+pin-v2-panel-ayuda = Clique em uma linha: traz o pin para o centro e o destaca. O olho o oculta ou o mostra de novo.
+pin-v2-panel-vacio = Não há pins abertos. Fixe uma captura, uma nota ou um arquivo e ele aparecerá aqui.
+pin-v2-panel-ocultar = Ocultar
+pin-v2-panel-mostrar = Mostrar
+pin-v2-panel-cerrar-este = Fechar este pin
+pin-v2-panel-cerrar-panel = Fechar o painel
+pin-v2-tipo-foto = Foto
+pin-v2-tipo-nota = Nota
+pin-v2-tipo-pdf = PDF
+pin-v2-tipo-video = Vídeo
+pin-v2-tipo-archivo = Arquivo
+pin-v2-tipo-vivo = Pin ao vivo
+pin-v2-tipo-herramienta = Ferramenta
+pin-v2-marca-copiar = Copiar
+pin-v2-marca-resaltar = Realçar
+pin-v2-marca-ondulada = Ondulada
+pin-v2-marca-subrayar = Sublinhar
+pin-v2-marca-tachar = Riscar
+pin-v2-marca-tapar = Cobrir
+pin-v2-marca-quitar = Remover a marca
+pin-v2-modo-texto = Selecionar texto
+pin-v2-leyendo = Lendo…
+pin-v2-invertir-colores = Inverter cores
+
+## v2-captura
+captura2-zona = Área
+captura2-ventana = Janela
+captura2-pantalla = Tela
+captura2-scroll = Com rolagem
+captura2-gif = Gravar GIF
+captura2-pin-vivo = Pin ao vivo
+captura2-texto = Texto (OCR)
+captura2-libre = Livre
+captura2-repetir = Repetir a última área
+captura2-ancho = L
+captura2-alto = A
+captura2-sin-abrir = Sem abrir isto:
+captura2-arrastrar-izq = + arrastar com o esquerdo
+captura2-arrastrar-der = + arrastar com o direito
+captura2-arrastrar-centro = + arrastar com o do meio
+captura2-doble-centro = + duplo clique do meio
+captura2-gesto-copiar = copiar
+captura2-gesto-pinear = fixar
+captura2-gesto-pin-vivo = pin ao vivo
+captura2-gesto-anotar = anotar na tela
+captura2-salir = sair
+captura2-pista-ventana = Clique: capturar janela · Arrastar: área livre
+captura2-pista-zona = Clique: capturar isto · Arrastar: área livre
+captura2-copiar-color = copiar a cor
+captura2-cambiar-formato = HEX / RGB
+captura2-copiar = Copiar
+captura2-pinear = Fixar
+captura2-al-chat = Para o chat
+captura2-ocr = Texto
+captura2-guardar = Salvar
+captura2-descartar = Descartar
+captura2-buscar-proyecto = Pesquisar projeto…
+captura2-recientes = Recentes
+captura2-el-ultimo = o último
+captura2-comentario = Adicione um comentário (opcional)
+captura2-enviar = Enviar
+captura2-sin-proyectos = Nenhum projeto tem esse nome
+captura2-enviada = Captura enviada para “{ $proyecto }”.
+
+## v2-bandeja
+bandeja2-sincronizar = Sincronizar agora
+bandeja2-sincronizado = Sincronizado { $cuando }
+bandeja2-sin-sincronizar = Ainda não sincronizado
+bandeja2-hace-nada = agora mesmo
+bandeja2-hace-min = há { $n } min
+bandeja2-hace-h = há { $n } h
+bandeja2-ayer = ontem
+bandeja2-hace-dias = há { $n } dias
+bandeja2-buscar = Pesquisar uma ação… (basta digitar)
+bandeja2-buscar-favorito = Pesquisar o que adicionar aos favoritos…
+bandeja2-sin-resultados = Nenhuma ação tem esse nome
+bandeja2-capturar = Capturar
+bandeja2-capturar-sub = Escolha a área com o mouse
+bandeja2-grabar = Gravar
+bandeja2-modo-zona = Área
+bandeja2-modo-scroll = Rolagem
+bandeja2-modo-gif = GIF
+bandeja2-modo-texto = Texto
+bandeja2-modo-retardo = Atraso
+bandeja2-modo-color = Cor
+bandeja2-favoritos = Favoritos
+bandeja2-editar = Editar
+bandeja2-anadir = Adicionar
+bandeja2-elige-favoritos = Escolha seus favoritos ({ $n } de { $tope })
+bandeja2-favoritos-llenos = Já há { $tope } favoritos: remova um antes.
+bandeja2-hecho = Pronto
+bandeja2-fav-pinear-copiado = Fixar o que foi copiado
+bandeja2-fav-anotar = Anotar na tela
+bandeja2-fav-pin-vivo = Pin ao vivo
+bandeja2-pines = Pins · { $n } visíveis
+bandeja2-ocultar-pines = Ocultar os pins
+bandeja2-paso-clic = Deixar o clique atravessar
+bandeja2-atajos = Atalhos
+bandeja2-silenciar = Silenciar os atalhos
+bandeja2-silenciar-sub = para jogar ou apresentar
+bandeja2-ultimas = Últimas capturas
+bandeja2-ver-galeria = Ver a galeria
+bandeja2-sin-capturas = Ainda não há capturas
+bandeja2-abrir-pindesk = Abrir o PinDesk
+bandeja2-tareas = Tarefas
+bandeja2-lecciones = Lições
+bandeja2-nueva-leccion = Nova lição
+bandeja2-galeria = Galeria de capturas
+bandeja2-documento = Abrir documento…
+bandeja2-grupos = Grupos de janelas
+bandeja2-para-hoy = { $n } para hoje
+bandeja2-salir = Sair do PinDesk
+bandeja2-salir-sub = os pins são fechados
+bandeja2-copiada = Copiada
+bandeja2-borrada = Para a lixeira
+bandeja2-devuelta = Restaurada
+bandeja2-deshacer = Desfazer
+bandeja2-no-se-pudo = Não foi possível: { $motivo }
+
+## tareas-v3
+tareas3-buscar = Pesquise nas tarefas, nas listas e nos chats… (“hoje”, “ontem”)
+tareas3-encontradas = { $n ->
+    [one] 1 tarefa encontrada
+   *[other] { $n } tarefas encontradas
+  }
+tareas3-pendientes = { $n ->
+    [0] nada pendente
+    [one] 1 pendente
+   *[other] { $n } pendentes
+  }
+tareas3-sin-resultados = Nada corresponde a “{ $busqueda }”
+tareas3-sin-resultados-pista = A pesquisa é feita no texto de cada tarefa e no nome da lista e do chat, ignorando acentos e maiúsculas. Tente com menos palavras, ou com “hoje” ou “ontem”.
+tareas3-vaciar-busqueda = Limpar a pesquisa
+tareas3-mover-intro = mover
+tareas3-mover-esc = fechar
+tareas3-quitada = “{ $tarea }” removida
+tareas3-deshacer = Desfazer
+tareas3-repuesta = Tarefa devolvida à lista
+tareas3-cambio-quitar = A lista mudou enquanto isso; já está atualizada. Remova de novo.
+tareas3-borrar-lista = Excluir lista
+tareas3-borrar-lista-aviso = Excluir a lista “{ $lista }” de “{ $chat }” com { $n ->
+    [one] sua tarefa
+   *[other] suas { $n } tarefas
+  }? Ela também é excluída do chat e do celular, e não é possível desfazer.
+tareas3-lista-borrada = Lista “{ $lista }” excluída
+
+## timeline (5-oct-2026)
+timeline-titulo = Timeline
+timeline-sub-ultimas = Últimas 24 horas · { $n ->
+    [one] 1 momento
+   *[other] { $n } momentos
+  }
+timeline-sub-dia = { $n ->
+    [one] 1 momento
+   *[other] { $n } momentos
+  }
+timeline-ultimas-24h = Últimas 24 horas
+timeline-hoy = Hoje
+timeline-ayer = Ontem
+timeline-exportar = Exportar
+timeline-volver = Voltar
+timeline-pista = O que está acontecendo? Escreva ou dite…
+timeline-vacio = Ainda não há nada nas últimas 24 horas.
+    Escreva ou dite o que está acontecendo e pressione Enter.
+    Ao ditar, “com isto aconteceu…” é o título e “e assim eu te conto…” a descrição.
+timeline-vacio-dia = Esse dia não tem nada anotado.
+timeline-nota-de-voz = Nota de voz
+timeline-sin-titulo-voz = Nota de voz
+timeline-sin-titulo-foto = Foto
+timeline-apuntado = Anotado
+timeline-corregido = Corrigido
+timeline-borrado = Momento excluído
+timeline-deshacer = Desfazer
+timeline-abrir = Abrir
+timeline-escribe-algo = Escreva algo para o título
+timeline-no-guardado = Não foi possível salvar a timeline
+timeline-corrigiendo = Corrigindo o momento das { $hora } · Enter salva, Esc cancela
+timeline-voz-esperando = 🎙 A nota de voz vai com o texto: pressione Enter
+timeline-pegar-no-imagen = Isso não é uma imagem nem um texto
+timeline-cal-elegidos = { $n ->
+    [one] 1 dia selecionado
+   *[other] { $n } dias selecionados
+  }
+timeline-cal-quitar = Limpar a seleção
+timeline-exportar-html = Página da web (HTML)
+timeline-exportar-pdf = Documento PDF
+timeline-tipo-html = Página da web
+timeline-tipo-pdf = Documento PDF
+timeline-nada-que-exportar = Não há nada para exportar aí
+timeline-no-exportado = Não foi possível salvar o arquivo
+timeline-exportado = Salvo: { $nombre }
+timeline-exportado-pie = Exportado com o PinDesk · { $fecha }
+timeline-pdf-haciendo = Gerando o PDF…
+timeline-pdf-sin-edge = Para o PDF é preciso o Microsoft Edge; exporte em HTML
+timeline-pdf-fallo = Não foi possível gerar o PDF
+timeline-mic-abriendo = Abrindo o microfone…
+timeline-mic-escuchando = Estou ouvindo… clique no microfone (ou Ctrl+M) para terminar
+timeline-mic-guardando = Salvando o que foi dito…
+timeline-mic-bajando = Baixando o modelo de voz (uma vez)… { $pc } %
+timeline-mic-pasando = Transcrevendo… { $pc } %
+timeline-mic-sin-dictado = Este computador não consegue transcrever voz: escreva
+timeline-mic-no-abre = Não foi possível abrir o microfone
+timeline-mic-no-guarda = Não foi possível salvar o que foi dito
+timeline-mic-sin-microfono = Não há microfone
+timeline-mic-corto = Curto demais: fale um pouco mais
+timeline-mic-error = Não foi possível gravar: { $error }
+timeline-mic-sin-texto = Não foi entendido: só o áudio é salvo
+
+## simple-lecciones
+lecs-menos-campos = Menos campos
+lecs-ficha-completa = Tipo, causas e palavras…
+
+## galeria-menu (5-oct-2026, right click)
+galeria-guardar-como = Salvar como…
+galeria-mostrar-en-carpeta = Mostrar na pasta
+galeria-guardadas = { $cuantas ->
+    [one] Salva
+   *[other] { $cuantas } salvas
+}
+galeria-prorrogar = Dar mais 7 dias
+
+## timeline-v2 (5-oct-2026): common bar, WeChat-like tabs and detail
+timeline-pestana-hoy = Hoje
+timeline-pestana-momentos = Momentos
+timeline-pestana-estado = Calendário
+timeline-buscar-pista = Pesquisar na timeline
+timeline-sub-buscar = { $n ->
+    [0] Nada encontrado
+    [one] 1 resultado
+   *[other] { $n } resultados
+  }
+timeline-sub-momentos = { $n ->
+    [0] Ainda não há momentos
+    [one] 1 momento no total
+   *[other] { $n } momentos no total
+  }
+timeline-sin-resultados = Não há nenhum momento com isso.
+    A pesquisa é feita no título e na descrição, ignorando acentos e maiúsculas.
+timeline-momentos-vacio = Aqui ficam os momentos que você escolher. Em “Hoje”, passe o mouse sobre um cartão e clique no marcador para enviá-lo para cá.
+timeline-a-momentos = Enviado para Momentos
+timeline-fuera-de-momentos = Removido de Momentos
+timeline-estado-sobre-todo = Sobretudo
+timeline-estado-lo-mas = “{ $que }”
+timeline-exportar-busqueda = Pesquisa: “{ $que }”
+timeline-pestana-lecciones = Lições
+timeline-sub-lecciones = { $n ->
+    [0] Nenhuma lição
+    [one] 1 lição aprendida
+   *[other] { $n } lições aprendidas
+  }
+timeline-lecciones-vacio = Ainda não há lições. Clique na lâmpada de um momento para transformá-lo em lição.
+timeline-gravedad-leve = Leve
+timeline-gravedad-importante = Importante
+timeline-gravedad-grave = Grave
+timeline-otra-vez = Aconteceu de novo +1
+timeline-otra-vez-hecho = Anotado: já são { $n } vezes
+timeline-leccion = Lição
+timeline-leccion-hecha = 💡 Virou lição: está em “Lições”
+timeline-leccion-quitada = Não está mais marcado. A lição continua em “Lições”.
+timeline-leccion-fallo = Não foi possível salvar a lição
+timeline-leccion-por-que = Por quê
+timeline-leccion-proxima = Da próxima vez
+timeline-tambien-lecciones = { $n ->
+    [one] Também há 1 lição com isso · Ver
+   *[other] Também há { $n } lições com isso · Ver
+  }
+timeline-copiar-imagen = Copiar como imagem
+timeline-compartir-html = Compartilhar como HTML
+timeline-guardar-imagen = Salvar como imagem…
+timeline-imagen-copiada = Copiada como imagem
+timeline-imagen-fallo = Não foi possível gerar a imagem
+timeline-tipo-png = Imagem PNG
+timeline-compartido-pie = PinDesk · Timeline
+
+## tareas-v4
+tareas4-buscar = Pesquisar tarefas…
+timeline-otra-vez-corto = ↻ Aconteceu de novo +1
+timeline-pagina-linea = Linha
+timeline-exportado-pesa = tem { $mb } MB: pode ser difícil enviá-lo
+
+## v2-diseno
+galeria-chapa-hoy = hoje
+galeria-pista-caduca = { $dias ->
+    [0] É excluída hoje
+    [one] É excluída amanhã
+   *[other] É excluída em { $dias } dias
+  } · clique com o botão direito para manter
+galeria-ya-conservadas = Já estavam mantidas
+galeria-dia-cuantas = { $cuantas ->
+    [one] 1 captura
+   *[other] { $cuantas } capturas
+  }
+timeline-sub-estado-dias = { $n ->
+    [0] Ainda não há dias com algo
+    [one] 1 dia com algo
+   *[other] { $n } dias com algo
+  }
+timeline-filtro-todas = Todas
+timeline-orden-recientes = Recentes
+timeline-orden-repetidas = Mais repetidas
+timeline-lecciones-sin-resultados = Não há nenhuma lição com isso.
+timeline-otra-vez-pildora = ↻ +1
+
+## tareas-v5
+tareas5-subtitulo = { $listas ->
+    [one] 1 lista
+   *[other] { $listas } listas
+  }
+tareas5-apuntar-pista = Nova tarefa…
+tareas-recordare = ⏰ Vou lembrar você { $cuando }
+tareas-sin-recordatorio = Lembrete removido
+tareas-apuntar-en-pista = Nova tarefa em “{ $lista }”…
+tareas5-corregir-pista = Texto da tarefa…
+tareas5-imagen-pista = Adicionar imagens · Ctrl+V cola uma copiada
+tareas5-guardar = Salvar
+tareas5-corregida = Tarefa corrigida
+tareas5-vista-lista = Lista · Ctrl+L
+tareas5-vista-tarjetas = Cartões · Ctrl+T
+tareas5-vista-horario = Horário · Ctrl+H
+tareas5-marcar = Marcar como concluída
+tareas5-desmarcar = Marcar como pendente
+tareas5-editar = Editar
+tareas5-copiar-texto = Copiar texto
+tareas5-copiada = Texto copiado
+tareas5-pinear-imagenes = { $n ->
+    [one] Fixar a imagem
+   *[other] Fixar as { $n } imagens
+  }
+tareas5-quitar = Remover
+
+## salida (6-oct-2026): the floating window to drag out what was exported
+salida-titulo = Pronto para compartilhar
+salida-titulo-exportado = Exportado
+salida-titulo-guardado = Salvo
+salida-pista = Arraste um arquivo para outro aplicativo ou para uma pasta
+salida-todos = Arrastar os { $n } juntos
+salida-arrastra-todos = Mantenha pressionado e arraste para levar todos
+salida-soltado = Solto · você pode soltá-lo em outro lugar
+salida-copiado = Copiado para a área de transferência
+salida-pineado = Fixado
+salida-no-se-pudo = Não foi possível
+salida-compartir = Compartilhar
+salida-copiar = Copiar
+salida-abrir = Abrir
+salida-carpeta = Mostrar na pasta
+salida-pinear = Fixar
+salida-compartir-menu = Compartilhar…
+compartir-arrastrar = Arraste daqui para outro aplicativo · clique para deixá-lo na tela
+
+## al-movil (6-oct-2026): a photo from the Flow plugin to the phone's open canvas
+al-movil-lienzo = { $n ->
+    [one] Enviada para a tela de { $movil }
+   *[other] { $n } imagens enviadas para a tela de { $movil }
+  }
+al-movil-chat = { $movil } salvou na conversa geral (não tinha um chat nem uma tela aberta)
+al-movil-chat-abierto = { $n ->
+    [one] Enviado para o chat “{ $chat }” de { $movil }
+   *[other] { $n } arquivos enviados para o chat “{ $chat }” de { $movil }
+  }
+al-movil-solo-fotos = { $movil } tem uma tela aberta: só aceita fotos. Abra um chat para enviar arquivos.
+al-movil-negados = { $negados ->
+    [one] 1 arquivo não foi enviado: não era uma foto e há uma tela aberta
+   *[other] { $negados } arquivos não foram enviados: não eram fotos e há uma tela aberta
+  }
+al-movil-no-esta = { $movil } não está aberto: abra o PinDesk no celular
+al-movil-actualiza = Atualize o PinDesk em { $movil }: ele ainda não recebe arquivos diretos. Vou abrir “Enviar por Wi-Fi”.
+al-movil-ocupado = { $movil } está sincronizando com outro dispositivo. Tente novamente em um momento.
+al-movil-otra-version = { $movil } tem outra versão do PinDesk: atualize os dois
+al-movil-cortado = Não foi possível enviar para { $movil }: { $motivo }
+al-movil-sin-grupo = Este PC não está em um grupo: abra Sincronizar no PinDesk
+al-movil-no-es-del-grupo = Esse dispositivo não está mais no grupo deste PC
+al-movil-sin-imagenes = Não havia nada para enviar
+
+## Excel sheet viewer (visor_hoja)
+hoja-copiado = { $celdas ->
+    [one] 1 célula copiada
+   *[other] { $celdas } células copiadas
+  }
+hoja-demasiado = São células demais para copiar de uma vez ({ $celdas })
+hoja-cargando = Carregando… { $filas } linhas
+hoja-enlace-no-abre = Não foi possível abrir o link
+
+## Chats shared with people (Android 13-oct-2026, ChatCompartidoActivity)
+cc-menu-compartir = Compartilhar com pessoas
+cc-menu-entrar = Entrar em um chat compartilhado
+chat-nuevo-normal = Chat normal
+chat-nuevo-normal-detalle = Só você e seus dispositivos
+chat-nuevo-compartido = Chat compartilhado
+chat-nuevo-compartido-detalle = Com outras pessoas, cada uma do seu lado
+cc-chapa-personas = { $n ->
+    [one] Compartilhado · 1 pessoa
+   *[other] Compartilhado · { $n } pessoas
+}
+cc-nuevo-error = Não foi possível compartilhar o novo chat: ele fica como chat normal
+cc-portada-titulo = Chats compartilhados
+cc-portada-como = O chat de um projeto que você mantém com outra pessoa: ela só vê esse chat. Para compartilhar um, clique com o botão direito no projeto → Compartilhar com pessoas.
+cc-portada-entrar = Entrar em um chat compartilhado
+cc-titulo-personas = Pessoas
+cc-titulo-entrar = Entrar em um chat
+cc-tu-nombre = Seu nome nos chats compartilhados
+cc-guardar = Salvar
+cc-compartir-explica = Compartilhe este chat com outras pessoas.
+cc-compartir-detalle = Só este chat é enviado: as mensagens, os arquivos, as telas e as anotações. Seus outros chats e projetos não aparecem. Cada um sincroniza com os demais no mesmo Wi-Fi.
+cc-compartir = Compartilhar
+cc-ya-no-estas = Você não está mais neste chat. O que você tinha fica aqui, mas não é sincronizado.
+cc-tu = (você)
+cc-creo = criou o chat
+cc-tu-otro-aparato = seu outro dispositivo
+cc-salio = saiu
+cc-quitado = removido
+cc-quitar = Remover
+cc-anadir = Adicionar
+cc-cerrar-invitacion = Fechar
+cc-sincronizar = Sincronizar
+cc-invitacion-como = No outro dispositivo: PinDesk → Entrar em um chat compartilhado. A pessoa escaneia isto ou digita o código.
+cc-invitacion-vale = Vale enquanto esta tela estiver aberta. Vocês precisam estar no mesmo Wi-Fi.
+cc-salir-del-chat = Sair do chat
+cc-salir-titulo = Sair do chat?
+cc-quitar-titulo = Remover { $nombre }?
+cc-salir-aviso = O que você tem fica aqui, mas deixará de sincronizar com os demais.
+cc-quitar-aviso = O que a pessoa já tem fica com ela, mas não receberá nada novo deste chat.
+cc-salir = Sair
+cc-cancelar = Cancelar
+cc-entrar-como = Quem convida abre o chat → Compartilhar com pessoas → Adicionar e mostra um código. Você só receberá esse chat: nada mais do dispositivo da pessoa, e você não dá nada seu. Este computador não tem câmera: digite o código ou cole o texto do QR.
+cc-escribe-codigo = Digite o código ou cole o texto do QR
+cc-entrar = Entrar
+cc-ya-estas = Você já está em “{ $nombre }”
+cc-con = Com: { $nombres }
+cc-cerrar = Fechar
+cc-compartido = Compartilhado. Clique em Adicionar para convidar alguém.
+cc-entro = { $nombre } entrou. Trazendo o chat…
+cc-listo = Pronto: a pessoa já tem o chat.
+cc-demasiados = Códigos errados demais: convite encerrado.
+cc-has-salido = Você saiu. Os demais serão avisados ao sincronizar.
+cc-quitado-aviso = Removido. A pessoa ficará sabendo ao sincronizar.
+cc-nadie = Ainda não há mais ninguém. Clique em Adicionar.
+cc-buscando = Procurando as pessoas do chat…
+cc-sincronizando-con = Sincronizando com { $nombre }…
+cc-nadie-en-wifi = Não há ninguém do chat neste Wi-Fi agora.
+cc-sincronizado = Sincronizado com { $nombres }.
+cc-buscando-invitacion = Procurando quem convida…
+cc-entrando = Entrando…
+cc-trayendo = Trazendo “{ $nombre }”…
+cc-no-encontrada = O convite não foi encontrado. Confira o código e se vocês estão no mesmo Wi-Fi.
+cc-se-corto = A conexão caiu: { $motivo }
+cc-abrir-chat = Abrir chat
+cc-no-se-abre = Esse chat ainda não está aqui: sincronize de novo.
+
+## Pins like on Android (batch 6): color, stickers, paged note and own words
+pin-v2-pegatina = Adesivo
+pin-v2-sin-pegatina = Sem adesivo
+pin-v2-paginas = Páginas
+pin-v2-leer-seguida = Leitura contínua
+pin-v2-pagina = Página
+pin-v2-minutos = min
+pin-color-copiado = Copiado
+ajustes2-sec-pinear = Fixar
+ajustes2-sec-pinear-sub = As palavras que viram ferramenta ao serem fixadas.
+ajustes2-g-palabras = Palavras mágicas
+ajustes2-ayuda-palabras = Copie uma só e fixe-a: a ferramenta se abre. Separe-as com vírgulas.
+ajustes2-palabras-ninguna = Nenhuma
+ajustes2-palabras-cambiar = Alterar
+ajustes2-palabras-fabrica = Palavras padrão
+ajustes2-palabras-volver = Padrão
+ajustes2-palabras-marcador = palavra, outra palavra…
+
+## Local assistant (13-oct-2026)
+asistente-mencionar = Mencionar: o assistente ou onde desenhar
+asistente-abrir-lienzo = Abrir tela
+asistente-abrir-fuente = Abrir fonte
+asistente-ocupado = O assistente ainda está respondendo: aguarde ou clique em parar.
+asistente-fallo = O assistente não conseguiu começar a responder.
+asistente-nube-titulo = Falta a chave da nuvem
+asistente-nube-explica = O assistente responde com { $nube }: cole a chave em Configurações → Assistente (ela é obtida em { $pagina }). Os comandos simples (“anote pão”, “abra a galeria”) funcionam sem chave.
+asistente-abrir-ajustes = Abrir Configurações
+asistente-viejos-titulo = Os modelos locais não são mais usados
+asistente-viejos-explica = Agora o assistente responde só pela nuvem (Claude ou DeepSeek). O que você baixou para o modelo deste PC continua ocupando { $tamano } no disco.
+asistente-viejos-liberar = Liberar { $tamano }
+asistente-viejos-dejar = Mantê-los
+asistente-viejos-borrados = Pronto: os modelos locais foram excluídos e o espaço foi liberado.
+asistente-viejos-no-borrados = Não foi possível excluir todos os modelos locais. Feche o que os estiver usando e tente de novo em Configurações → Assistente.
+ajustes2-asistente-borrar-locales = Modelos locais antigos
+ajustes2-ayuda-asistente-borrar-locales = O que foi baixado para o assistente local, que não é mais usado: { $tamano } em %LOCALAPPDATA%\PinDesk\modelos.
+
+## Cloud assistant (13-oct-2026)
+ajustes2-sec-asistente = Assistente
+ajustes2-sec-asistente-sub = Quem responde no chat “Assistente”: Claude ou DeepSeek, com sua chave.
+ajustes2-g-asistente = Mecanismo do assistente
+ajustes2-asistente-motor = Mecanismo
+ajustes2-ayuda-asistente-motor = Responde pela internet com sua chave: Claude Haiku ou DeepSeek.
+asistente-confirmar-si = Sim
+asistente-confirmar-no = Não
+asistente-receta-guardar = Salvar como receita
+asistente-receta-guardada = Receita salva: { $nombre }
+asistente-receta-llenas = Já há receitas demais: exclua alguma antes.
+asistente-receta-renombrar = Renomear
+asistente-receta-editar = Editar o pedido
+asistente-receta-icono = Alterar o ícone
+asistente-receta-izquierda = Mover para a esquerda
+asistente-receta-derecha = Mover para a direita
+asistente-receta-borrar = Excluir a receita
+asistente-receta-editando-nombre = Nome da receita “{ $nombre }” · Enter salva · Esc cancela
+asistente-receta-editando-pedido = Pedido da receita “{ $nombre }” · Enter salva · Esc cancela
+ajustes2-asistente-docs-nube = Seus documentos e a nuvem
+ajustes2-ayuda-asistente-docs-nube = Com Claude ou DeepSeek, o que o assistente encontrar nos seus PDFs, notas e chats sai pela internet para responder você.
+ajustes2-docs-nube-preguntar = Perguntar
+ajustes2-docs-nube-si = Permitir
+ajustes2-docs-nube-no = Não permitir
+ajustes2-g-claves = Chaves de API
+ajustes2-clave-de = Chave de { $proveedor }
+ajustes2-clave-marcador = Cole a chave aqui
+ajustes2-clave-probar = Salvar e testar
+ajustes2-clave-borrar-de = Excluir a chave de { $proveedor }
+ajustes2-ayuda-clave-borrar = É excluída deste PC. A chave continua válida na sua conta até você revogá-la lá.
+ajustes2-clave-borrar = Excluir
+ajustes2-clave-guardada = Salva e criptografada neste PC:
+ajustes2-clave-falta = Sem chave. Obtenha-a em
+ajustes2-clave-probando = testando…
+
+## Assistant automations (Oct 13)
+automatizacion-creada = Automação “{ $nombre }” criada.
+automatizacion-activada = Automação “{ $nombre }” ativada.
+automatizacion-desactivada = Automação “{ $nombre }” desativada.
+automatizacion-borrada = Automação “{ $nombre }” excluída.
+automatizacion-en-marcha = Executando “{ $nombre }”…
+automatizacion-no-esta = Não existe nenhuma automação “{ $id }”.
+automatizacion-rota = Não foi possível salvar a automação: { $motivo }
+ajustes2-g-automatizaciones = Automações
+ajustes2-automatizaciones-vacio = Nenhuma ainda
+ajustes2-ayuda-automatizaciones-vacio = Peça ao assistente: “sempre que eu capturar, coloque no chat da obra”, “todo dia às 8, resumo das tarefas pendentes”.
+ajustes2-automatizacion-correr = Executar agora
+ajustes2-automatizacion-otro-aparato = é executada em { $aparato }
+ajustes2-automatizacion-rota = Não foi entendida: { $motivo }
+ajustes2-automatizacion-borrar = Excluir a automação “{ $nombre }”? Não é possível desfazer.
+ajustes-asistente-pensar = Pensar antes de responder
+ajustes2-ayuda-asistente-pensar = Antes de agir, o assistente pensa e escreve o que entendeu; o que ele pensa aparece, recolhível, acima da resposta. Pensar demora: no automático, ele só pensa nas tarefas complexas, como resolver um problema, planejar ou vários passos seguidos, ou se você pedir (“pense bem”, “passo a passo”).
+asistente-pensar-auto = Automático (só em tarefas complexas)
+asistente-pensar-si = Sempre
+asistente-pensar-no = Nunca
+asistente-pensando = Pensando…
+asistente-penso = Pensou { $s } s
+asistente-penso-poco = Pensou por um momento
+asistente-reiniciado = Contexto renovado: continuo com a folha de trabalho
+
+## Assistant voice (13-oct-2026): talk to it and hear the answer
+ajustes2-g-asistente-voz = Voz do assistente
+ajustes2-asistente-revisar-voz = Ver o que foi dito antes de enviar
+ajustes2-ayuda-asistente-revisar-voz = Com o microfone do chat “Assistente”: o que você diz fica escrito na caixa para corrigir e você mesmo envia. Desativado, é enviado automaticamente.
+asistente-voz-pasando = Transcrevendo sua voz… { $pct } %
+asistente-voz-bajando = Baixando o reconhecedor de voz (uma vez, ~160 MB)… { $pct } %
+asistente-voz-nada = Nada foi ouvido: fale mais perto do microfone e tente novamente.
+asistente-voz-sin-whisper = Este computador não consegue transcrever a voz: falta o ONNX Runtime do Windows.
+asistente-voz-fallo = Não foi possível transcrever sua voz.
+asistente-voz-cancelado = Cancelado: nada foi enviado.
+asistente-voz-nada-que-leer = Esta resposta não tem texto para ler.
+asistente-voz-leer = Ler em voz alta
+asistente-voz-callar = Parar de ler
+
+## Page folders in the chat (26-oct-2026): a named notebook
+carpeta-nueva = Pasta de páginas
+carpeta-nombre-de-serie = Caderno
+carpeta-pagina = Página
+carpeta-paginas = { $n ->
+    [one] 1 página
+   *[other] { $n } páginas
+}
+carpeta-vacia-detalle = Vazia
+carpeta-anadir-a = Adicionar à pasta…
+carpeta-nueva-con = Nova pasta com esta página
+carpeta-anadida = Adicionada a “{ $carpeta }” como “{ $titulo }”
+carpeta-ya-estaba = Já está em “{ $carpeta }”
+carpeta-abrir = Abrir a pasta
+carpeta-nueva-pagina = Nova página
+carpeta-compartir = Compartilhar
+carpeta-exportar-pdf = Exportar PDF
+carpeta-exportando = Exportando o PDF…
+carpeta-exportado = PDF salvo: { $nombre }
+carpeta-no-se-exporto = Não foi possível exportar: não há nenhuma página com conteúdo
+carpeta-vacia = Esta pasta está vazia. Clique em “Nova página” ou, no chat, escolha “Adicionar à pasta…” no menu de uma tela ou de uma imagem.
+carpeta-antes = Antes
+carpeta-despues = Depois
+carpeta-renombrar = Renomear
+carpeta-quitar = Remover da pasta
+carpeta-no-esta = Essa pasta não está mais no chat
+carpeta-pista = Arraste uma página para mudá-la de lugar · F2 altera o título · Del a remove (ela volta a aparecer no chat)
+carpeta-escribe-titulo = Digite o título e pressione Enter
+carpeta-grabacion = Gravação
+carpeta-grabacion-detalle = { $duracion } · { $capturas ->
+    [one] 1 captura
+   *[other] { $capturas } capturas
+}
+carpeta-estudiar = Estudar
+carpeta-de-la-grabacion = Da gravação
+carpeta-adjuntos = Anexos da aula
+carpeta-adjunto-insignia = Anexo · não é da gravação
+carpeta-adjuntar = Anexar à aula
+carpeta-adjuntado = Anexado à aula: { $nombre }
+carpeta-grabacion-pista = Clique em uma peça para estudá-la no minuto certo · “Anexar à aula” adiciona um arquivo, uma foto ou uma nota sem misturá-lo com o que foi gravado
+marcos-menu-los-marcos = Imprimir os quadros ({ $n })
+marcos-menu-sin-marcos = Imprimir os quadros (ainda não há: clique no quadro e arraste)
+marcos-menu-entero-pdf = Imprimir o PDF inteiro
+marcos-menu-entero-word = Imprimir o Word inteiro
+marcos-menu-entero-powerpoint = Imprimir o PowerPoint inteiro
+marcos-menu-entero-hoja = Imprimir a planilha inteira
+marcos-menu-entero-pagina = Imprimir a página inteira
+marcos-menu-entero-documento = Imprimir o documento inteiro
+marcos-menu-entero-plano = Imprimir a planta inteira
+marcos-menu-entero-modelo = Imprimir a vista do modelo
+marcos-menu-no-imprime = Não foi possível imprimir o documento inteiro
+
+## The assistant reads the web (Oct 28)
+asistente-web-buscando = 🌐 pesquisando na web…
+asistente-web-leyendo = 🌐 lendo { $dominio }…
+asistente-web-leyendo-pagina = 🌐 lendo a página…
+
+## TypeSafe Jev (28-oct-2026, docs/jev.md)
+ajustes2-g-jev = TypeSafe (Jev)
+ajustes2-jev-proveedor = TypeSafe (Jev)
+ajustes2-jev-probada = funciona ({ $modelo })
+ajustes2-jev-reunion = O importante das aulas e reuniões
+ajustes2-ayuda-jev-reunion = Ao transcrever uma gravação, marca tarefas, decisões, perguntas e o que cai na prova. Aparecem em “Estudar a aula” e na página compartilhada. Cada linha é enviada com as vizinhas e o título.
+ajustes2-jev-anki = Só os cartões do Anki que valem a pena
+ajustes2-ayuda-jev-anki = Ao enviar uma aula para o Anki, mantém as capturas cujo trecho explica algo para estudar e remove a conversa. É enviado o que foi dito em cada trecho.
+ajustes2-jev-urgencia = Prioridade das tarefas conforme o contexto
+ajustes2-ayuda-jev-urgencia = Urgente, alta, normal ou baixa conforme o que acontece se atrasar, quem espera por ela, o horário e as últimas mensagens do chat. O que você marcar (⏫, 🔼) prevalece. São enviados o texto da tarefa, a lista e as últimas mensagens do chat.
+ajustes2-jev-modelo = Escolher o modelo conforme o pedido
+ajustes2-ayuda-jev-modelo = O que é fácil vai para o modelo rápido (Haiku, DeepSeek Flash) e o que exige raciocínio, para o forte (Sonnet, DeepSeek V4 Pro). São enviados o pedido e as três últimas mensagens.
+clase-importante-todo = Tudo
+clase-importante-tarea = Tarefa
+clase-importante-decision = Decisão
+clase-importante-pregunta = Pergunta
+clase-importante-examen = Prova
+clase-importante-buscando = Procurando o que é importante…
+clase-importante-nada = Nada disso na aula
+clase-importante-tareas = + { $n } tarefas para Tarefas
+clase-importante-anadidas = { $n } tarefas anotadas no Inbox de Tarefas
+tareas-prioridad-urgente = Urgente
+tareas-prioridad-alta = Alta
+tareas-prioridad-baja = Baixa
+anki-jev-quitadas = O Jev deixou de fora { $n } capturas sem nada para estudar
+
+## Meeting topics (28-oct-2026, docs/jev.md)
+ajustes2-jev-temas = Tópicos da reunião tratados
+ajustes2-ayuda-jev-temas = Enquanto você grava uma reunião com tópicos, o que é ouvido é transcrito neste computador a cada 15 s e o Jev marca os tópicos já tratados. O que você marcar prevalece. São enviados o texto de cada trecho, o anterior, os tópicos e o título.
+ajustes2-jev-dictado = Ditar para o chat
+ajustes2-ayuda-jev-dictado = Ao ditar na caixa do chat (clique com o botão direito no microfone), “anote no chat da obra que faltam parafusos” propõe anotar nesse chat: Enter anota, Esc descarta. São enviados cada frase ditada, a anterior e os nomes dos seus chats recentes.
+ajustes2-jev-repaso = Revisar em voz alta
+ajustes2-ayuda-jev-repaso = Em “Estudar a aula”, explique a aula em voz alta e o Jev marca quais pontos-chave você cobre, quais diz errado e quais faltam. São enviados o que você explica, o título e os pontos-chave.
+clase-temas-ninguno = Tópicos da reunião (opcional)
+clase-temas-n = Tópicos da reunião · { $n }
+clase-temas-titulo = Tópicos da reunião
+clase-temas-sub = Um por linha. Enquanto você grava, o Jev marca os que forem tratados.
+clase-temas-escribe = Digite um tópico e pressione Enter…
+clase-temas-pegar = Colar
+clase-temas-de-lista = De uma lista
+clase-temas-lista = Lista “{ $lista }”: { $n } tópicos
+clase-temas-sin-listas = Não há listas de tarefas com algo pendente
+clase-temas-pegados = { $n } tópicos adicionados
+clase-temas-nada-que-pegar = Não há texto na área de transferência
+clase-temas-vaciar = Limpar
+clase-temas-listo = Pronto
+clase-temas-anteriores = { $n } tópicos pendentes da reunião anterior
+clase-temas-tratado = ✓ Tópico { $n } tratado · { $minuto }
+clase-temas-escuchando = Ouvindo: o Jev marca os tópicos tratados
+clase-temas-sin-jev = Sem Jev (falta a chave do TypeSafe): marque os tópicos manualmente
+clase-temas-apagado = Os tópicos com Jev estão desativados nas Configurações: marque-os manualmente
+clase-temas-sin-modelo = Sem o modelo de voz não há escuta ao vivo: marque os tópicos manualmente
+clase-temas-jev-fallo = O Jev não responde: marque os tópicos manualmente
+clase-temas-cargado = Computador ocupado: a escuta é reduzida para não atrasar a gravação
+clase-temas-sin-tratar = Não tratados
+clase-temas-proxima = Passar para a próxima reunião
+clase-temas-a-tareas = Adicionar a Tarefas
+clase-temas-pasados = { $n } tópicos aguardam a próxima reunião
+clase-temas-anadidos = { $n } tópicos anotados no Inbox de Tarefas
+clase-temas-lista-de = Tópicos · { $nombre }
+
+## What is heard in the meeting (29-oct-2026, docs/jev.md, «En la reunión»)
+ajustes2-jev-tareas-dichas = Tarefas ditas na reunião
+ajustes2-ayuda-jev-tareas-dichas = Enquanto você grava uma reunião, “eu cuido de mandar o orçamento na sexta” aparece na barra como tarefa proposta, com data e urgência. Só é anotada em Tarefas se você aceitar. Cada frase é enviada com as duas anteriores e o título.
+ajustes2-jev-urgencia-en-vivo = Urgência das tarefas dita na reunião
+ajustes2-ayuda-jev-urgencia-en-vivo = “Isto é para hoje” aumenta a prioridade ou muda a data de uma tarefa pendente deste chat ou do Inbox. É aplicado automaticamente e pode ser desfeito na barra. São enviados cada frase e o texto de até 8 tarefas.
+ajustes2-jev-tema-olvidado = Avisar sobre tópico esquecido
+ajustes2-ayuda-jev-tema-olvidado = Com “Duração prevista” em Preparar, avisa perto do fim (ou se estiverem se despedindo) sobre os tópicos da pauta ainda não tratados. São enviados cada frase e os tópicos.
+ajustes2-jev-tiempo-por-tema = Minutos de cada tópico
+ajustes2-ayuda-jev-tiempo-por-tema = Quanto se falou de cada tópico da pauta, em “Estudar a aula” e na página compartilhada. São enviados cada frase e os tópicos.
+ajustes2-jev-decisiones = Decisões da reunião
+ajustes2-ayuda-jev-decisiones = “Fica decidido: vamos adiantar o pedido” é anotado com o minuto (não “poderíamos…”). Aparece em “Estudar a aula” e na página compartilhada. Cada frase é enviada.
+ajustes2-jev-preguntas-pendientes = Perguntas sem resposta
+ajustes2-ayuda-jev-preguntas-pendientes = As perguntas que ninguém respondeu na reunião, no final de “Estudar a aula”, para passá-las para Tarefas. São enviadas cada frase e as perguntas ainda abertas.
+ajustes2-jev-fechas-al-horario = Datas ditas, para o horário
+ajustes2-ayuda-jev-fechas-al-horario = “Nos vemos na terça às 3” aparece na barra como evento proposto; se você aceitar, vai para Tarefas com o horário e aparece no Horário. Cada frase é enviada.
+clase-vivo-tarea = Tarefa
+clase-vivo-evento = Evento
+clase-vivo-deshacer = Desfazer
+clase-vivo-decision = Decisão anotada · { $minuto }
+clase-vivo-tarea-apuntada = Tarefa anotada no Inbox de Tarefas
+clase-vivo-evento-apuntado = Evento anotado em Tarefas (aparece no Horário)
+clase-vivo-deshecho = Desfeito: a tarefa volta a ser como era
+clase-vivo-no-se-apunto = Não foi possível anotar: veja Tarefas
+clase-vivo-falla = O Jev não responde: por enquanto nada é proposto
+clase-vivo-queda-poco = Restam { $minutos } min e falta: { $temas }
+clase-vivo-cumplido = O tempo acabou e falta: { $temas }
+clase-vivo-cierran = Estão se despedindo e falta: { $temas }
+clase-vivo-fecha-nueva = agora para { $fecha }
+clase-vivo-prioridad-normal = Normal
+clase-vivo-duracion = Duração prevista
+clase-vivo-duracion-n = ⏱ { $minutos } min
+clase-acta-decisiones = Decisões
+clase-acta-preguntas = Perguntas sem resposta
+clase-acta-propuestas = Propostas não aceitas
+clase-acta-aceptar = Aceitar
+clase-acta-aceptada = Anotada em Tarefas
+clase-acta-anadidas = { $n } perguntas anotadas no Inbox de Tarefas
+ia-estado-funciona = funciona
+ia-estado-sin-clave = sem chave
+ia-estado-desconocido = ainda não verificado
+ia-estado-clave-mala = a chave não é válida ({ $codigo })
+ia-estado-sin-saldo = a conta não tem saldo
+ia-estado-limite = pedidos demais ou cota esgotada
+ia-estado-red = sem conexão
+ia-estado-servidor = o serviço está falhando ({ $codigo })
+ia-estado-otro = não responde direito ({ $codigo })
+ia-estado-comprobando = verificando…
+ia-estado-hace-nada = agora mesmo
+ia-estado-hace-min = há { $n } min
+ia-estado-hace-horas = há { $n } h
+ia-estado-pista = Clique: verificar agora ou ir para as chaves
+ia-estado-comprobar = Verificar agora
+ia-estado-claves = Chaves em Configurações → Assistente
+ia-estado-sin-ajustes = As configurações abrem pelo ícone do PinDesk na bandeja
+
+## Live listening with Vosk (1-Nov-2026, what the phone already did)
+ajustes2-voz-en-vivo = Ouvir a reunião ao vivo com
+ajustes2-voz-en-vivo-sistema = Windows ou Whisper
+ajustes2-voz-en-vivo-vosk = Vosk
+ajustes2-ayuda-voz-en-vivo = Para os tópicos e o resto da reunião com o Jev. O Vosk mostra o que vai sendo dito e fecha cada frase décimos de segundo depois de você parar de falar (com o Whisper, uns 3 s), sem rede. Ao escolhê-lo, são baixados { $megas } MB (Apache-2.0).
+ajustes2-ayuda-voz-en-vivo-vosk-listo = Ouvindo com o Vosk, sem rede: o que vai sendo dito aparece na tela cheia da gravação. Se algum dia não carregar, usa-se o Windows ou o Whisper.
+ajustes2-ayuda-voz-en-vivo-sin-idioma = O Vosk é baixado para espanhol e inglês; neste idioma, quem ouve é o Windows ou o Whisper.
+ajustes2-voz-en-vivo-bajando = Baixando o Vosk… { $por-ciento } %. Enquanto isso, quem ouve é o Windows ou o Whisper.
+ajustes2-voz-en-vivo-fallo = Não foi possível baixar o Vosk: { $fallo }. Escolha-o de novo para tentar outra vez.
+ajustes2-voz-vosk-borrar = Apagar o Vosk
+ajustes2-ayuda-voz-vosk-borrar = Libera o que foi baixado (cerca de 100 MB em disco). É baixado de novo quando você o escolher.
+clase-temas-bateria = Bateria fraca: sem ouvir ao vivo para economizá-la (a gravação continua)
+
+## Dictate to chat: if Jev fails, say so (1-Nov-2026, like the phone)
+chat-anotar-fallo-red = Sem conexão: o Jev não conseguiu ver se era preciso anotar isso em outro chat. O que você ditou continua na caixa.
+chat-anotar-fallo = O Jev não respondeu ({ $motivo }). O que você ditou continua na caixa.
+
+## Privacy and data (1-Nov-2026, what the phone did for the stores: Settings › General)
+ajustes2-g-privacidad = Privacidade e dados
+ajustes2-priv-politica = Política de privacidade
+ajustes2-ayuda-priv-politica = O que o PinDesk faz com os seus dados (em espanhol e inglês): tudo fica neste PC, exceto o que está abaixo, e só quando você usa.
+ajustes2-g-privacidad-sale = O que sai deste PC e para onde vai
+ajustes2-priv-ver-ajustes = Ver as configurações
+ajustes2-priv-nada-mas = Nada mais
+ajustes2-ayuda-priv-nada-mas = Sem anúncios, sem análises, sem relatórios de falhas, sem conta e sem servidores do PinDesk. O ditado e a transcrição rodam neste PC, sem rede.
+ajustes2-g-privacidad-datos = Seus dados
+ajustes2-priv-carpeta = Seus dados, no seu disco
+ajustes2-ayuda-priv-carpeta = Capturas, chats, notas, gravações e configurações ficam em { $carpeta }. Para levá-los com você, copie a pasta; para apagá-los, feche o PinDesk e apague-a. As chaves da IA são criptografadas com o seu usuário do Windows.
+ajustes2-priv-reportes = Denúncias do que a IA escreve
+ajustes2-ayuda-priv-reportes = { $n ->
+    [one] { $n } salva em reportes-ia.jsonl (na pasta de dados).
+   *[other] { $n } salvas em reportes-ia.jsonl (na pasta de dados).
+}
+privacidad-asistente-que = O que você pergunta ao assistente, o recente do chat e o que você anexar
+privacidad-asistente-adonde = Anthropic (Claude) ou DeepSeek
+privacidad-asistente-cuando = Só se você colar a sua própria chave e perguntar. A chave fica criptografada neste PC.
+privacidad-jev-que = Os textos de cada função do Jev: frases de uma reunião, linhas de uma aula, tarefas, o que você dita ou explica
+privacidad-jev-adonde = TypeSafe (api.typesafe.ai)
+privacidad-jev-cuando = Só com a sua chave do TypeSafe e com essa função ativada. Nunca o áudio.
+privacidad-web-que = O que o assistente pesquisa e as páginas que lê para responder
+privacidad-web-adonde = DuckDuckGo ou Brave Search, e o site que ele ler
+privacidad-web-cuando = Quando o assistente pesquisa na web. Sem cookies e sem a sua chave de IA.
+privacidad-google-que = Os arquivos do Drive que você escolhe e os eventos da agenda
+privacidad-google-adonde = Google (Drive, Calendar)
+privacidad-google-cuando = Só se você conectar a sua conta do Google em Configurações › Assistente; desconecte por lá.
+privacidad-voces-que = O texto lido em voz alta com uma voz da Microsoft
+privacidad-voces-adonde = Microsoft (as vozes do Edge)
+privacidad-voces-cuando = Só se você escolher uma dessas vozes no leitor; as vozes do Windows funcionam sem rede.
+privacidad-enlace-que = O arquivo que você escolhe compartilhar por link
+privacidad-enlace-adonde = litterbox.catbox.moe ou temp.sh
+privacidad-enlace-cuando = Só quando você pede um link para compartilhar; ele se apaga sozinho em horas ou dias.
+privacidad-modelos-que = Nada seu: só os arquivos são pedidos
+privacidad-modelos-adonde = huggingface.co, github.com e alphacephei.com (Whisper, Qwen3-ASR, Vosk, Indra)
+privacidad-modelos-cuando = Ao baixar um modelo de voz ou de leitura de texto, quando você pede.
+privacidad-sincro-que = Suas capturas, notas e chats sincronizados
+privacidad-sincro-adonde = Seus próprios dispositivos (o celular), pela sua rede
+privacidad-sincro-cuando = Ao sincronizar: direto na sua rede, criptografado, sem passar por servidores.
+
+## Report what the AI writes (1-Nov-2026, like the phone)
+reportar-ia = Denunciar resposta…
+reportar-ia-motivo-ofensivo = Ofensiva
+reportar-ia-motivo-peligroso = Perigosa
+reportar-ia-motivo-falso = Falsa ou enganosa
+reportar-ia-motivo-otro = Outro motivo
+reportar-ia-hecho = Denúncia salva em reportes-ia.jsonl; o seu e-mail se abre para enviá-la
+reportar-ia-asunto = Denúncia de uma resposta da IA
+reportar-ia-campo-motivo = Motivo
+reportar-ia-campo-funcion = Função
+reportar-ia-campo-fecha = Data
+reportar-ia-campo-version = Versão
+reportar-ia-campo-contenido = O que a IA escreveu
+reportar-ia-comentario = (Se quiser, conte aqui o que está errado.)
+
+## Review aloud: if Jev fails, why (1-Nov-2026, like the phone)
+repaso-jev-fallo-red = Sem conexão.

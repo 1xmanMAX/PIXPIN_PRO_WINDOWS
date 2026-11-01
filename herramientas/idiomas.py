@@ -14,7 +14,7 @@ Uso (desde la raiz del repositorio; solo la biblioteca estandar de Python 3):
 La referencia es en-US: cada idioma puede tener menos claves (lo que falta se
 ve en ingles), pero no claves que en-US no tenga ("sobran", se quedaron de
 una version vieja) ni otras variables (`{ $n }`) que las de en-US. Lo mismo
-comprueban los tests de `crates/pixpin-store/src/idioma.rs`; esta herramienta
+comprueban los tests de `crates/pindesk-store/src/idioma.rs`; esta herramienta
 lo dice con detalle. Ver `docs/idiomas.md`.
 """
 
@@ -26,8 +26,8 @@ import sys
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent
-CRATES = RAIZ / "crates" / "pixpin-store" / "i18n"
-APPLE = RAIZ / "apple" / "nucleo" / "pixpin-store" / "i18n"
+CRATES = RAIZ / "crates" / "pindesk-store" / "i18n"
+APPLE = RAIZ / "apple" / "nucleo" / "pindesk-store" / "i18n"
 
 # El mismo orden que `Idioma::TODOS` y `build.rs`.
 ETIQUETAS = [
@@ -166,7 +166,7 @@ def generar_apple(etiqueta: str) -> tuple[str | None, dict[str, int]]:
         return None, cuenta
     partes = [
         f"# {etiqueta}: generado por `herramientas/idiomas.py apple` a partir de\n",
-        f"# crates/pixpin-store/i18n/{etiqueta}/main.ftl, con las claves de Apple.\n",
+        f"# crates/pindesk-store/i18n/{etiqueta}/main.ftl, con las claves de Apple.\n",
         "# No se edita a mano: se traduce en crates/ y se vuelve a generar.\n",
     ]
     grupo_pendiente: str | None = None

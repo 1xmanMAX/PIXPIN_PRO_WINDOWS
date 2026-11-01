@@ -106,8 +106,8 @@ pub fn conectar(host: &str, puerto: u16) -> Result<TcpStream, ErrorNucleo> {
 
 /// El azar de cada conexion. Sin azar del sistema no se habla: un nonce fijo
 /// repetiria claves.
-pub fn nonce() -> Result<[u8; pixpin_sincro::canal::NONCE], ErrorNucleo> {
-    let mut n = [0u8; pixpin_sincro::canal::NONCE];
+pub fn nonce() -> Result<[u8; pindesk_sincro::canal::NONCE], ErrorNucleo> {
+    let mut n = [0u8; pindesk_sincro::canal::NONCE];
     getrandom::getrandom(&mut n).map_err(|e| ErrorNucleo::Sincro {
         detalle: format!("sin azar del sistema: {e}"),
     })?;

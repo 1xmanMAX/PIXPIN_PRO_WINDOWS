@@ -17,19 +17,19 @@ cambia respecto a `main` y como se une `main` sin romper nada.
 
 No son secretos. Si alguno no coincide con `tienda/AppxManifest.xml`,
 Partner Center rechaza la subida. La familia esta tambien en
-`crates/pixpin-shell/src/tienda.rs` (`FAMILIA_TIENDA`).
+`crates/pindesk-shell/src/tienda.rs` (`FAMILIA_TIENDA`).
 
 ## Que hay en la rama
 
 | Fichero | Para que |
 |---|---|
 | `tienda/AppxManifest.xml` | El manifiesto del paquete (la version la pone el workflow). |
-| `tienda/Assets/*.png` | Los logos, generados con `tienda/generar-logos.py` a partir de `apps/pixpin/recursos/pixpinmax.ico`. |
+| `tienda/Assets/*.png` | Los logos, generados con `tienda/generar-logos.py` a partir de `apps/pindesk/recursos/pindesk.ico`. |
 | `.github/workflows/tienda.yml` | Compila, empaqueta y publica `PinDesk_<version>_x64.msix`. |
-| `apps/pixpin/src/tienda.rs` | Lo que la app hace distinto en la Store (feature `tienda`). |
-| `crates/pixpin-shell/src/tienda.rs` | La tarea de inicio (`StartupTask`) y la familia del paquete. |
-| `apps/pixpin/build.rs` | Con la feature `tienda`, el manifiesto del exe sin el elemento `<msix>`. |
-| Claves `tienda-ayuda-*` en `crates/pixpin-store/i18n/{es-ES,en-US}/main.ftl` | Las ayudas de Ajustes que cambian en la Store. |
+| `apps/pindesk/src/tienda.rs` | Lo que la app hace distinto en la Store (feature `tienda`). |
+| `crates/pindesk-shell/src/tienda.rs` | La tarea de inicio (`StartupTask`) y la familia del paquete. |
+| `apps/pindesk/build.rs` | Con la feature `tienda`, el manifiesto del exe sin el elemento `<msix>`. |
+| Claves `tienda-ayuda-*` en `crates/pindesk-store/i18n/{es-ES,en-US}/main.ftl` | Las ayudas de Ajustes que cambian en la Store. |
 
 ## Armar el paquete
 
@@ -39,12 +39,12 @@ Partner Center rechaza la subida. La familia esta tambien en
 3. Sale el artefacto `PinDesk-msix-<version>` y, con `publicar`, la version
    previa `v<version>-store` en Releases con el `.msix`.
 
-Lo que hace el workflow: `cargo build --release -p pixpin --features
-pixpin/tienda` y los ayudantes; copia `pindesk.exe` (o `pixpinmax.exe`
-renombrado a `pindesk.exe` mientras el cambio de nombre no llegue desde
-`main`), `pixpin-aligerar.exe`, `pixpin-lanzador.exe`, `pixpin-puente.exe`,
-`pixpin-mcp.exe`, `onnxruntime.dll` (del ZIP oficial 1.31.0, comprobada con
-el sha256 de `crates/pixpin-indra/src/catalogo.rs`), las licencias y
+Lo que hace el workflow: `cargo build --release -p pindesk --features
+pindesk/tienda` y los ayudantes (`-p pindesk-aligerar -p pindesk-lanzador -p
+pindesk-puente -p pindesk-mcp`); copia `pindesk.exe`, `pindesk-aligerar.exe`,
+`pindesk-lanzador.exe`, `pindesk-puente.exe`, `pindesk-mcp.exe`,
+`onnxruntime.dll` (del ZIP oficial 1.31.0, comprobada con el sha256 de
+`crates/pindesk-indra/src/catalogo.rs`), las licencias y
 `Assets\`; pone la version en el manifiesto; genera `resources.pri` con
 `makepri` y empaqueta con `makeappx pack` (del SDK de Windows del runner,
 `C:\Program Files (x86)\Windows Kits\10\bin\<version>\x64`).
@@ -66,14 +66,15 @@ pasa sus propias pruebas de todas formas.
 Todo pasa por `tienda::activa()`: verdadero si se compilo con la feature
 `tienda` **o** si el proceso corre dentro del paquete `MingXuan.PinDesk`
 (red de seguridad con `GetCurrentPackageFamilyName`, por si alguien empaqueta
-un exe compilado sin la feature). El paquete de identidad de siempre
-(`ForgePixPin.PixPinMax`) no cuenta: ese corre desde la carpeta del ZIP.
+un exe compilado sin la feature). El paquete de identidad local
+(`PinDesk`, editor `CN=PinDesk Local`, `herramientas/paquete-identidad.ps1`;
+antes `ForgePixPin.PixPinMax`) no cuenta: ese corre desde la carpeta del ZIP.
 
 | Lo que hace `main` | En la Store |
 |---|---|
-| Arrancar con Windows: `HKCU\...\Run` (`pixpin-shell/arranque.rs`), encendido por defecto. | Tarea de inicio del paquete (`desktop:StartupTask`, `TaskId="PinDeskInicio"`, `Enabled="false"`). La app **no la enciende sola**: al arrancar, el interruptor de Ajustes muestra el estado real (apagado de fabrica); al encenderlo se llama a `RequestEnableAsync`. Si el usuario la apago en Configuracion › Aplicaciones › Inicio, la app ya no puede y abre esa pagina. |
-| «Abrir con» y Aplicaciones predeterminadas (`asociaciones.rs`, `abrir_con.rs`) en `HKCU\Software\Classes`. | Las declara el manifiesto: `.pixpin`, imagenes, videos y audios (las listas de `asociaciones.rs`) y documentos, con el verbo «Enviar al chat de PinDesk». La app no escribe nada; el interruptor «Abrir con» de Ajustes no tiene efecto y su ayuda lo explica. |
-| Notificaciones: AUMID y protocolo `pixpinmax:` en el registro (`notificacion.rs`). | La identidad es la del paquete; `pixpinmax:` y `pixpin:` son `uap:Protocol` del manifiesto (`--url "%1"`). Si el PixPin original tambien tiene `pixpin:`, Windows pregunta cual. |
+| Arrancar con Windows: `HKCU\...\Run` (`pindesk-shell/arranque.rs`), encendido por defecto. | Tarea de inicio del paquete (`desktop:StartupTask`, `TaskId="PinDeskInicio"`, `Enabled="false"`). La app **no la enciende sola**: al arrancar, el interruptor de Ajustes muestra el estado real (apagado de fabrica); al encenderlo se llama a `RequestEnableAsync`. Si el usuario la apago en Configuracion › Aplicaciones › Inicio, la app ya no puede y abre esa pagina. |
+| «Abrir con» y Aplicaciones predeterminadas (`asociaciones.rs`, `abrir_con.rs`) en `HKCU\Software\Classes`. | Las declara el manifiesto: `.pindesk` y `.pixpin` (el de antes, que se sigue leyendo), imagenes, videos y audios (las listas de `asociaciones.rs`) y documentos, con el verbo «Enviar al chat de PinDesk». La app no escribe nada; el interruptor «Abrir con» de Ajustes no tiene efecto y su ayuda lo explica. |
+| Notificaciones: AUMID `PinDesk.App` y protocolos `pindesk:` y `pixpinmax:` en el registro (`notificacion.rs`). | La identidad es la del paquete; `pindesk:` y `pixpinmax:` son `uap3:Protocol` del manifiesto (`--url "%1"`; `Parameters` solo existe en `uap3`). `pixpin:` no se declara: es del PixPin original. |
 | Compartir y verbos de Windows 11 con el paquete de identidad (`herramientas/paquete-identidad`). | Los mismos, en el manifiesto (`windows.shareTarget`). El exe se compila sin el elemento `<msix>` de su manifiesto. |
 | Cortafuegos: `herramientas/cortafuegos-sincro.ps1` a mano (la app no lo ejecuta nunca). | Igual: no se ejecuta. La ayuda de «Visible en la red» dice que Windows puede preguntar si PinDesk puede usar la red. El manifiesto declara `internetClientServer` y `privateNetworkClientServer`. |
 | Actualizarse | No hay actualizador propio (tampoco en `main`). La Store actualiza el paquete. |
@@ -83,22 +84,25 @@ un exe compilado sin la feature). El paquete de identidad de siempre
 ### Alias de ejecucion
 
 El manifiesto da tres alias (en `%LOCALAPPDATA%\Microsoft\WindowsApps`, que
-esta en el `PATH`): `pindesk.exe`, `pixpin-mcp.exe` (para la configuracion de
+esta en el `PATH`): `pindesk.exe`, `pindesk-mcp.exe` (para la configuracion de
 Claude Desktop u otro cliente MCP; ver `docs/integraciones-mcp.md`) y
-`pixpin-puente.exe` (la ruta estable para registrar el puente del navegador:
-`herramientas\registrar-navegador.ps1 -Puente
-"$env:LOCALAPPDATA\Microsoft\WindowsApps\pixpin-puente.exe"`). La ruta real
+`pindesk-puente.exe` (la ruta estable para registrar el anfitrion
+`com.pindesk.puente` del navegador: `herramientas\registrar-navegador.ps1 -Puente
+"$env:LOCALAPPDATA\Microsoft\WindowsApps\pindesk-puente.exe"`). Los tres van
+en la **unica** `<Application>` del paquete: el WACK falla con mas de una
+(Application count). La ruta real
 dentro de `C:\Program Files\WindowsApps\` cambia con cada version: nunca hay
 que apuntar ahi.
 
-`pixpin-lanzador.exe` (Flow Launcher) va en el paquete pero sin alias: el
+`pindesk-lanzador.exe` (Flow Launcher) y `pindesk-aligerar.exe` van en el paquete pero sin alias: el
 plugin se instala en la carpeta de Flow y, desde la Store, todavia no hay un
 instalador para el. Pendiente.
 
 ## Donde quedan los datos (sin virtualizar)
 
-La app guarda en `%APPDATA%\PixPinMax` (`crates/pixpin-store/src/rutas.rs`) y
-algunos ayudantes leen `%LOCALAPPDATA%\PixPinMax`. En un MSIX, Windows
+La app guarda en `%APPDATA%\PinDesk` (`crates/pindesk-store/src/rutas.rs`; al
+arrancar muda alli `%APPDATA%\PixPinMax`, `pindesk_sistema::nombre`) y
+algunos ayudantes leen `%LOCALAPPDATA%\PinDesk`. En un MSIX, Windows
 redirige por defecto lo que se escribe en `AppData` a la carpeta privada del
 paquete (`%LOCALAPPDATA%\Packages\MingXuan.PinDesk_mtqkn9ff51s0e\LocalCache`),
 y entonces lo que corre **fuera** del paquete (el plugin de Flow Launcher, el
@@ -111,7 +115,8 @@ Decision: **sin virtualizar**. El manifiesto declara
 `desktop6:RegistryWriteVirtualization` en `disabled`. Consecuencias:
 
 - Los datos estan donde siempre, compartidos con los ayudantes y con una
-  instalacion anterior del ZIP.
+  instalacion anterior del ZIP (y la mudanza de `PixPinMax` a `PinDesk`
+  mueve las carpetas de verdad, no una copia virtual).
 - Al desinstalar, los datos **se quedan** (como con el ZIP). Por eso la app,
   en la Store, no escribe nada en el registro: lo escrito tambien se quedaria.
 - `unvirtualizedResources` es una capacidad restringida: en Partner Center
@@ -154,7 +159,7 @@ Partner Center › Apps y juegos › **PinDesk** (ya reservado) › Iniciar envi
    > captura. `unvirtualizedResources`: la app y sus ayudantes (servidor MCP,
    > puente de la extension del navegador y plugin de Flow Launcher, que
    > corren fuera del paquete) comparten los datos del usuario en
-   > %APPDATA%\PixPinMax; con la escritura virtualizada no los verian. La
+   > %APPDATA%\PinDesk; con la escritura virtualizada no los verian. La
    > app no escribe en el registro. Microfono: notas de voz y grabar clases.
    > Camara: la camara del equipo en la grabacion. Red: sincronizar con el
    > movil en la Wi-Fi local (TCP 47474, UDP 47475) y las API de IA que el
@@ -189,52 +194,52 @@ Lo propio de la Store vive en ficheros que `main` no toca (`tienda/`,
 `tienda.rs` x2, `tienda.yml`, este documento), asi que casi siempre entra
 solo. Los puntos donde puede chocar, y como resolverlos:
 
-- `apps/pixpin/src/main.rs`, paso 5 (registro de Windows): en la Store todo
+- `apps/pindesk/src/main.rs`, paso 5 (registro de Windows): en la Store todo
   ese bloque va dentro de `if !tienda::al_arrancar(&mut config) { ... }`.
   Tomar lo nuevo de `main` y volver a meterlo dentro del `if`. Y
   `registrar_notificaciones` lleva `&& !tienda::activa()`.
-- `apps/pixpin/src/ventana_ajustes.rs`: tres ayudas envueltas en
-  `crate::tienda::ayuda(...)` y el principio de `aplicar_al_cerrar`.
-- `apps/pixpin/Cargo.toml` (`[features] tienda`) y `apps/pixpin/build.rs`
+- `apps/pindesk/src/ventana_ajustes.rs`: tres ayudas envueltas en
+  `crate::tienda::ayuda(...)`, «Hacerla predeterminada» (`Clave::Predeterminada
+  if crate::tienda::abrir_predeterminadas()`) y el principio de
+  `aplicar_al_cerrar`.
+- `apps/pindesk/Cargo.toml` (`[features] tienda`) y `apps/pindesk/build.rs`
   (el manifiesto sin `<msix>`).
-- `crates/pixpin-shell/src/lib.rs` (`pub mod tienda;`) y las tres claves
+- `crates/pindesk-shell/src/lib.rs` (`pub mod tienda;`) y las tres claves
   `tienda-ayuda-*` de los `.ftl`.
 
-Despues de unir: `cargo clippy` con y sin `--features pixpin/tienda`, y si
+Despues de unir: `cargo clippy` con y sin `--features pindesk/tienda`, y si
 `main` anadio algo que **escribe en el registro, arranca solo, se actualiza
 o baja ejecutables**, pasarlo por `tienda::activa()` aqui (nunca en `main`).
 
-**Cuando llegue el cambio de nombre** (`pixpinmax.exe` → `pindesk.exe`): el
-workflow ya copia `pindesk.exe` si existe. Revisar entonces `build.rs` (los
-nombres `pixpinmax.rc`, `pixpinmax.manifest`, `recursos/pixpinmax.ico`) y la
-lista de `-p` del `cargo build` del workflow. La carpeta de datos
-(`%APPDATA%\PixPinMax`) y la ventana de mensajes (`PixPinMaxVentanaMensajes`)
-deben seguir iguales en las dos ramas, o los ayudantes dejan de encontrar la
-app.
+**El cambio de nombre a PinDesk ya esta** (nov-2026, `docs/nombre-pindesk.md`).
+Unir `main` no lo pudo traer (la deteccion de renombrados se pierde con
+tantos ficheros), asi que la rama se rehizo: lo de la Store se volvio a
+poner encima de `main` ya renombrada y se publico como una union cuyo
+contenido es exactamente eso (ver `docs/ramas.md`). Desde ahi las uniones de
+`main` vuelven a ser normales. La carpeta de datos (`%APPDATA%\PinDesk`) y la
+ventana de mensajes (`PinDeskVentanaMensajes`) tienen que seguir iguales en
+las dos ramas, o los ayudantes dejan de encontrar la app.
 
 ## Lo que hay que comprobar en Windows
 
 - `makeappx pack` acepta el manifiesto (el esquema lo valida: `Parameters` en
-  `uap:Protocol` y `uap3:FileTypeAssociation`, el orden de las capacidades).
+  `uap3:Protocol` y `uap3:FileTypeAssociation`, el orden de las capacidades).
 - Instalado (firmado con el certificado de prueba): arranca, sale en Inicio
   como PinDesk, el icono de la bandeja y de la barra de tareas se ve nitido.
 - Ajustes › Arrancar con Windows: encender, cerrar sesion y volver; apagar
   desde Configuracion › Aplicaciones › Inicio y ver que el interruptor lo
   refleja al reabrir.
-- Doble clic en un `.pixpin`, «Abrir con» › PinDesk en una imagen y el verbo
+- Doble clic en un `.pindesk` y en un `.pixpin` de antes, «Abrir con» › PinDesk en una imagen y el verbo
   «Enviar al chat de PinDesk».
-- Los botones de las notificaciones (`pixpinmax:`/`pixpin:`).
+- Los botones de las notificaciones y los enlaces `pindesk:` y `pixpinmax:`.
 - Compartir desde otra app hacia PinDesk.
 - Sincronizar con el movil: la pregunta del cortafuegos y que funciona en
   red privada.
-- Los datos en `%APPDATA%\PixPinMax` (no en `Packages\...\LocalCache`), y que
-  el MCP por el alias `pixpin-mcp.exe` los lee.
+- Los datos en `%APPDATA%\PinDesk` (no en `Packages\...\LocalCache`), que
+  quien venia con `%APPDATA%\PixPinMax` los encuentra mudados, y que el MCP
+  por el alias `pindesk-mcp.exe` los lee.
 - OCR Indra y Whisper encuentran el `onnxruntime.dll` del paquete y no
   intentan bajarlo.
 - Que nada escribe en `HKCU\Software\Classes` ni en `...\Run`
   (`reg query HKCU\Software\Microsoft\Windows\CurrentVersion\Run`).
-- Las rutas que `main` arma con `pixpinmax.exe` fijo (`ruta_exe` en
-  `main.rs` y `ventana_ajustes.rs`, las tareas de la Jump List) mientras no
-  llegue el cambio de nombre: dentro del paquete el exe se llama
-  `pindesk.exe`.
 - El WACK sin fallos (informe del workflow o `appcert.exe` a mano).

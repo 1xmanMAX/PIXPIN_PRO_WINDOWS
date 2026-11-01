@@ -1,6 +1,6 @@
 //! **Editar un lienzo desde Swift**: el `Gesto` y la `Escena` de
-//! `pixpin_motor2d`, los mismos que mueve la ventana de Windows
-//! (`por-traducir/pixpin/src/dibujo/mano.rs`), detras de un objeto de UniFFI.
+//! `pindesk_motor2d`, los mismos que mueve la ventana de Windows
+//! (`por-traducir/pindesk/src/dibujo/mano.rs`), detras de un objeto de UniFFI.
 //!
 //! No hay logica de dibujo nueva: el puntero se traduce a
 //! [`EventoGesto`] y lo demas lo decide el motor (que nace, que se elige,
@@ -37,7 +37,7 @@
 //! `con_escena` ya marca `isDeleted` en lo que venia en el fichero, pero lo
 //! NACIDO aqui solo lo escribe mientras sigue vivo: un elemento creado,
 //! guardado (y quiza ya sincronizado) y despues borrado desaparecia del
-//! fichero. Sin base comun, la fusion a tres bandas de `pixpin-sincro`
+//! fichero. Sin base comun, la fusion a tres bandas de `pindesk-sincro`
 //! (`fusion::json`, figura por figura) lo resucitaba desde el otro aparato.
 //! Ahora el editor recuerda lo nacido que llego a escribir
 //! ([`Disco::nacidos`]) y, si ya no esta vivo, lo escribe con
@@ -50,17 +50,17 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use pixpin_motor2d::Escena;
-use pixpin_motor2d::borrador::{self, ModoBorrador};
-use pixpin_motor2d::cache::Cache;
-use pixpin_motor2d::camara::Camara;
-use pixpin_motor2d::elemento::{ColorRgba, Elemento, EstiloTrazo};
-use pixpin_motor2d::excalidraw::{self, Entrada};
-use pixpin_motor2d::gesto::{EventoGesto, Gesto, Herramienta, Peticion, Region};
-use pixpin_motor2d::lazo::{Lazo, ModoLazo};
-use pixpin_motor2d::pintado::{self, Orden};
-use pixpin_motor2d::texto::TeclaTexto;
-use pixpin_motor2d::vector::Punto2;
+use pindesk_motor2d::Escena;
+use pindesk_motor2d::borrador::{self, ModoBorrador};
+use pindesk_motor2d::cache::Cache;
+use pindesk_motor2d::camara::Camara;
+use pindesk_motor2d::elemento::{ColorRgba, Elemento, EstiloTrazo};
+use pindesk_motor2d::excalidraw::{self, Entrada};
+use pindesk_motor2d::gesto::{EventoGesto, Gesto, Herramienta, Peticion, Region};
+use pindesk_motor2d::lazo::{Lazo, ModoLazo};
+use pindesk_motor2d::pintado::{self, Orden};
+use pindesk_motor2d::texto::TeclaTexto;
+use pindesk_motor2d::vector::Punto2;
 
 use crate::editor_imagenes::{self, Pegada};
 use crate::lienzo::{CajaLienzo, ImagenDelLienzo, LienzoPlano, empaquetar};
@@ -94,7 +94,7 @@ pub enum PeticionLienzo {
 /// cuando el cursor se aleja mas que esto.
 #[uniffi::export]
 pub fn forma_rapida_temblor_px() -> f32 {
-    pixpin_motor2d::forma_rapida::TEMBLOR_PX
+    pindesk_motor2d::forma_rapida::TEMBLOR_PX
 }
 
 /// En que momento del gesto esta el puntero.
@@ -241,8 +241,8 @@ pub struct EditorLienzo {
 pub(crate) struct HojaDoc {
     /// `anot-<uid>-p<n>.hoja` y la hoja en unidades del lector.
     pub marco: Option<(
-        pixpin_proyecto::anotado::Base,
-        pixpin_sincro::anotado::MarcoDeLaHoja,
+        pindesk_proyecto::anotado::Base,
+        pindesk_sincro::anotado::MarcoDeLaHoja,
     )>,
     /// `(raiz, ficha, pagina, huella)` del PDF de un proyecto.
     pub registrar: Option<(PathBuf, String, u32, String)>,
@@ -402,8 +402,8 @@ impl EditorLienzo {
                 let escala = escena.escala.as_ref().filter(|e| e.valida());
                 Some(PeticionLienzo::DictarCota {
                     id,
-                    largo: pixpin_motor2d::medida::largo_en_unidades(e, escala),
-                    grados: pixpin_motor2d::medida::angulo_de(e),
+                    largo: pindesk_motor2d::medida::largo_en_unidades(e, escala),
+                    grados: pindesk_motor2d::medida::angulo_de(e),
                     unidad: escala.map(|e| e.unidad.clone()).unwrap_or_default(),
                 })
             }
@@ -419,7 +419,7 @@ impl EditorLienzo {
             ModoBorrador::Dibujo
         };
         let mundo = st.gesto.mundo(&st.escena);
-        let ids = pixpin_motor2d::impacto::con_mundo(mundo, || {
+        let ids = pindesk_motor2d::impacto::con_mundo(mundo, || {
             borrador::alcanzados_con_grupo(&st.escena.elementos, p, modo, |e| e.extras.referencia)
         });
         let mut hecho = false;
@@ -496,7 +496,7 @@ fn ordenes_encima(gesto: &Gesto, escena: &Escena, zoom: f32) -> Vec<Orden> {
         v.push(l.orden(escala));
     }
     if let Some(a) = gesto.anclaje_activo {
-        v.push(pixpin_motor2d::enganche::pista(&a, zoom));
+        v.push(pindesk_motor2d::enganche::pista(&a, zoom));
     }
     v.extend(gesto.resaltado_de_union(escena, zoom));
     if let Some(puntas) = gesto.tiradores_de_punta(escena, escala) {
@@ -505,7 +505,7 @@ fn ordenes_encima(gesto: &Gesto, escena: &Escena, zoom: f32) -> Vec<Orden> {
     v.extend(crate::editor_construir::angulos_en_vivo(
         escena, gesto, zoom,
     ));
-    v.extend(pixpin_motor2d::nudos::ordenes_de_clavos(escena, zoom));
+    v.extend(pindesk_motor2d::nudos::ordenes_de_clavos(escena, zoom));
     v
 }
 
@@ -747,7 +747,7 @@ impl EditorLienzo {
             && let Some(e) = st.escena.buscar_mut(id)
             && matches!(
                 e.figura,
-                pixpin_motor2d::elemento::Figura::Resaltador { .. }
+                pindesk_motor2d::elemento::Figura::Resaltador { .. }
             )
         {
             e.grosor = crate::unidades::GROSOR_RESALTADOR;
@@ -1033,7 +1033,7 @@ impl EditorLienzo {
 
     /// Las unidades que se ofrecen al calibrar, de mas a menos uso.
     pub fn unidades_de_medida(&self) -> Vec<String> {
-        pixpin_motor2d::medida::UNIDADES
+        pindesk_motor2d::medida::UNIDADES
             .iter()
             .map(|u| u.to_string())
             .collect()
@@ -1133,7 +1133,7 @@ impl EditorLienzo {
         // Las fotos pegadas que se usan: su fichero en `imagenes/` (una vez)
         // y desde entonces su entrada en `files`.
         for p in &pegadas {
-            let clave = pixpin_motor2d::enlace::id_de_texto(p.id_objeto);
+            let clave = pindesk_motor2d::enlace::id_de_texto(p.id_objeto);
             if disco.ficheros.contains_key(&clave) {
                 continue;
             }
@@ -1172,7 +1172,7 @@ impl EditorLienzo {
         if let Some((raiz, ficha, pagina, huella)) =
             self.hoja.as_ref().and_then(|h| h.registrar.as_ref())
         {
-            pixpin_proyecto::capas_del_pdf::dibujo_de_la_pagina(
+            pindesk_proyecto::capas_del_pdf::dibujo_de_la_pagina(
                 raiz,
                 ficha,
                 *pagina,
@@ -1302,7 +1302,7 @@ impl Nucleo {
     ) -> Result<Arc<EditorLienzo>, ErrorNucleo> {
         validar_nombre(&chat)?;
         validar_nombre(&dibujo)?;
-        let ruta = pixpin_proyecto::almacen::lienzo(self.ruta(), &chat, &dibujo);
+        let ruta = pindesk_proyecto::almacen::lienzo(self.ruta(), &chat, &dibujo);
         let texto = match std::fs::read_to_string(&ruta) {
             Ok(t) => t,
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -1325,7 +1325,7 @@ impl Nucleo {
                 })
             })
             .collect();
-        let carpeta = pixpin_proyecto::almacen::carpeta(self.ruta(), &chat);
+        let carpeta = pindesk_proyecto::almacen::carpeta(self.ruta(), &chat);
         Ok(Arc::new(EditorLienzo::nuevo(
             ruta,
             carpeta,
@@ -1343,7 +1343,7 @@ impl Nucleo {
         chat: String,
         nombre: Option<String>,
     ) -> Result<crate::MensajeChat, ErrorNucleo> {
-        use pixpin_proyecto::{almacen, cuaderno};
+        use pindesk_proyecto::{almacen, cuaderno};
         crate::chats::validar_chat(&chat)?;
         let raiz = self.ruta();
         let mut indice = almacen::Indice::leer_si_esta(raiz)?;
@@ -1351,7 +1351,7 @@ impl Nucleo {
             return Err(ErrorNucleo::NoExiste { que: chat });
         }
         let aparato = self.identidad()?.yo.codigo();
-        let id = pixpin_proyecto::codigos::nuevo();
+        let id = pindesk_proyecto::codigos::nuevo();
         let ruta = almacen::lienzo(raiz, &chat, &id);
         let json = excalidraw::escribir(&excalidraw::Lienzo::vacio());
         escribir_seguro(&ruta, &json)?;

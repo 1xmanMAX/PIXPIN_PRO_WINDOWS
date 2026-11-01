@@ -1,7 +1,7 @@
-# La interfaz de Excalidraw, medida para copiarla en PixPin
+# La interfaz de Excalidraw, medida para copiarla en PinDesk
 
 Inventario documental de la interfaz de escritorio de Excalidraw (MIT) para que el
-lienzo de PixPin (`apps/pixpin/src/ventana_editor.rs`, `crates/pixpin-ui`) la copie
+lienzo de PinDesk (`apps/pindesk/src/ventana_editor.rs`, `crates/pindesk-ui`) la copie
 con Direct2D. **Nada inventado:** cada dato lleva su origen `fichero:línea`.
 
 ## Convenciones
@@ -621,19 +621,19 @@ Recuento de letras de orden en todos los `d` (medido con un script sobre el JSON
   `theme: light/dark` (en los de grupo cambia el color de los tiradores, `#fff` / `#1e1e1e`,
   `C/icons.tsx:18-19`).
 
-### 8.2 Qué hace falta en `pixpin-render`
+### 8.2 Qué hace falta en `pindesk-render`
 
 Estado en el árbol de trabajo en el momento de esta investigación (ficheros **sin commit**
-y en curso: `crates/pixpin-render/src/trayecto_svg.rs`, `icono.rs`, `iconos_excalidraw.rs`,
+y en curso: `crates/pindesk-render/src/trayecto_svg.rs`, `icono.rs`, `iconos_excalidraw.rs`,
 `herramientas/iconos-excalidraw.mjs`; `git status`):
 
 | Necesidad | Estado | Dónde |
 |---|---|---|
-| Parser de `d` (abs/rel, números pegados `.5.5`, exponentes, banderas pegadas, repetición implícita, M→L) | **Hecho** | `crates/pixpin-render/src/trayecto_svg.rs:35-244` |
+| Parser de `d` (abs/rel, números pegados `.5.5`, exponentes, banderas pegadas, repetición implícita, M→L) | **Hecho** | `crates/pindesk-render/src/trayecto_svg.rs:35-244` |
 | H/V → líneas, S/T con control reflejado, Q/T → cúbicas | **Hecho** | `trayecto_svg.rs:185-222`, `246-266` |
 | Arcos elípticos A/a (SVG 1.1 F.6.5-F.6.6, radios agrandados, cúbicas ≤ 90°, cierre exacto) | **Hecho** | `trayecto_svg.rs:268-356` |
 | Prueba que lee todos los `d` de `iconos.json` | **Hecho** | `trayecto_svg.rs:477-497` |
-| Tramos → `ID2D1PathGeometry1` (figuras abiertas/cerradas, winding/alternate) con caché | **Hecho** | `crates/pixpin-render/src/icono.rs:188-261` |
+| Tramos → `ID2D1PathGeometry1` (figuras abiertas/cerradas, winding/alternate) con caché | **Hecho** | `crates/pindesk-render/src/icono.rs:188-261` |
 | Estilo de trazo `round`/`butt` × `round`/`miter` (miterLimit 4) cacheado | **Hecho** | `icono.rs:263-296` |
 | `viewBox` → caja sin deformar (preserveAspectRatio) y grosor que escala | **Hecho** | `icono.rs:76-83`, `170-176` |
 | `currentColor` | **Hecho** como `Pintura::Actual` | `icono.rs:26-34`, `155-165` |
@@ -644,16 +644,16 @@ y en curso: `crates/pixpin-render/src/trayecto_svg.rs`, `icono.rs`, `iconos_exca
 | Variantes `flip` y `theme` | **Pendiente**: el generador solo emite `trazos` (una variante por icono, `iconos-excalidraw.mjs:116-131`). Falta la punta de flecha volteada para el selector de inicio y los tiradores oscuros de agrupar/desagrupar. |
 | Máscara con trazo (`FillHachureIcon`) | **Pendiente/aproximado**: una máscara geométrica solo cubre el relleno; faltan 0.625 px de borde. Se arregla ensanchando la geometría (`ID2D1Geometry::Widen`) y combinándola. |
 | `opacity` de un `<path>` con relleno y trazo | Aproximado: se multiplica el alfa de cada pincel (`icono.rs:155-165`); en SVG la opacidad se aplica al conjunto. Solo afecta a `ArrowheadNoneIcon` (sin relleno visible: la diferencia es nula en la práctica). |
-| `rtl-mirror` | No aplica (PixPin no tiene RTL). |
-| **Sombras de isla** (`--shadow-island`, 3 capas) | **Falta**: `pixpin-render` no tiene primitiva de sombra (en `lienzo.rs` solo aparece la palabra en un comentario, `:242`). Opciones: efecto `CLSID_D2D1Shadow` sobre la forma, o 9-slice precalculado. |
+| `rtl-mirror` | No aplica (PinDesk no tiene RTL). |
+| **Sombras de isla** (`--shadow-island`, 3 capas) | **Falta**: `pindesk-render` no tiene primitiva de sombra (en `lienzo.rs` solo aparece la palabra en un comentario, `:242`). Opciones: efecto `CLSID_D2D1Shadow` sobre la forma, o 9-slice precalculado. |
 | Tokens de tema claro/oscuro | **Falta** una tabla Rust con la sección 2.1. |
 | `applyDarkModeFilter` para colores del lienzo y muestras | **Falta**: es pura (`COM/colors.ts:19-122`), portable con prueba de oráculo. |
-| Rectángulo con radio, texto, líneas | Existe (`crates/pixpin-render/src/lienzo.rs:343-353`, `942`, `405`). |
+| Rectángulo con radio, texto, líneas | Existe (`crates/pindesk-render/src/lienzo.rs:343-353`, `942`, `405`). |
 | Fuente de UI | Assistant no viene con Windows; `--ui-font` cae a Segoe UI (`CSS/styles.scss:41-42`). |
 
-### 8.3 Comparación con lo que ya tiene PixPin
+### 8.3 Comparación con lo que ya tiene PinDesk
 
-**`crates/pixpin-ui/src/caja_herramientas.rs`**
+**`crates/pindesk-ui/src/caja_herramientas.rs`**
 - Hoy: caja **vertical**, al lado del contenido, botón **40 px**, hueco **2 px**, margen
   **6 px**, separación 12 px (`caja_herramientas.rs:15-20`, `98-144`). Excalidraw: barra
   **horizontal arriba al centro**, botón **36 px**, hueco **4 px**, padding **4 px**
@@ -665,43 +665,43 @@ y en curso: `crates/pixpin-render/src/trayecto_svg.rs`, `icono.rs`, `iconos_exca
   desplegable «más herramientas»; distintivo de tecla; mover Deshacer/Rehacer al pie
   (`BotonCaja::Deshacer/Rehacer`, `:26-27`) y Zoom al pie; `Salir` no existe en
   Excalidraw.
-- **Ojo con la Mano**: en PixPin `Herramienta::Mano` es «Seleccionar y mover lo ya
-  dibujado» (`crates/pixpin-motor2d/src/gesto.rs:79-80`), o sea la **Selección (V/1)** de
+- **Ojo con la Mano**: en PinDesk `Herramienta::Mano` es «Seleccionar y mover lo ya
+  dibujado» (`crates/pindesk-motor2d/src/gesto.rs:79-80`), o sea la **Selección (V/1)** de
   Excalidraw, no su Mano (H, desplazar lienzo, `C/Tools.tsx:70-74`). El cambio en curso de
-  `apps/pixpin/src/caja_dibujo.rs` le pone `HAND_ICON`; debería ser `SELECTION_ICON`.
-- Herramientas de PixPin sin equivalente en Excalidraw: Resaltador, Foco, Lupa, Cota,
+  `apps/pindesk/src/caja_dibujo.rs` le pone `HAND_ICON`; debería ser `SELECTION_ICON`.
+- Herramientas de PinDesk sin equivalente en Excalidraw: Resaltador, Foco, Lupa, Cota,
   Escalar, EscalaGrafica (`caja_herramientas.rs:63-81`). Herramientas de Excalidraw sin
   equivalente en PixPin: Mano (panning), Rombo, Nota, Imagen, Marco, Embed, Láser, Bote,
   Lazo, Dibujo a forma.
 
-**`apps/pixpin/src/caja_dibujo.rs`**
+**`apps/pindesk/src/caja_dibujo.rs`**
 - En `HEAD`: fondo oscuro translúcido `rgba(0.12,0.12,0.14,0.92)` radio 8, activa azul
-  `(0.25,0.45,0.85)` radio 6, letras en blanco (`git show HEAD:apps/pixpin/src/caja_dibujo.rs`,
+  `(0.25,0.45,0.85)` radio 6, letras en blanco (`git show HEAD:apps/pindesk/src/caja_dibujo.rs`,
   líneas 22-95). En el árbol de trabajo ya pinta iconos de 20 px en `Color::BLANCO`.
 - Para copiar Excalidraw: fondo `--island-bg-color` `#ffffff` + `--shadow-island`, radio
   8 px; seleccionado `#e0dfff` radio 8 px con icono `#030064` (y relleno si `fillable`);
   reposo icono `#1b1b1f`; hover `#f1f0ff`; icono **16 px** en botón de 36 px (no 20 en 40).
 
-**`crates/pixpin-ui/src/propiedades.rs`**
+**`crates/pindesk-ui/src/propiedades.rs`**
 - Hoy: `Propiedad` = ColorTrazo, Relleno, Grosor, Estilo, Rugosidad, Opacidad, Fuente,
   TamanoTexto, PuntaFlecha (`propiedades.rs:18-29`), tablas por figura y herramienta
   (`:33-73`), e **intersección** de lo común en multiselección (`:79-91`).
 - Se reutiliza: la idea de tabla pura por tipo y el orden fijo por enum (`:15-17`).
 - Diferencias con Excalidraw:
   - Excalidraw usa **unión** (algún elemento o la herramienta,
-    `C/shapeActionPredicates.ts:98-102`); PixPin usa intersección. Hay que decidir.
+    `C/shapeActionPredicates.ts:98-102`); PinDesk usa intersección. Hay que decidir.
   - Orden de Excalidraw: Trazo, Fondo, Relleno, Grosor, Estilo, (Presión), Trazo a mano,
     Bordes, Tipo de flecha, Fuente, Tamaño, Alineación, Alineación vertical, Puntas,
-    **Opacidad**, Capas, Alinear, Acciones (sección 3.1). En PixPin la opacidad va antes de
+    **Opacidad**, Capas, Alinear, Acciones (sección 3.1). En PinDesk la opacidad va antes de
     la fuente.
-  - Faltan en el enum: Fondo separado de Relleno (en PixPin `relleno: Option<ColorRgba>` es
-    un color, sin estilo hachure/cross-hatch/solid, `crates/pixpin-motor2d/src/elemento.rs:136`),
+  - Faltan en el enum: Fondo separado de Relleno (en PinDesk `relleno: Option<ColorRgba>` es
+    un color, sin estilo hachure/cross-hatch/solid, `crates/pindesk-motor2d/src/elemento.rs:136`),
     Bordes (roundness), Tipo de flecha, Alineación de texto, Presión (hoy solo la tecla V,
-    `apps/pixpin/src/ventana_editor.rs:198-206`), Capas, Alinear/Distribuir, Acciones.
+    `apps/pindesk/src/ventana_editor.rs:198-206`), Capas, Alinear/Distribuir, Acciones.
   - `EstiloTrazo` Sólido/Discontinuo/Punteado ya coincide con solid/dashed/dotted
-    (`crates/pixpin-motor2d/src/elemento.rs:19-23`).
+    (`crates/pindesk-motor2d/src/elemento.rs:19-23`).
 
-**`apps/pixpin/src/ventana_editor.rs`**
+**`apps/pindesk/src/ventana_editor.rs`**
 - La caja se coloca con `CajaHerramientas::colocar(area, area, …)` (`:427`, `:463`) y se
   pinta con `caja_dibujo::pintar_caja` sobre la vista de pantalla (`:1061-1072`); el clic se
   reparte con `DestinoClic` (`:559-576`). Se reutiliza tal cual cambiando la geometría.
@@ -715,7 +715,7 @@ y en curso: `crates/pixpin-render/src/trayecto_svg.rs`, `icono.rs`, `iconos_exca
 
 ### 8.4 Orden de trabajo sugerido
 
-1. Tokens de tema (2.1) y sombra de isla en `pixpin-render`.
+1. Tokens de tema (2.1) y sombra de isla en `pindesk-render`.
 2. Completar el generador: `black` fijo, variantes `flip`/`theme`, máscara ensanchada.
 3. Barra horizontal (2.4) reutilizando las pruebas de `caja_herramientas.rs`; corregir el
    icono de `Mano`; mapa de teclas de `Tools.tsx`.

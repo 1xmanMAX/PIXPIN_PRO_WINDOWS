@@ -1,9 +1,9 @@
 //! **El timeline**: los dias con algo y sus momentos, por paginas.
 //!
-//! No se inventa nada: es `pixpin_timeline` tal cual (el de Windows). Los
+//! No se inventa nada: es `pindesk_timeline` tal cual (el de Windows). Los
 //! momentos viven en `<datos>/timeline/momentos.jsonl` y sus fotos y audios
-//! en `<datos>/timeline/medios/` (`pixpin_timeline::almacen::Almacen`); los
-//! dias se cuentan con `pixpin_timeline::dias` en el huso de quien mira (el
+//! en `<datos>/timeline/medios/` (`pindesk_timeline::almacen::Almacen`); los
+//! dias se cuentan con `pindesk_timeline::dias` en el huso de quien mira (el
 //! `desfase_ms` que pasa Swift: `TimeZone.current.secondsFromGMT() * 1000`).
 //!
 //! # Rendimiento
@@ -17,9 +17,9 @@
 use std::sync::Arc;
 use std::time::SystemTime;
 
-use pixpin_timeline::Momento;
-use pixpin_timeline::almacen::Almacen;
-use pixpin_timeline::dias::{self, Dia};
+use pindesk_timeline::Momento;
+use pindesk_timeline::almacen::Almacen;
+use pindesk_timeline::dias::{self, Dia};
 
 use crate::{ErrorNucleo, Nucleo};
 
@@ -225,7 +225,7 @@ impl Nucleo {
 
     /// Busca en el titulo y la descripcion de TODOS los momentos, sin
     /// mayusculas ni tildes y con cada palabra en cualquier orden
-    /// (`pixpin_timeline::buscar`), del mas nuevo al mas viejo.
+    /// (`pindesk_timeline::buscar`), del mas nuevo al mas viejo.
     pub fn timeline_buscar(
         &self,
         consulta: String,
@@ -234,7 +234,7 @@ impl Nucleo {
     ) -> Result<Vec<MomentoTimeline>, ErrorNucleo> {
         let todos = self.momentos();
         let a = Almacen::en(self.ruta());
-        Ok(pixpin_timeline::buscar::buscar(&todos, &consulta)
+        Ok(pindesk_timeline::buscar::buscar(&todos, &consulta)
             .into_iter()
             .take(cuantos.min(TOPE_DE_PAGINA_TIMELINE) as usize)
             .map(|m| a_ficha(&a, m, desfase_ms))

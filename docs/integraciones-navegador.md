@@ -23,12 +23,12 @@ falla sale también como notificación del navegador.
 
 ## Instalar
 
-1. **El puente.** `herramientas\instalar.ps1` compila `pixpin-puente.exe`, lo copia junto a
+1. **El puente.** `herramientas\instalar.ps1` compila `pindesk-puente.exe`, lo copia junto a
    `pindesk.exe` (`%LOCALAPPDATA%\Programs\PinDesk\`) y lo registra para este usuario con
    `herramientas\registrar-navegador.ps1`:
-   - escribe `pixpin-puente.json` (el manifiesto del host) junto al exe, y
-   - pone su ruta en `HKCU\Software\Google\Chrome\NativeMessagingHosts\com.pixpinmax.puente` y en
-     `HKCU\Software\Microsoft\Edge\NativeMessagingHosts\com.pixpinmax.puente`.
+   - escribe `pindesk-puente.json` (el manifiesto del host) junto al exe, y
+   - pone su ruta en `HKCU\Software\Google\Chrome\NativeMessagingHosts\com.pindesk.puente` y en
+     `HKCU\Software\Microsoft\Edge\NativeMessagingHosts\com.pindesk.puente`.
 
    Para ver lo que haría sin tocar nada:
    `powershell -ExecutionPolicy Bypass -File herramientas\registrar-navegador.ps1 -SoloMostrar`.
@@ -47,10 +47,10 @@ falla sale también como notificación del navegador.
 ## Cómo funciona
 
 ```
-menú / Alt+Mayús+P ─► fondo.js ─► chrome.runtime.sendNativeMessage("com.pixpinmax.puente", {…})
+menú / Alt+Mayús+P ─► fondo.js ─► chrome.runtime.sendNativeMessage("com.pindesk.puente", {…})
                                      │  (4 bytes de largo + JSON por la entrada estándar)
                                      ▼
-                              pixpin-puente.exe ─► WM_COPYDATA (pedido v1) ─► PinDesk
+                              pindesk-puente.exe ─► WM_COPYDATA (pedido v1) ─► PinDesk
                                      │  contesta {"ok":true,"aviso":"…"} y se cierra
 ```
 
@@ -58,10 +58,10 @@ menú / Alt+Mayús+P ─► fondo.js ─► chrome.runtime.sendNativeMessage("co
   `nucleo.js` (el menú y el mensaje, puro), `fondo.js` (menú contextual, selección, imagen,
   captura), `menu.html`/`menu.js` (el menú del atajo). Manda **qué se eligió** con lo que había:
   `{v:1, accion, texto?, pregunta?, url?, titulo?, imagen?: {tipo, base64}, aparato?}`.
-- **El puente** (`apps/pixpin-puente`): lee un mensaje, lo traduce a un pedido de
+- **El puente** (`apps/pindesk-puente`): lee un mensaje, lo traduce a un pedido de
   `docs/protocolo-pedidos.md` (`traducir.rs`, una tabla), deja la imagen en
   `<raíz>\cache\navegador\nav-<ms>-<pid>.<ext>` y manda el pedido con
-  `pixpin_shell::mensajero::enviar_pedido`. Si nadie contesta, arranca `pindesk.exe` (el de su
+  `pindesk_shell::mensajero::enviar_pedido`. Si nadie contesta, arranca `pindesk.exe` (el de su
   carpeta o el instalado) y reintenta hasta 8 s. Lo de la caché se borra a los 7 días.
 - **Rápido**: el puente no espera a que PinDesk haga nada (OCR, voz, móvil van en hilos de la app);
   solo escribe la imagen y manda el pedido.
@@ -84,18 +84,18 @@ menú / Alt+Mayús+P ─► fondo.js ─► chrome.runtime.sendNativeMessage("co
   redirige a la dirección y lleva el enlace por si no salta. Solo `http(s)`.
 - **Un texto enorme** se recorta hasta caber en un pedido (64 KB) y el aviso lo dice.
 - **Dos acciones nuevas en la app**: `leer_en_voz {texto, titulo?}` y `ocr {ruta}`
-  (`apps/pixpin/src/pedidos.rs`, con pruebas).
+  (`apps/pindesk/src/pedidos.rs`, con pruebas).
 
 ## Pruebas
 
-- Rust: `cargo test -p pixpin-puente` (protocolo: largo, JSON roto, mensaje enorme rechazado sin
+- Rust: `cargo test -p pindesk-puente` (protocolo: largo, JSON roto, mensaje enorme rechazado sin
   leerlo, respuesta de más de 1 MB; traducción de las 12 acciones; una vuelta con un cartero de
   mentira; el exe de verdad por tuberías en modo en seco, midiendo).
-- App: `cargo test -p pixpin --bins -- pedidos::`.
+- App: `cargo test -p pindesk --bins -- pedidos::`.
 - JS: `node --test extensiones/navegador/pruebas/nucleo.test.mjs` (menú = tabla del puente,
-  mensajes, trozos de la captura, base64, manifiesto y su id; y, si `pixpin-puente.exe` está
+  mensajes, trozos de la captura, base64, manifiesto y su id; y, si `pindesk-puente.exe` está
   compilado, cada acción por la tubería al exe real en modo en seco).
-- El modo en seco: con la variable `PIXPIN_PUENTE_EN_SECO=<carpeta>`, el puente usa esa carpeta
+- El modo en seco: con la variable `PINDESK_PUENTE_EN_SECO=<carpeta>`, el puente usa esa carpeta
   como raíz, **no busca PinDesk** y devuelve el pedido en la respuesta. Solo para pruebas.
 
 ## Lo que no hace (todavía)

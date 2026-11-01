@@ -11,7 +11,7 @@
 //! 2. **Un `llama-server` del usuario** escuchando en `127.0.0.1` (por
 //!    omision el 8080, [`PUERTO_LLAMA`]): [`llama_local_activo`] lo mira y
 //!    [`llama_local_preguntar`] hace un turno entero con el bucle de
-//!    `pixpin_ia::agente` y el cliente HTTP de `pixpin_ia::servidor`. La
+//!    `pindesk_ia::agente` y el cliente HTTP de `pindesk_ia::servidor`. La
 //!    respuesta llega entera, o **en vivo** con
 //!    [`llama_local_preguntar_en_vivo`]: el texto va llegando a Swift por un
 //!    [`OyenteIa`] (un interfaz que implementa Swift) en tandas de como
@@ -27,10 +27,10 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
-use pixpin_ia::agente::{self, Ejecutor};
-use pixpin_ia::herramientas::Llamada;
-use pixpin_ia::motor::{Mensaje, Motor, Peticion, Respuesta, Rol, Seguir, Trozo};
-use pixpin_ia::{ErrorIa, Evento};
+use pindesk_ia::agente::{self, Ejecutor};
+use pindesk_ia::herramientas::Llamada;
+use pindesk_ia::motor::{Mensaje, Motor, Peticion, Respuesta, Rol, Seguir, Trozo};
+use pindesk_ia::{ErrorIa, Evento};
 use serde_json::Value;
 
 use crate::ErrorNucleo;
@@ -147,18 +147,18 @@ pub fn ia_instrucciones() -> String {
 /// Todas las herramientas, como la lista `tools` de OpenAI (JSON).
 #[uniffi::export]
 pub fn ia_catalogo() -> String {
-    pixpin_ia::puente::catalogo()
+    pindesk_ia::puente::catalogo()
 }
 
 /// Las pocas herramientas que vienen a cuento para `pedido` (JSON, lista
 /// `tools` de OpenAI): un modelo pequeno se pierde con el catalogo entero.
 #[uniffi::export]
 pub fn ia_catalogo_para(pedido: String, con_imagen: bool) -> String {
-    pixpin_ia::puente::catalogo_para(&pedido, con_imagen)
+    pindesk_ia::puente::catalogo_para(&pedido, con_imagen)
 }
 
 /// Una llamada del modelo, de cualquier motor (ver
-/// `pixpin_ia::puente::llamar`): devuelve el objeto JSON con `ok`,
+/// `pindesk_ia::puente::llamar`): devuelve el objeto JSON con `ok`,
 /// `elementos`, `argumentos`... o `para_el_modelo` si estaba mal.
 #[uniffi::export]
 pub fn ia_llamar(
@@ -168,7 +168,7 @@ pub fn ia_llamar(
     origen_y: f64,
     semilla: u64,
 ) -> String {
-    pixpin_ia::puente::llamar(&nombre, &argumentos, (origen_x, origen_y), semilla)
+    pindesk_ia::puente::llamar(&nombre, &argumentos, (origen_x, origen_y), semilla)
 }
 
 /// Un `.excalidraw` entero con los `elementos` (texto JSON de una lista,
@@ -180,14 +180,14 @@ pub fn ia_lienzo_de(elementos: String) -> String {
         Ok(Value::Array(v)) => v,
         _ => Vec::new(),
     };
-    pixpin_ia::lienzo::documento(lista)
+    pindesk_ia::lienzo::documento(lista)
 }
 
 /// Si hay un `llama-server` con el modelo cargado en `127.0.0.1:puerto`
 /// (`GET /health` da 200). Tarda como mucho unos 300 ms si no hay nadie.
 #[uniffi::export]
 pub fn llama_local_activo(puerto: u16) -> bool {
-    pixpin_ia::servidor::salud(puerto)
+    pindesk_ia::servidor::salud(puerto)
 }
 
 /// **Un turno con el `llama-server` del usuario**: `historial` es lo dicho
@@ -319,7 +319,7 @@ fn turno_con_eventos(
         mensajes.push(Mensaje::texto(rol, m.texto));
     }
     mensajes.push(Mensaje::usuario(pedido));
-    let herramientas = pixpin_ia::seleccion::para_el_pedido(pedido, false);
+    let herramientas = pindesk_ia::seleccion::para_el_pedido(pedido, false);
     let mut ejecutor = EjecutorMac::default();
     let mut usadas: Vec<HerramientaUsada> = Vec::new();
     let mut al_evento = |e: Evento| {
@@ -344,7 +344,7 @@ fn turno_con_eventos(
         detalle: agente::para_el_usuario(&e),
     })?;
     let lienzo = (!ejecutor.elementos.is_empty())
-        .then(|| pixpin_ia::lienzo::documento(std::mem::take(&mut ejecutor.elementos)));
+        .then(|| pindesk_ia::lienzo::documento(std::mem::take(&mut ejecutor.elementos)));
     Ok(RespuestaIa {
         texto: fin.texto,
         herramientas: usadas,
@@ -365,7 +365,7 @@ impl Motor for LlamaDelUsuario {
         al_trozo: &mut dyn FnMut(&Trozo) -> Seguir,
     ) -> Result<Respuesta, ErrorIa> {
         // Sin `--api-key` el servidor no mira la clave.
-        pixpin_ia::servidor::pedir(self.puerto, "pixpin", peticion, al_trozo)
+        pindesk_ia::servidor::pedir(self.puerto, "pixpin", peticion, al_trozo)
     }
 }
 
@@ -396,13 +396,13 @@ impl Ejecutor for EjecutorMac {
                     y + 40.0
                 },
             );
-            let nuevos = pixpin_ia::lienzo::elementos(llamada, origen, self.semilla);
+            let nuevos = pindesk_ia::lienzo::elementos(llamada, origen, self.semilla);
             let n = nuevos.len();
             self.elementos.extend(nuevos);
             return Ok(format!("dibujadas {n} figuras"));
         }
         match llamada {
-            Llamada::Ayuda(pregunta) => Ok(pixpin_ia::conocimiento::responder(pregunta)),
+            Llamada::Ayuda(pregunta) => Ok(pindesk_ia::conocimiento::responder(pregunta)),
             otra => Err(format!(
                 "{} aun no se puede hacer en PixPin para Mac",
                 otra.nombre()
@@ -414,8 +414,8 @@ impl Ejecutor for EjecutorMac {
 #[cfg(test)]
 mod pruebas {
     use super::*;
-    use pixpin_ia::herramientas;
-    use pixpin_ia::motor::MotorGuionado;
+    use pindesk_ia::herramientas;
+    use pindesk_ia::motor::MotorGuionado;
 
     #[test]
     fn el_catalogo_y_la_llamada_cruzan_como_texto_json() {
@@ -439,8 +439,8 @@ mod pruebas {
                 .is_array()
         );
         let doc = ia_lienzo_de(r["elementos"].to_string());
-        assert!(pixpin_motor2d::excalidraw::leer(&doc).is_ok());
-        assert!(pixpin_motor2d::excalidraw::leer(&ia_lienzo_de("roto".into())).is_ok());
+        assert!(pindesk_motor2d::excalidraw::leer(&doc).is_ok());
+        assert!(pindesk_motor2d::excalidraw::leer(&ia_lienzo_de("roto".into())).is_ok());
     }
 
     #[test]
@@ -482,7 +482,7 @@ mod pruebas {
         assert_eq!(r.herramientas.len(), 1);
         assert!(r.herramientas[0].ok);
         let doc = r.lienzo.expect("lo dibujado");
-        assert!(pixpin_motor2d::excalidraw::leer(&doc).is_ok());
+        assert!(pindesk_motor2d::excalidraw::leer(&doc).is_ok());
         // El historial llego al motor: sistema + 2 + el pedido.
         let recibido = motor.recibido.lock().unwrap();
         assert!(recibido[0].mensajes.len() >= 4);

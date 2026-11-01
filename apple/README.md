@@ -11,9 +11,9 @@ aquí: sigue viviendo en `crates/` y `apps/`.
 
 | Carpeta | Qué hay | Qué se hace con ello |
 |---|---|---|
-| [`nucleo/`](nucleo) | Los 22 crates que **compilan sin Windows**: formato de proyectos, sincronizar, lienzo, Word/Excel/PowerPoint/EPUB, timeline, lecciones, la lógica de la interfaz, imagen (`pixpin-codec`), PDF (`pixpin-pdf`), planos DWG/DXF y BIM (`pixpin-cad`, `pixpin-bim`), el asistente (`pixpin-ia`) y el puente con Swift (`pixpin-nucleo`) | **Se usa tal cual.** Es un espacio de trabajo de Rust propio (`apple/Cargo.toml`) que compila y pasa sus pruebas fuera de Windows. Será `PixPinCore.xcframework` para Swift (fase 1). |
-| [`por-adaptar/`](por-adaptar) | Crates **casi** puros, con una parte de Windows: `pixpin-voz` (SAPI, ONNX de System32), `pixpin-pila`, `pixpin-lanzador`, `pixpin-aligerar` | **Se queda en Rust**: separar la parte pura con `#[cfg(windows)]` o quitándola, y pasar cada crate a `nucleo/` cuando compile sin Windows. No compila todavía (fuera del espacio de trabajo). |
-| [`por-traducir/`](por-traducir) | Lo atado a Windows: `pixpin-shell` (Win32), `pixpin-render` (Direct2D), `pixpin-capture`, `pixpin-record`, `pixpin-ocr`, `pixpin-audio`, `pixpin-web` (WebView2), `pixpin-pin`, `pixpin-notas` (RichEdit; sus fórmulas `$…$`, que son lógica pura, ya viven en `nucleo/pixpin-docs/src/formulas.rs`) y la app `pixpin` | **Referencia para escribir la versión en Swift** con las herramientas de Apple (ScreenCaptureKit, Vision, PDFKit, AVFoundation, `NSPanel`…). No compila ni se compilará: se lee y se traduce pieza a pieza. |
+| [`nucleo/`](nucleo) | Los 22 crates que **compilan sin Windows**: formato de proyectos, sincronizar, lienzo, Word/Excel/PowerPoint/EPUB, timeline, lecciones, la lógica de la interfaz, imagen (`pindesk-codec`), PDF (`pindesk-pdf`), planos DWG/DXF y BIM (`pindesk-cad`, `pindesk-bim`), el asistente (`pindesk-ia`) y el puente con Swift (`pixpin-nucleo`) | **Se usa tal cual.** Es un espacio de trabajo de Rust propio (`apple/Cargo.toml`) que compila y pasa sus pruebas fuera de Windows. Será `PixPinCore.xcframework` para Swift (fase 1). |
+| [`por-adaptar/`](por-adaptar) | Crates **casi** puros, con una parte de Windows: `pindesk-voz` (SAPI, ONNX de System32), `pindesk-pila`, `pindesk-lanzador`, `pindesk-aligerar` | **Se queda en Rust**: separar la parte pura con `#[cfg(windows)]` o quitándola, y pasar cada crate a `nucleo/` cuando compile sin Windows. No compila todavía (fuera del espacio de trabajo). |
+| [`por-traducir/`](por-traducir) | Lo atado a Windows: `pindesk-shell` (Win32), `pindesk-render` (Direct2D), `pindesk-capture`, `pindesk-record`, `pindesk-ocr`, `pindesk-audio`, `pindesk-web` (WebView2), `pindesk-pin`, `pindesk-notas` (RichEdit; sus fórmulas `$…$`, que son lógica pura, ya viven en `nucleo/pindesk-docs/src/formulas.rs`) y la app `pixpin` | **Referencia para escribir la versión en Swift** con las herramientas de Apple (ScreenCaptureKit, Vision, PDFKit, AVFoundation, `NSPanel`…). No compila ni se compilará: se lee y se traduce pieza a pieza. |
 
 Qué herramienta de Apple sustituye a cada pieza: §3 del plan.
 
@@ -21,7 +21,7 @@ Y además, el puente con Swift:
 
 | Carpeta | Qué hay |
 |---|---|
-| [`nucleo/pixpin-nucleo`](nucleo/pixpin-nucleo) | La API para Swift con **UniFFI**: abrir una carpeta de datos (`Nucleo`), chats y mensajes **por páginas**, escribir una nota, guardar una nota de voz y su texto (`adjuntar_voz`, `poner_transcripcion`), editar un lienzo (`EditorLienzo`), ajustes, lecciones y el asistente, adjuntar un fichero (`adjuntar`: se copia con `guardar_adjunto` y la clase de `clase_de_nombre`, como al soltarlo en Windows) y resolver su ruta (`ruta_absoluta`, `imagenes_del_lienzo`), el lienzo como **un solo búfer plano** de `f32` (formato en `src/lienzo.rs`), sincronizar por TCP con IPv4 e IPv6 (unirse a un grupo, una vuelta con la galería, escuchar con varios hilos, «Enviar a…», envío con código y chats compartidos con personas: [`docs/sincro.md`](docs/sincro.md)), la **galería de capturas** por páginas con su caducidad (conservar, 7 días más, borrar y devolver: los ficheros de Windows), el **timeline** (días y momentos por páginas), las **tareas** de todos los chats (marcar, apuntar en el Inbox) **buscar en todo** (por páginas y cancelable) y los **planos y modelos 3D** para Metal (`Nucleo::abrir_plano` → `Plano` por capas, `Modelo3dApple`, la cámara `camara_*`: búferes de bytes con la disposición `#[repr(C)]` de `pixpin-cad`, documentada en `src/planos.rs` y `src/modelos3d.rs`). |
+| [`nucleo/pixpin-nucleo`](nucleo/pixpin-nucleo) | La API para Swift con **UniFFI**: abrir una carpeta de datos (`Nucleo`), chats y mensajes **por páginas**, escribir una nota, guardar una nota de voz y su texto (`adjuntar_voz`, `poner_transcripcion`), editar un lienzo (`EditorLienzo`), ajustes, lecciones y el asistente, adjuntar un fichero (`adjuntar`: se copia con `guardar_adjunto` y la clase de `clase_de_nombre`, como al soltarlo en Windows) y resolver su ruta (`ruta_absoluta`, `imagenes_del_lienzo`), el lienzo como **un solo búfer plano** de `f32` (formato en `src/lienzo.rs`), sincronizar por TCP con IPv4 e IPv6 (unirse a un grupo, una vuelta con la galería, escuchar con varios hilos, «Enviar a…», envío con código y chats compartidos con personas: [`docs/sincro.md`](docs/sincro.md)), la **galería de capturas** por páginas con su caducidad (conservar, 7 días más, borrar y devolver: los ficheros de Windows), el **timeline** (días y momentos por páginas), las **tareas** de todos los chats (marcar, apuntar en el Inbox) **buscar en todo** (por páginas y cancelable) y los **planos y modelos 3D** para Metal (`Nucleo::abrir_plano` → `Plano` por capas, `Modelo3dApple`, la cámara `camara_*`: búferes de bytes con la disposición `#[repr(C)]` de `pindesk-cad`, documentada en `src/planos.rs` y `src/modelos3d.rs`). |
 | [`PixPinCore/`](PixPinCore) | El paquete Swift (`Package.swift`, macOS 15 / iOS 18): los enlaces generados y el `PixPinCoreFFI.xcframework` (no se versiona). |
 | [`herramientas/xcframework.sh`](herramientas/xcframework.sh) | En un Mac: compila las cuatro plataformas, genera los enlaces y hace el xcframework. |
 
@@ -51,7 +51,7 @@ pánico de Rust llega a Swift como error en vez de cerrar la app.
 ## Reglas para no perderse
 
 1. **El formato y la sincronización tienen que seguir siendo idénticos a los de Windows y
-   Android.** Si se arregla algo de `pixpin-sincro` o `pixpin-proyecto` aquí, hay que llevarlo
+   Android.** Si se arregla algo de `pindesk-sincro` o `pindesk-proyecto` aquí, hay que llevarlo
    también a `crates/` (y al revés). Una vez el núcleo funcione en Mac, la idea es que
    `crates/` y `apple/nucleo/` vuelvan a ser **un solo** código (el de Windows apuntando aquí o
    al revés), para que no se separen.
@@ -67,11 +67,11 @@ pánico de Rust llega a Swift como error en vez de cerrar la app.
 
 ### Qué hace Swift en lugar de los crates adaptados
 
-- **`pixpin-codec`**: en Rust queda PNG/JPEG/WebP/BMP con `image`, el GIF propio, coser,
+- **`pindesk-codec`**: en Rust queda PNG/JPEG/WebP/BMP con `image`, el GIF propio, coser,
   filtros, redimensionar, la orientación EXIF y entender un CF_HTML o un RTF. **HEIC, AVIF,
   TIFF, RAW y leer reducido** (`vista`) los hace **ImageIO** (`CGImageSource`,
   `CGImageSourceCreateThumbnailAtIndex`); el **portapapeles**, `NSPasteboard`/`UIPasteboard`.
-- **`pixpin-pdf`**: en Rust queda escribir, anotar, unir, sacar texto y enlaces, el plano
+- **`pindesk-pdf`**: en Rust queda escribir, anotar, unir, sacar texto y enlaces, el plano
   vectorial, medir letras incrustadas e inspeccionar qué se puede aligerar. **Ver páginas**
   (`Documento`) lo hace **PDFKit**; **aligerar de verdad** (recodificar con WIC y comprobar
   dibujando) también es de Swift (ImageIO + PDFKit, o `pdfsqueeze-core`); y la letra del
@@ -119,15 +119,15 @@ pánico de Rust llega a Swift como error en vez de cerrar la app.
         marcadores y espacios en `anot-<uid>.marcas`/`.espacios`; aumento y pagina en
         `<doc>.pixpin-lectura`, que no viaja), `src/notas.rs` (`editar_nota`, el Markdown vivo
         de `md_vivo` y las formulas `$…$`), `src/hojas.rs` (`HojaDeCalculo`: mini-app `tabla` y
-        `tablas/<ref>.json` del movil, formulas de `pixpin-proyecto`), `src/office.rs` (Word y
-        PowerPoint paginados por `pixpin-office`, midiendo con Core Text por `MedidorLetras`) y
+        `tablas/<ref>.json` del movil, formulas de `pindesk-proyecto`), `src/office.rs` (Word y
+        PowerPoint paginados por `pindesk-office`, midiendo con Core Text por `MedidorLetras`) y
         `src/aligerar.rs` (pdfsqueeze: `aligerar_pdf` y `aligerar_en_su_sitio` como Windows).
   - [x] Lecciones en la API (`src/lecciones.rs`, por paginas con cache por fechas), ajustes
         de `pixpinmax.toml` que valen en los dos sistemas (`src/ajustes.rs`: dias de las
         capturas, sincronizacion sola y presencia, con `guardar_conservando`) y el asistente
-        (`src/asistente.rs`: `ia_catalogo_para`/`ia_llamar` de `pixpin_ia::puente` y un turno
+        (`src/asistente.rs`: `ia_catalogo_para`/`ia_llamar` de `pindesk_ia::puente` y un turno
         con un `llama-server` del usuario en `127.0.0.1:8080`).
-  - [ ] Buscar en todo usa un recorrido propio (`src/buscar.rs`): pasar al de `pixpin-lanzador`
+  - [ ] Buscar en todo usa un recorrido propio (`src/buscar.rs`): pasar al de `pindesk-lanzador`
         cuando ese crate compile fuera de Windows.
   - [x] CI: `.github/workflows/apple.yml` (macOS 15, Xcode 16.4) compila el xcframework, pasa
         `swift test` (190 pruebas, 15-oct) y sube `PixPin.app` universal como artefacto
@@ -146,7 +146,7 @@ pánico de Rust llega a Swift como error en vez de cerrar la app.
         `CIPixellate`; colores, grosores, ⌘Z; se quema en la imagen con Core Graphics), barra de
         modos `Z V P S G L T`, medidas tecleadas, 16:9 · 4:3 · 1:1, `R` repetir la última zona
         (por pantalla), lupa con HEX/RGB y `C`; con scroll (`CosidoScroll`, la receta de
-        `pixpin-codec/cosido.rs`; baja solo con Accesibilidad), GIF (10 fps, 12 s, sin
+        `pindesk-codec/cosido.rs`; baja solo con Accesibilidad), GIF (10 fps, 12 s, sin
         fotogramas repetidos, ImageIO → `capturas/captura-…gif`), «Al chat» con buscador y
         teclas 1–6 (`captura-<ms>.png`), pila de capturas (⌘V pega la tanda) y gestos con
         Option en todo el Mac (apagados de fábrica; `CGEventTap` con Accesibilidad). El pin en
@@ -161,7 +161,7 @@ pánico de Rust llega a Swift como error en vez de cerrar la app.
         e imán al soltar, opacidad con Mayús/Opción + rueda, **anotar** (lápiz, flecha,
         rectángulo, texto, marcador; capa o fijado en la foto) y **pines de herramienta**: nota
         Markdown y las mini-apps tareas, contador, ruleta y gastos (documento de
-        `pixpin_proyecto::mini` por `pixpin-nucleo/src/miniapps.rs`, guardado en un mensaje
+        `pindesk_proyecto::mini` por `pixpin-nucleo/src/miniapps.rs`, guardado en un mensaje
         `MINIAPP` de «Mensajes guardados»). Faltan cronómetro, temporizador y alarma en pin.
   - [x] Adjuntos en el chat: miniaturas con ImageIO y caché con tope, Quick Look, soltar y ⌘V.
   - [x] Sincronizar por la Wi‑Fi (Bonjour) con Windows y Android.
@@ -192,7 +192,7 @@ pánico de Rust llega a Swift como error en vez de cerrar la app.
         como Windows y el movil; `editor_imagenes.rs`), la barra de estilo (trazo, fondo,
         relleno, grosor, linea; `editor_estilo.rs`), la ventanita del metodo de entrada en el
         cursor del texto y **lapidas** (`isDeleted`) para lo nacido, guardado y borrado, para
-        que la fusion de `pixpin-sincro` no lo resucite.
+        que la fusion de `pindesk-sincro` no lo resucite.
   - [x] Ajustes (⌘,; `app/Sources/PixPinKit/Ajustes/`): tema, atajo de capturar (se graba y
         se vuelve a registrar en Carbon; UserDefaults), dias de la galeria y sincronizacion
         sola (en `pixpinmax.toml`, como Windows), carpeta de datos y «Abrir al iniciar sesion»
@@ -247,24 +247,24 @@ pánico de Rust llega a Swift como error en vez de cerrar la app.
         `.maqueta`), elegir texto de las hojas de Office con su enlace, y juntar la tinta si
         cambia en el disco con el lector abierto (`lector_pdf/al_dia.rs`).
 - [ ] `por-adaptar/` → `nucleo/`:
-  - [x] `pixpin-codec` (decodificar con `image`; WIC, vista reducida y portapapeles tras
+  - [x] `pindesk-codec` (decodificar con `image`; WIC, vista reducida y portapapeles tras
         `#[cfg(windows)]`; ImageIO y `NSPasteboard` desde Swift).
-  - [x] `pixpin-pdf` (escribir, unir, texto, plano; ver con `Windows.Data.Pdf` y aligerar tras
+  - [x] `pindesk-pdf` (escribir, unir, texto, plano; ver con `Windows.Data.Pdf` y aligerar tras
         `#[cfg(windows)]`; PDFKit desde Swift).
-  - [x] `pixpin-cad` y `pixpin-bim` (ver abajo).
-  - [ ] `pixpin-voz`, `pixpin-pila`, `pixpin-lanzador`, `pixpin-aligerar`.
-- [ ] CI: el trabajo `apple-nucleo` ya prueba `pixpin-codec` y `pixpin-pdf` (usa
+  - [x] `pindesk-cad` y `pindesk-bim` (ver abajo).
+  - [ ] `pindesk-voz`, `pindesk-pila`, `pindesk-lanzador`, `pindesk-aligerar`.
+- [ ] CI: el trabajo `apple-nucleo` ya prueba `pindesk-codec` y `pindesk-pdf` (usa
       `--workspace`). Falta un paso que haga
       `cargo check --target x86_64-pc-windows-msvc` de los crates adaptados para que lo de
       `#[cfg(windows)]` no se pudra (la lista `nucleo-portable` es de `crates/`, no de aquí).
-- [x] `pixpin-ia` → `nucleo/` (15-oct): compila y pasa sus pruebas sin Windows. Lo de Windows
-      va con `cfg(windows)`: bajar por HTTPS (WinHTTP de `pixpin-voz`), la nube por WinHTTP, el
+- [x] `pindesk-ia` → `nucleo/` (15-oct): compila y pasa sus pruebas sin Windows. Lo de Windows
+      va con `cfg(windows)`: bajar por HTTPS (WinHTTP de `pindesk-voz`), la nube por WinHTTP, el
       «trabajo» que mata a `llama-server` y DPAPI. Fuera de Windows: cliente HTTP/1.1 propio
       solo hacia `127.0.0.1` (llama-server y las pruebas de la nube con su servidor falso),
       `llama-server` en su grupo de procesos y muerto al soltarlo, y el trait
       `nube::claves::Llavero` para que Swift guarde las claves en el Llavero
       (`instalar_llavero`; sin él no se guarda nada, nunca en claro). Las herramientas en JSON
-      para cualquier motor (Foundation Models desde Swift): `pixpin_ia::puente`.
+      para cualquier motor (Foundation Models desde Swift): `pindesk_ia::puente`.
   - [ ] Swift: bajar modelos y motor con URLSession (luego `descarga::verificar`), HTTPS de la
         nube con URLSession (el `Llavero` con Keychain ya esta), y Foundation Models con
         `puente::catalogo_para`/`puente::llamar` (llama.cpp con Metal de respaldo; en iPad e
@@ -272,8 +272,8 @@ pánico de Rust llega a Swift como error en vez de cerrar la app.
   - [ ] Catálogo del motor para Mac: `modelos::LLAMA_CPP` y `descarga` siguen siendo el zip de
         Windows (`llama-server.exe`).
   - [ ] Si PixPin muere de golpe en Mac, `llama-server` queda huérfano (no hay Job Objects).
-  - [ ] El banco (`tests/banco.rs`) no guarda PNG aquí (pintaba con `pixpin-pdf`/`pixpin-shell`).
-- [x] `por-adaptar/` → `nucleo/`: `pixpin-cad` y `pixpin-bim`. Lo de Windows (`gpu`, `gpu3d`:
+  - [ ] El banco (`tests/banco.rs`) no guarda PNG aquí (pintaba con `pindesk-pdf`/`pindesk-shell`).
+- [x] `por-adaptar/` → `nucleo/`: `pindesk-cad` y `pindesk-bim`. Lo de Windows (`gpu`, `gpu3d`:
       D3D11 + HLSL; `ventana`, `ventana3d`: Win32; el registro de fuentes de `texto`; el
       `pintar` de `anotado::Anotador`) va con `#[cfg(windows)]`, intacto. Lo demás es puro:
       leer DWG/DXF/IFC/Revit/LandXML, medir, anotar, la página web y los búferes de la tarjeta

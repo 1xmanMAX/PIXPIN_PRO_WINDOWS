@@ -22,14 +22,14 @@
     "default_title": "PinDesk (Alt+Mayús+P)",
     "default_popup": "menu.html",
     "default_icon": {
-      "16": "iconos/pixpin.png",
-      "32": "iconos/pixpin.png"
+      "16": "iconos/pindesk.png",
+      "32": "iconos/pindesk.png"
     }
   },
   "icons": {
-    "16": "iconos/pixpin.png",
-    "48": "iconos/pixpin.png",
-    "128": "iconos/pixpin.png"
+    "16": "iconos/pindesk.png",
+    "48": "iconos/pindesk.png",
+    "128": "iconos/pindesk.png"
   },
   "commands": {
     "_execute_action": {

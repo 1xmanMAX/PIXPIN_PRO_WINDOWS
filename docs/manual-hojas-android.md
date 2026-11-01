@@ -1,4 +1,4 @@
-# Manual de las hojas de cálculo para PixPin Android
+# Manual de las hojas de cálculo para PinDesk Android
 
 Para quien mantenga la hoja de cálculo de Android (`1xmanMAX/PIXPIN_PRO_ANDROID`) frente a la del
 PC (`1xmanMAX/PIXPIN_PRO_WINDOWS`, 15-oct-2026). Dice **en qué formato se guarda una hoja
@@ -56,14 +56,14 @@ Revisado contra Android `main` en `ce0a904` (v0.125.0, 15-oct-2026): `motor/Tabl
 
 | Camino | Qué escribe | Dónde | Rust |
 |---|---|---|---|
-| Editor de hojas (pin de hoja), tabla del chat | JSON `Tabla` | `texto` del mensaje `MINIAPP`/`tabla` | `apps/pixpin/src/hoja_pin.rs` (`Editable::guardar`) |
+| Editor de hojas (pin de hoja), tabla del chat | JSON `Tabla` | `texto` del mensaje `MINIAPP`/`tabla` | `apps/pindesk/src/hoja_pin.rs` (`Editable::guardar`) |
 | Editor de hojas, Excel del chat | JSON `Tabla`, uno por hoja | mensajes nuevos `MINIAPP`/`tabla` con `referencia = libro-<id>-<hoja>`; el `.xlsx` no cambia | `hoja_pin.rs`, `hoja_pin/libro.rs` |
-| Editor de hojas, tabla del móvil (`TABLA`) | JSON `Tabla` | `android/tablas/<referencia>.json` (el fichero que viaja) | `hoja_pin.rs`, `pixpin_proyecto::vista::guardar_tabla_del_movil` |
+| Editor de hojas, tabla del móvil (`TABLA`) | JSON `Tabla` | `android/tablas/<referencia>.json` (el fichero que viaja) | `hoja_pin.rs`, `pindesk_proyecto::vista::guardar_tabla_del_movil` |
 | «Tabla nueva» del clip del chat | JSON `Tabla` vacío | mensaje `MINIAPP`/`tabla` | `ventana_chat.rs` |
 | Pedido `tabla_nueva` (asistente, «tabla escaneada → tabla del chat», Flow Launcher) | JSON `Tabla` relleno | mensaje `MINIAPP`/`tabla` | `pedidos.rs` (`nueva_tabla`, `tabla_de_filas`) |
 | Asistente, «tabla escaneada → Excel» | un `.xlsx` **nuevo** (no una hoja editada: es un adjunto) | mensaje `ARCHIVO` | `asistente/documentos_acciones.rs` (`escribir_excel`) |
-| Importar un `.xlsx`/`.ods`/`.csv` para editar | nada hasta guardar; al guardar, como «Excel del chat» | — | `pixpin_proyecto::importar_hojas` |
-| Pegar desde Excel/Sheets | celdas dentro de la `Tabla` que se edita | — | `pixpin_proyecto::portapapeles_tabla` |
+| Importar un `.xlsx`/`.ods`/`.csv` para editar | nada hasta guardar; al guardar, como «Excel del chat» | — | `pindesk_proyecto::importar_hojas` |
+| Pegar desde Excel/Sheets | celdas dentro de la `Tabla` que se edita | — | `pindesk_proyecto::portapapeles_tabla` |
 
 Todos pasan por `Tabla::escribir` (JSON con sangría de 2 espacios) y se leen con `Tabla::leer`.
 El PC **no escribe** nunca `tablas/libro-*.json`.
@@ -330,8 +330,8 @@ Se guarda:
 
 ## 8. Pruebas de compatibilidad
 
-En el PC (`cargo test -p pixpin-proyecto --lib tabla::` , `cargo test -p pixpin-sincro --lib fusion::`,
-`cargo test -p pixpin --bin pindesk hoja_pin::`):
+En el PC (`cargo test -p pindesk-proyecto --lib tabla::` , `cargo test -p pindesk-sincro --lib fusion::`,
+`cargo test -p pindesk --bin pindesk hoja_pin::`):
 
 | Prueba | Qué asegura |
 |---|---|
@@ -354,10 +354,10 @@ ficheros viejos deja hojas «editadas» (punto 4).
 
 | Pieza | Rust |
 |---|---|
-| El formato (`Tabla`, `EstiloDeCelda`, `leer` tolerante) | `crates/pixpin-proyecto/src/tabla.rs` |
-| Ficheros de tablas del móvil y hojas viejas | `crates/pixpin-proyecto/src/vista.rs` (`tabla_del_movil`, `tablas_viejas_del_libro`) |
-| Editor (ver/editar/guardar, migrar lo viejo) | `apps/pixpin/src/hoja_pin.rs` |
-| Mensajes de las hojas de un libro, «editada» | `apps/pixpin/src/hoja_pin/libro.rs` |
-| Tabla nueva rellena (asistente, pedidos) | `apps/pixpin/src/pedidos.rs` (`nueva_tabla`, `tabla_de_filas`) |
-| Fusión celda a celda | `crates/pixpin-sincro/src/fusion.rs` (`tabla_junta`) |
-| Qué ficheros de tablas viajan | `crates/pixpin-sincro/src/disco.rs`, `valla.rs` |
+| El formato (`Tabla`, `EstiloDeCelda`, `leer` tolerante) | `crates/pindesk-proyecto/src/tabla.rs` |
+| Ficheros de tablas del móvil y hojas viejas | `crates/pindesk-proyecto/src/vista.rs` (`tabla_del_movil`, `tablas_viejas_del_libro`) |
+| Editor (ver/editar/guardar, migrar lo viejo) | `apps/pindesk/src/hoja_pin.rs` |
+| Mensajes de las hojas de un libro, «editada» | `apps/pindesk/src/hoja_pin/libro.rs` |
+| Tabla nueva rellena (asistente, pedidos) | `apps/pindesk/src/pedidos.rs` (`nueva_tabla`, `tabla_de_filas`) |
+| Fusión celda a celda | `crates/pindesk-sincro/src/fusion.rs` (`tabla_junta`) |
+| Qué ficheros de tablas viajan | `crates/pindesk-sincro/src/disco.rs`, `valla.rs` |

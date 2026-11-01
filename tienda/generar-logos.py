@@ -1,8 +1,8 @@
 """Genera los logos del paquete de la Store (tienda/Assets/*.png) a partir del
-icono de la app (el dibujo de 256x256 de apps/pixpin/recursos/pixpinmax.ico).
+icono de la app (el dibujo de 256x256 de apps/pindesk/recursos/pindesk.ico).
 
 Uso (desde la raiz del repo, con Pillow instalado):
-    python tienda/generar-logos.py apps/pixpin/recursos/pixpinmax.ico tienda/Assets
+    python tienda/generar-logos.py apps/pindesk/recursos/pindesk.ico tienda/Assets
 
 Los PNG van en el repo: solo hay que volver a generarlos si cambia el icono.
 Cada logo sale sin calificador (escala 100, vale aunque no haya

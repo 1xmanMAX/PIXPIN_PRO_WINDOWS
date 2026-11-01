@@ -25,9 +25,9 @@
 use std::path::{Component, Path};
 use std::sync::Arc;
 
-use pixpin_proyecto::almacen::{self, Indice};
-use pixpin_proyecto::cuaderno::{self, Mensaje, Sello};
-use pixpin_proyecto::vista;
+use pindesk_proyecto::almacen::{self, Indice};
+use pindesk_proyecto::cuaderno::{self, Mensaje, Sello};
+use pindesk_proyecto::vista;
 
 use crate::chats::{hora_unica, validar_chat};
 use crate::lienzo::{ImagenDelLienzo, Lienzo};

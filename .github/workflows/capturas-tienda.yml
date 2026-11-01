@@ -6,7 +6,7 @@ name: Capturas para la Store
 # la ventana centrada sobre un fondo suave y un titulo por idioma
 # (tienda/ficha/capturas/componer.py). Se lanza a mano.
 #
-# El runner no tiene GPU: pixpin_capture::Dispositivo::nuevo ya cae solo a
+# El runner no tiene GPU: pindesk_capture::Dispositivo::nuevo ya cae solo a
 # WARP (el rasterizador por software de Windows), asi que no hace falta nada
 # mas. Una escena que no se pinta no para el trabajo: sale en el resumen.
 #
@@ -53,7 +53,12 @@ jobs:
           python-version: "3.12"
 
       - name: Compilar las pruebas de la app
-        run: cargo test -p pixpin --bin pindesk --no-run
+        shell: pwsh
+        # El paquete es pindesk desde el renombrado de main; antes, pixpin.
+        run: |
+          $p = if (Test-Path 'apps/pindesk') { 'pindesk' } else { 'pixpin' }
+          cargo test -p $p --bin pindesk --no-run
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Pintar las muestras
         shell: pwsh
@@ -65,13 +70,15 @@ jobs:
           $mu = Join-Path $raiz 'muestras'
           $tmp = Join-Path $raiz 'tmp'
           New-Item -ItemType Directory -Force $mu, $tmp | Out-Null
-          # Las pruebas que no miran PIXPIN_MUESTRAS dejan el PNG en la
+          # Las pruebas que no miran PINDESK_MUESTRAS dejan el PNG en la
           # temporal: se apunta TEMP a una carpeta propia para recogerlos.
+          $env:PINDESK_MUESTRAS = $mu
           $env:PIXPIN_MUESTRAS = $mu
+          $p = if (Test-Path 'apps/pindesk') { 'pindesk' } else { 'pixpin' }
           $env:TEMP = $tmp
           $env:TMP = $tmp
 
-          $lista = cargo test -p pixpin --bin pindesk -- --ignored --list 2>$null |
+          $lista = cargo test -p $p --bin pindesk -- --ignored --list 2>$null |
             Where-Object { $_ -match ': test$' } |
             ForEach-Object { $_ -replace ': test$', '' }
           "Pruebas #[ignore] en la app: $($lista.Count)"
@@ -86,7 +93,7 @@ jobs:
             }
             foreach ($c in $completas) {
               "::group::$c"
-              cargo test -p pixpin --bin pindesk $c -- --ignored --exact --test-threads=1 --nocapture
+              cargo test -p $p --bin pindesk $c -- --ignored --exact --test-threads=1 --nocapture
               $codigo = $LASTEXITCODE
               "::endgroup::"
               if ($codigo -eq 0) { $estado = 'bien' } else {

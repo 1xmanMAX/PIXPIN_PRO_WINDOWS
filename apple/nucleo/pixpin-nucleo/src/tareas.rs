@@ -3,7 +3,7 @@
 //!
 //! **No hay una segunda copia de las tareas.** Cada lista es un mensaje
 //! `MINIAPP` con `miniapp = "tareas"` (la mini-app del movil,
-//! `pixpin_proyecto::mini`) y aqui solo se lee y se reescribe ese mensaje con
+//! `pindesk_proyecto::mini`) y aqui solo se lee y se reescribe ese mensaje con
 //! las mismas funciones que Windows:
 //!
 //! - leer: `mini::leer_tareas`, `mini::partir` (la fecha de creacion,
@@ -29,9 +29,9 @@
 
 use std::path::Path;
 
-use pixpin_proyecto::almacen::{self, Indice};
-use pixpin_proyecto::cuaderno::{self, Clase, Mensaje, Sello};
-use pixpin_proyecto::mini;
+use pindesk_proyecto::almacen::{self, Indice};
+use pindesk_proyecto::cuaderno::{self, Clase, Mensaje, Sello};
+use pindesk_proyecto::mini;
 
 use crate::chats::{hora_unica, validar_chat};
 use crate::{ErrorNucleo, Nucleo};

@@ -1,4 +1,4 @@
-# Jev de TypeSafe en PixPin (28-oct-2026)
+# Jev de TypeSafe en PinDesk (28-oct-2026)
 
 ## Que es Jev
 
@@ -8,14 +8,14 @@ tipadas** sobre un estado que se le da —texto, JSON con campos con nombre e
 imagenes— con **probabilidades calibradas**, en 70-500 ms. Hay cuatro tipos
 de pregunta:
 
-| Tipo | Que contesta | Ejemplo en PixPin |
+| Tipo | Que contesta | Ejemplo en PinDesk |
 |---|---|---|
 | **Noul** | la probabilidad de que algo sea verdad (0-1) | «¿este renglon encarga una tarea?» |
 | **Choice** | una opcion de varias, con la probabilidad de cada una | (el cliente la sabe; ninguna funcion la usa todavia) |
 | **Score** | un nivel de una escala descrita nivel a nivel, con la probabilidad de cada nivel | «¿que pasa si esta tarea se hace tarde?» (0-3) |
 | **Box** | donde esta algo en una imagen (sus cuatro bordes en fracciones) | (el cliente la sabe; ninguna funcion la usa todavia) |
 
-La regla de PixPin, la de la guia de TypeSafe: **los juicios de Jev, las
+La regla de PinDesk, la de la guia de TypeSafe: **los juicios de Jev, las
 decisiones en codigo**. Jev dice «este renglon encarga una tarea: 0.94»;
 que se marca, que tarjeta va a Anki, que prioridad tiene una tarea o que
 modelo contesta al asistente lo decide una **tabla escrita en codigo**, con
@@ -29,7 +29,7 @@ funcion hace lo de siempre y lo apunta en el registro.
 
 ## Donde esta
 
-- `crates/pixpin-typesafe` (capa 1, sin crates de PixPin; portable):
+- `crates/pindesk-typesafe` (capa 1, sin crates de PinDesk; portable):
   - `api.rs`: la peticion y la respuesta segun el OpenAPI
     (`https://api.typesafe.ai/openapi.json`, version 0.2.0).
   - `cliente.rs`: el POST con 2 s de tiempo, el registro del cuerpo exacto
@@ -45,7 +45,7 @@ funcion hace lo de siempre y lo apunta en el registro.
     cambia; nada de texto de preguntas fuera de ahi.
   - `reunion.rs`, `anki.rs`, `urgencia.rs`, `modelo.rs`: el estado de cada
     funcion, la lectura de las respuestas y su **tabla de decision**.
-- `apps/pixpin/src/jev.rs` y `jev/`: la clave y los interruptores de
+- `apps/pindesk/src/jev.rs` y `jev/`: la clave y los interruptores de
   Ajustes, y donde cada funcion se engancha a la app.
 
 ## La API que se usa
@@ -289,7 +289,7 @@ frase y con Jev mirando los ultimos 40 s cada vez que hay texto nuevo.
   (`Grabadora::suscribir_pcm`). El hilo de la mezcla nunca espera: si la
   escucha va tarde, su suscripcion pierde bloques solo ella (la nota, el
   respaldo y el video no se enteran).
-- **Frases** (`pixpin_voz::en_vivo::Frasero`), en mono a 16 kHz: se corta
+- **Frases** (`pindesk_voz::en_vivo::Frasero`), en mono a 16 kHz: se corta
   **en cuanto se calla** quien habla (450 ms sin voz, RMS ≥ 300 cada 20 ms,
   despues de medio segundo de voz), o en lo mas callado de los ultimos 2 s
   si alguien habla 8 s sin parar. Lo callado de antes de la voz no se
@@ -319,7 +319,7 @@ frase y con Jev mirando los ultimos 40 s cada vez que hay texto nuevo.
     **80 %** de lo que dura, la siguiente. Sin reconocedor de Windows ni
     modelo de Whisper bajado no se escucha (se dice).
 - **Jev**, en su hilo (`temas-jev`): cada frase va al **rollo** de la
-  conversacion (`pixpin_typesafe::temas::Rollo`). En cuanto hay texto nuevo
+  conversacion (`pindesk_typesafe::temas::Rollo`). En cuanto hay texto nuevo
   (tres palabras o mas; un «vale» suelto espera a juntarse con lo
   siguiente) y algun tema pendiente, **una peticion** con los ultimos 40 s.
   **El ritmo** (`temas::Ritmo`): como mucho una peticion en vuelo y 1,5 s
@@ -405,7 +405,7 @@ criterios de `tratado` y de `ahora`). **Jev solo marca, nunca desmarca, y
 solo lo pendiente que nadie toco a mano** (lo que se marco a mano mientras
 Jev pensaba tampoco).
 
-**Lo hecho a mano manda** (`pixpin_proyecto::temas`): un tema que la
+**Lo hecho a mano manda** (`pindesk_proyecto::temas`): un tema que la
 persona marco **o desmarco** queda `aMano` y Jev ya no lo toca; la escucha
 deja de preguntar por el.
 
@@ -515,7 +515,7 @@ encendida, **tambien sin temas en la agenda**. Lo que corta la escucha
 se parte antes en oraciones (`vivo::partir`: un trozo de Whisper trae a
 menudo dos o tres turnos; el minuto de cada una se reparte por letras).
 Cada oracion va a
-`pixpin_typesafe::en_la_reunion::Mesa` en **una sola peticion**
+`pindesk_typesafe::en_la_reunion::Mesa` en **una sola peticion**
 (`vivo`), con las preguntas de las ideas encendidas, en su hilo
 (`reunion-jev`, por debajo de lo normal): como mucho una en vuelo, lo que
 llega mientras tanto va junto en la siguiente, 3 s de espera. Es la misma
@@ -566,7 +566,7 @@ minuto), «Preguntas sin respuesta · N» con «Añadir a Tareas» y
 preguntas sin respuesta, con su minuto.
 
 **El formato**, en el `resto` de la nota de voz
-(`pixpin_proyecto::acta_viva`; cada clave solo si tiene algo):
+(`pindesk_proyecto::acta_viva`; cada clave solo si tiene algo):
 
 ```json
 "decisiones": [{"ms": 125000, "texto": "queda decidido: adelantamos el pedido"}],
@@ -594,9 +594,9 @@ preguntas sin respuesta, con su minuto.
 - `preguntasAbiertas`: las que seguian sin respuesta al terminar.
 - Lo que no se entiende se salta (no tira lo demas).
 
-**Pruebas**: `pixpin-typesafe` `en_la_reunion` (las partes segun las
+**Pruebas**: `pindesk-typesafe` `en_la_reunion` (las partes segun las
 ideas, una sola peticion por frase con respuestas grabadas, un fallo no
-propone nada, lo tratado fuera no se avisa), `pixpin-proyecto`
+propone nada, lo tratado fuera no se avisa), `pindesk-proyecto`
 `acta_viva` (el formato de ida y vuelta, lo vacio no cambia la nota) y
 `clase_exportar` (lo de la reunion en la pagina).
 
@@ -623,7 +623,7 @@ HTTPS:
   las preguntas aun abiertas.
 
 La clave va cifrada con DPAPI en
-`%LOCALAPPDATA%\PixPinMax\claves\typesafe.clave`: nunca en el TOML de
+`%LOCALAPPDATA%\PinDesk\claves\typesafe.clave`: nunca en el TOML de
 ajustes, nunca en la carpeta de datos que se sincroniza o se exporta. Lo
 que se escribe en los datos (`importantes`) son minutos, tipos y
 probabilidades, sin texto. TypeSafe dice que Jev no se entrena con lo que
@@ -633,7 +633,7 @@ se le manda (pagina de modelos, «Data handling»).
 
 Jev se paga por token de entrada: **0.042 $ por millon** (42 $ por mil
 millones; los de salida, gratis), precio de Jev 1.14 el 28-oct-2026. Lo
-que cuesta en PixPin, mas o menos:
+que cuesta en PinDesk, mas o menos:
 
 - una clase de una hora (~150 renglones, ~350 tokens cada peticion con sus
   ocho preguntas): ~50 000 tokens ≈ **0.002 $**;
@@ -655,29 +655,29 @@ Lo identico sale del cache del proceso y no se paga dos veces.
 
 ## Pruebas
 
-- `cargo test -p pixpin-typesafe`: el JSON segun el OpenAPI, los errores
+- `cargo test -p pindesk-typesafe`: el JSON segun el OpenAPI, los errores
   (401, red, respuesta que falta o rota: errores, no «no»), el cache, el
   reintento, la cabecera de imagenes, cada tabla con sus filas y cada
   funcion con respuestas grabadas.
 - `de_verdad_con_la_api` (`#[ignore]`): solo con `TYPESAFE_API_KEY` y en
-  Windows, `cargo test -p pixpin-typesafe -- --ignored`.
-- `pixpin-proyecto`: `clase` (el formato de `importantes`) y
+  Windows, `cargo test -p pindesk-typesafe -- --ignored`.
+- `pindesk-proyecto`: `clase` (el formato de `importantes`) y
   `clase_exportar` (las chapitas y el filtro de la pagina).
-- `pixpin-anki`: lo dicho por captura y quedarse con algunas.
-- Temas: `pixpin-typesafe` `temas` (la tabla, dos a medias solo con algo
+- `pindesk-anki`: lo dicho por captura y quedarse con algunas.
+- Temas: `pindesk-typesafe` `temas` (la tabla, dos a medias solo con algo
   nuevo, lo recordado que caduca, el rollo y su ventana de 40 s, el ritmo
   con un reloj de mentira —una en vuelo, 1,5 s entre peticiones, lo que
   llega se junta, 5 s tras un fallo—, el estado, una peticion por ventana
   con respuestas grabadas, los fallos como errores; `de_verdad_con_la_api`
   con `#[ignore]`: una reunion inventada, frase a frase, con tres temas en
   otro orden que la agenda y uno dejado para luego, y lo que tarda cada
-  peticion), `pixpin-proyecto` `temas` (leer lo pegado y las listas, el
+  peticion), `pindesk-proyecto` `temas` (leer lo pegado y las listas, el
   formato, lo hecho a mano manda) y `clase_exportar` (la agenda en la
-  pagina), `pixpin-voz` `en_vivo` (las frases: cortar al callarse, la tos,
+  pagina), `pindesk-voz` `en_vivo` (las frases: cortar al callarse, la tos,
   quien no para, la medida de Whisper, huecos, 44,1/48 kHz a 16 kHz, la
   cola y el freno).
 - **Sin interfaz y de verdad** (29-oct-2026): los ejemplos de
-  `pixpin-typesafe` corren cada idea sobre un guion inventado, en Linux,
+  `pindesk-typesafe` corren cada idea sobre un guion inventado, en Linux,
   Mac o Windows, con la API (`TYPESAFE_API_KEY` o `TYPESAFE_API_KEY_FILE`),
   en seco o con las respuestas grabadas, y comprueban lo que el guion
   espera. Los temas en vivo, con el guion de `de_verdad_con_la_api`
@@ -727,7 +727,7 @@ preguntas que el PC:
 
 1. **Antes de grabar**: «Temas de la reunión» en la pantalla de grabar
    (escribir, pegar uno por linea —las mismas reglas de limpieza que
-   `pixpin_proyecto::temas::de_texto`: sin vinetas, `- [ ]`, `1.`, `#
+   `pindesk_proyecto::temas::de_texto`: sin vinetas, `- [ ]`, `1.`, `#
    titulo`, repetidos ni mas de 40, 200 caracteres como mucho— o tomar lo
    pendiente de una lista de tareas). Los `id` son `t1`, `t2`… como en el
    PC.
@@ -742,7 +742,7 @@ preguntas que el PC:
    empezo y en que se dejo de hablar; los parciales solo se ensenan, no se
    mandan (cambian). Si el aparato no tiene reconocedor sin red: Whisper
    *base* o Qwen3-ASR en el aparato sobre trozos de 5 s o mas cortados en
-   un silencio (la medida `PARA_WHISPER` de `pixpin_voz::en_vivo`). **La
+   un silencio (la medida `PARA_WHISPER` de `pindesk_voz::en_vivo`). **La
    grabacion va primero**: sin bateria (< 20 %), con el aparato caliente o
    si el texto va por detras, se saltan frases (cola de tres que tira la
    mas vieja); la grabacion no se toca. Si el reconocedor del sistema no
@@ -750,11 +750,11 @@ preguntas que el PC:
    Whisper sobre el PCM de la grabacion (nunca se para la grabacion por
    esto).
 3. **La misma politica que el PC** (arriba): las frases a un rollo de 40 s
-   (`pixpin_typesafe::temas::Rollo`); en cuanto hay tres palabras nuevas y
+   (`pindesk_typesafe::temas::Rollo`); en cuanto hay tres palabras nuevas y
    algun tema pendiente, una peticion con el estado `{reunion, agenda,
    conversacion: {antes, ahora}}` y tres Nouls por tema pendiente (hasta
    20), **copiando el texto tal cual de
-   `crates/pixpin-typesafe/src/preguntas.rs`** (`preguntas::temas::se_trato`,
+   `crates/pindesk-typesafe/src/preguntas.rs`** (`preguntas::temas::se_trato`,
    `quedo_cerrado` y `en_lo_ultimo`; nombres `tratado_<id>`, `cerrado_<id>`
    y `ahora_<id>`); como mucho una en vuelo, 1,5 s entre una y otra, lo que
    llega mientras tanto va junto en la siguiente, 5 s tras un fallo

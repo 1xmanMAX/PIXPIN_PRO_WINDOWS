@@ -1,6 +1,6 @@
 # Las dos ramas principales (1-nov-2026)
 
-PixPin Max se mantiene en **dos ramas principales**, para que las
+PinDesk se mantiene en **dos ramas principales**, para que las
 restricciones de la Microsoft Store no toquen el codigo general:
 
 | Rama | Que lleva | Como se entrega |
@@ -30,3 +30,16 @@ rama por defecto. Por eso `.github/workflows/tienda.yml` y
 `capturas-tienda.yml` estan tambien en `main`, pero se lanzan con
 `ref: microsoft-store`: compilan y empaquetan lo de esa rama. En `main` no
 cambian nada de la app.
+
+## La rama `microsoft-store` se rehizo con el cambio de nombre (1-nov-2026)
+
+Unir `main` con el renombrado a PinDesk (`apps/pixpin*` → `apps/pindesk*`,
+`crates/pixpin-*` → `crates/pindesk-*`, ver `nombre-pindesk.md`) en
+`microsoft-store` no funcionaba: con tantos ficheros movidos se perdia la
+deteccion de renombrados. Por eso lo propio de la Store (`tienda/`, los dos
+`tienda.rs`, la feature `tienda`, el `build.rs`, las ayudas de Ajustes, las
+claves `tienda-ayuda-*` y `tienda.md`) se volvio a poner **encima de `main`
+ya renombrada**, con los nombres nuevos, y se publico sin forzar nada: una
+union cuyos padres son la `microsoft-store` de antes y la rehecha, y cuyo
+contenido es exactamente la rehecha. Asi la historia sigue y las proximas
+uniones de `main` vuelven a ser normales.

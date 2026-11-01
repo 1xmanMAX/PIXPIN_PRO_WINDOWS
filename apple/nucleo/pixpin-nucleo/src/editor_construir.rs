@@ -1,7 +1,7 @@
 //! **Las cuatro herramientas de construir** en el editor de Swift: el bote
 //! de relleno, recortar, extender y el punto etiquetado.
 //!
-//! Copia de `por-traducir/pixpin/src/dibujo/construir.rs` de Windows (la
+//! Copia de `por-traducir/pindesk/src/dibujo/construir.rs` de Windows (la
 //! ventana del editor): la geometria esta en el motor (`regiones`,
 //! `recorte`, `puntos_etiquetados`, `angulos`); aqui solo esta lo que el
 //! motor no sabe: **en que orden queda la escena y que cuenta como un paso
@@ -13,16 +13,16 @@
 //! Soldar vertices (`Nudo`) va por la misma puerta, como en Windows, aunque
 //! la barra de Mac todavia no la ofrece.
 
-use pixpin_motor2d::elemento::Elemento;
-use pixpin_motor2d::escena::Escena;
-use pixpin_motor2d::gesto::{Gesto, Herramienta};
-use pixpin_motor2d::nudos;
-use pixpin_motor2d::pintado::Orden;
-use pixpin_motor2d::puntos_etiquetados::{self, RADIO_DE_AGARRE, RADIO_PARA_PUNTOS, SerieDePunto};
-use pixpin_motor2d::recorte::{self, ALCANCE_EXTENDER};
-use pixpin_motor2d::regiones::{self, AjustesRelleno};
-use pixpin_motor2d::vector::Punto2;
-use pixpin_motor2d::{ColorRgba, angulos};
+use pindesk_motor2d::elemento::Elemento;
+use pindesk_motor2d::escena::Escena;
+use pindesk_motor2d::gesto::{Gesto, Herramienta};
+use pindesk_motor2d::nudos;
+use pindesk_motor2d::pintado::Orden;
+use pindesk_motor2d::puntos_etiquetados::{self, RADIO_DE_AGARRE, RADIO_PARA_PUNTOS, SerieDePunto};
+use pindesk_motor2d::recorte::{self, ALCANCE_EXTENDER};
+use pindesk_motor2d::regiones::{self, AjustesRelleno};
+use pindesk_motor2d::vector::Punto2;
+use pindesk_motor2d::{ColorRgba, angulos};
 
 /// Si `h` es una de las de construir (para la barra y las pruebas).
 pub fn es_de_construir(h: Herramienta) -> bool {
@@ -60,11 +60,11 @@ fn plantilla(gesto: &Gesto) -> Elemento {
         rugosidad: gesto.estilo.rugosidad,
         opacidad: gesto.estilo.opacidad,
         material: if gesto.grafito_en_la_mano {
-            pixpin_motor2d::tinta::MaterialTinta::Cuadritos
+            pindesk_motor2d::tinta::MaterialTinta::Cuadritos
         } else {
             gesto.estilo.material
         },
-        extras: pixpin_motor2d::elemento::Extras {
+        extras: pindesk_motor2d::elemento::Extras {
             referencia: gesto.modo_guia(),
             dureza: if gesto.grafito_en_la_mano {
                 gesto.estilo.dureza.para_guardar()
@@ -221,8 +221,8 @@ fn mas_cercano(escena: &Escena, p: Punto2, radio: f32, vale: fn(&Elemento) -> bo
             continue;
         }
         let mut d = f32::MAX;
-        for (a, b) in pixpin_motor2d::segmentos_de(e, pixpin_motor2d::PASO_PERIMETRO) {
-            d = d.min(pixpin_motor2d::distancia_a_segmento(p, a, b));
+        for (a, b) in pindesk_motor2d::segmentos_de(e, pindesk_motor2d::PASO_PERIMETRO) {
+            d = d.min(pindesk_motor2d::distancia_a_segmento(p, a, b));
         }
         if d <= radio && mejor.is_none_or(|(md, _)| d < md) {
             mejor = Some((d, e.id));
@@ -257,8 +257,8 @@ pub fn angulos_en_vivo(escena: &Escena, gesto: &Gesto, zoom: f32) -> Vec<Orden> 
 #[cfg(test)]
 mod pruebas {
     use super::*;
-    use pixpin_motor2d::elemento::Figura;
-    use pixpin_motor2d::gesto::EventoGesto;
+    use pindesk_motor2d::elemento::Figura;
+    use pindesk_motor2d::gesto::EventoGesto;
 
     fn raya(a: (f32, f32), b: (f32, f32)) -> Elemento {
         Elemento {

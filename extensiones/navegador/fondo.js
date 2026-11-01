@@ -4,7 +4,7 @@
 // Cada accion junta lo que hace falta de la pagina (la seleccion con sus
 // saltos de linea, la imagen ya leida, la captura entera) y se lo manda al
 // puente con `chrome.runtime.sendNativeMessage`, que arranca
-// `pixpin-puente.exe`, le da el mensaje y espera su respuesta.
+// `pindesk-puente.exe`, le da el mensaje y espera su respuesta.
 
 import {
   HOST,
@@ -25,14 +25,14 @@ import {
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.removeAll(() => {
     chrome.contextMenus.create({
-      id: "pixpin",
+      id: "pindesk",
       title: "PinDesk",
       contexts: ["selection", "image", "page"],
     });
     for (const f of MENU) {
       chrome.contextMenus.create({
         id: f.accion,
-        parentId: "pixpin",
+        parentId: "pindesk",
         title: f.titulo,
         contexts: [f.contexto],
       });
@@ -55,7 +55,7 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 
 // Lo que pide el menu del atajo.
 chrome.runtime.onMessage.addListener((m, _de, responder) => {
-  if (m?.tipo !== "pixpin-accion") return false;
+  if (m?.tipo !== "pindesk-accion") return false;
   hacer(m.accion, m.datos).then(responder, (e) => responder({ ok: false, error: explicarFallo(e) }));
   return true;
 });
@@ -246,7 +246,7 @@ async function recortarSiHaceFalta(img) {
 function avisar(texto) {
   chrome.notifications.create({
     type: "basic",
-    iconUrl: "iconos/pixpin.png",
+    iconUrl: "iconos/pindesk.png",
     title: "PinDesk",
     message: texto,
   });

@@ -1,6 +1,6 @@
 # El móvil como cámara de la reunión del PC (27-oct-2026)
 
-Guía para el agente de **PixPin Android** (y referencia para `apple/`).
+Guía para el agente de **PinDesk Android** (y referencia para `apple/`).
 Lo pidió el usuario: «ya que estamos en Windows, agregar una función
 especial para conectar con Android, para que el MÓVIL tome las fotos y se
 envíen directamente y se adjunten aquí» (a la reunión que se está grabando
@@ -19,15 +19,15 @@ Código de referencia (Rust, el mismo cable byte a byte):
 
 | Qué | Dónde |
 | --- | --- |
-| El cable, el reloj de la grabación y el minuto de cada foto | `crates/pixpin-sincro/src/camara.rs` |
-| `suelto` con `destino: "grabacion"`, el «vale» y la reanudación | `crates/pixpin-sincro/src/al_lienzo.rs` (`responder`) |
-| `camara_remota` en el `Respondedor` | `crates/pixpin-sincro/src/protocolo.rs` (`atender_camara`) |
-| Lo que hace el PC con cada foto o clip | `crates/pixpin-proyecto/src/camara_del_movil.rs` |
-| El móvil de mentira (lo que tiene que hacer Android) | `crates/pixpin-proyecto/tests/movil_como_camara.rs` |
-| La barra de «Grabar clase» y los avisos | `apps/pixpin/src/sincronizar/camara.rs` |
-| Fotos por su hora: el reloj de la nota, los desfases, dónde va cada foto, colaboradores (§12, §14) | `crates/pixpin-proyecto/src/por_su_hora.rs` |
-| El repaso tras sincronizar y los desfases medidos (PC) | `apps/pixpin/src/sincronizar/por_su_hora.rs` |
-| El botón «Captura para la grabación del móvil» (§13) | `apps/pixpin/src/sincronizar/aporte.rs` |
+| El cable, el reloj de la grabación y el minuto de cada foto | `crates/pindesk-sincro/src/camara.rs` |
+| `suelto` con `destino: "grabacion"`, el «vale» y la reanudación | `crates/pindesk-sincro/src/al_lienzo.rs` (`responder`) |
+| `camara_remota` en el `Respondedor` | `crates/pindesk-sincro/src/protocolo.rs` (`atender_camara`) |
+| Lo que hace el PC con cada foto o clip | `crates/pindesk-proyecto/src/camara_del_movil.rs` |
+| El móvil de mentira (lo que tiene que hacer Android) | `crates/pindesk-proyecto/tests/movil_como_camara.rs` |
+| La barra de «Grabar clase» y los avisos | `apps/pindesk/src/sincronizar/camara.rs` |
+| Fotos por su hora: el reloj de la nota, los desfases, dónde va cada foto, colaboradores (§12, §14) | `crates/pindesk-proyecto/src/por_su_hora.rs` |
+| El repaso tras sincronizar y los desfases medidos (PC) | `apps/pindesk/src/sincronizar/por_su_hora.rs` |
+| El botón «Captura para la grabación del móvil» (§13) | `apps/pindesk/src/sincronizar/aporte.rs` |
 
 ## 1. Capacidad
 
@@ -73,13 +73,13 @@ El **anuncio** (`Anuncio` en Rust):
     `{"t":"camara_remota","reloj":t0}` y el PC contesta el anuncio con
     `reloj: t1` (su hora). El móvil apunta `t2` al recibirlo.
     **Preguntar cada 3-5 s** mientras la pantalla de cámara esté abierta (o
-    PixPin a la vista con «Cámara para la reunión…»); es el camino que
+    PinDesk a la vista con «Cámara para la reunión…»); es el camino que
     siempre funciona.
   - **El PC avisa** (dirige; el móvil responde) al empezar, pausar, seguir,
     acabar o apagar la cámara, a los móviles del grupo que contestan en su
     última dirección: manda el anuncio con `reloj: t0` y el móvil contesta
     `{"t":"camara_remota","reloj":t1}` con su hora. Si el móvil no escucha
-    (PixPin cerrado), no pasa nada: lo verá al preguntar.
+    (PinDesk cerrado), no pasa nada: lo verá al preguntar.
 
 ### 2.2 El desfase de los relojes (como NTP)
 
@@ -162,7 +162,7 @@ Un clip dura `min(duracionMs, final − ms)` (nunca pasa del final).
      del cuaderno dejaría de leerse;
    - en la nota, en `resto.capturas` (`[{ms, id}]`) o, el clip, en
      `resto.clips` (`[{ms, id, duracionMs}]`), **la misma lista que los clips
-     de la reunión presencial** (`pixpin_proyecto::presencial`);
+     de la reunión presencial** (`pindesk_proyecto::presencial`);
    - dentro de la carpeta de la grabación, **en su minuto** (no al final),
      con título «📱 ⏱ 12:34» (un clip, «📱 ▶ 12:34»).
 4. **Lo que llega tarde** (el móvil se quedó sin red y lo sube después):
@@ -192,7 +192,7 @@ Un clip dura `min(duracionMs, final − ms)` (nunca pasa del final).
 
 - **Códec**: `HEVC (H.265)` solo si el anuncio trae `"hevc"` en `codecs`
   (el PC tiene «HEVC Video Extensions»; lo mira con Media Foundation,
-  `pixpin_pin::video::sabe_hevc`); si no, **H.264** (Windows lo trae de
+  `pindesk_pin::video::sabe_hevc`); si no, **H.264** (Windows lo trae de
   serie). Sin `codecs`, el PC no recibe clips: el botón de vídeo no sale.
 - **Audio** AAC 96-128 kbit/s; **imagen** 1080p hasta 30 fps, **VBR
   4-6 Mbit/s**: un clip de 2 min pesa unos 60-90 MB y se lee bien la
@@ -207,7 +207,7 @@ Un clip dura `min(duracionMs, final − ms)` (nunca pasa del final).
 
 ## 7. La pantalla del móvil (flujo)
 
-1. **Aviso**: con PixPin a la vista, si el anuncio dice `activa`, el móvil
+1. **Aviso**: con PinDesk a la vista, si el anuncio dice `activa`, el móvil
    enseña la entrada a la cámara. Desde Android v0.152.0 (29-oct-2026) es
    **un botón redondo de la foto junto al «+» de la lista de chats**, del
    mismo tamaño, que sale solo mientras un PC del grupo graba y se va al
@@ -247,7 +247,7 @@ Un clip dura `min(duracionMs, final − ms)` (nunca pasa del final).
   el anuncio (no cambia si el usuario toca la hora); `System.currentTimeMillis()`
   para `tomada_en` y `t0/t2`.
 - **Preguntar**: cada 3-5 s con la pantalla de cámara abierta; cada 15-30 s
-  con PixPin a la vista (para la tira del §7.1). Responder al aviso del PC
+  con PinDesk a la vista (para la tira del §7.1). Responder al aviso del PC
   en el `Respondedor` (`Presencia.kt`): `camara_remota` → `{"t":"camara_remota","reloj":<ahora>}`
   y refrescar el reloj con lo anunciado.
 - **Tipos desconocidos**: contestar siempre `{"error":"No sé qué es «…»"}` y
@@ -287,21 +287,21 @@ Un clip dura `min(duracionMs, final − ms)` (nunca pasa del final).
 
 ### Mac, iPad e iPhone (`apple/`)
 
-- [ ] El núcleo ya tiene el cable (`apple/nucleo/pixpin-sincro`, igual que
-      `crates/`). Para hacer de PC: `Camaras` de `pixpin-proyecto` y decir
+- [ ] El núcleo ya tiene el cable (`apple/nucleo/pindesk-sincro`, igual que
+      `crates/`). Para hacer de PC: `Camaras` de `pindesk-proyecto` y decir
       `CAPACIDADES_CON_CAMARA`.
 
 ## 10. Dónde está probado
 
-- `crates/pixpin-sincro/src/camara.rs`: el reloj con pausas, el desfase
+- `crates/pindesk-sincro/src/camara.rs`: el reloj con pausas, el desfase
   NTP, el minuto con y sin `ms`, lo que llega tarde, los clips, los tipos y
   los bytes de cabecera.
-- `crates/pixpin-proyecto/tests/movil_como_camara.rs`: por TCP y con el
+- `crates/pindesk-proyecto/tests/movil_como_camara.rs`: por TCP y con el
   `Respondedor` de verdad, un móvil 7 s adelantado manda dos fotos y un clip
   durante una grabación con una pausa (una foto sin `ms`), luego una tarde;
   el PC avisa al móvil y mide su reloj; un clip cortado sigue donde se
   quedó; un PC de antes dice «No sé qué es» y sigue.
-- `crates/pixpin-proyecto/src/por_su_hora.rs`: dentro y fuera de la
+- `crates/pindesk-proyecto/src/por_su_hora.rs`: dentro y fuera de la
   ventana, el margen de los bordes, las pausas (al minuto en que se paró),
   la grabación cortada (`vistoEn`) y la viva, el desfase más cercano, el
   EXIF con su zona, la foto de mi móvil con desfase, la del colaborador sin
@@ -326,7 +326,7 @@ y todo lo relacionado, que localice cualquier aparato de la red rápido y
 simple. Todo tiene que ser rápido y fiable mientras se graba: perder algo
 sería perder una reunión».
 
-**Por qué tardaba**: los aparatos se encuentran por mDNS (`_pixpin._tcp`),
+**Por qué tardaba**: los aparatos se encuentran por mDNS (`_pindesk._tcp`),
 que muchas Wi-Fi reparten con uno o dos minutos de retraso, y por la sonda
 TCP a la **última dirección conocida** (cada 60 s en el PC sin nadie
 mirando), que no sirve si el DHCP le dio otra al móvil. El aviso del PC al
@@ -336,10 +336,10 @@ empezar a grabar también iba solo a esa última dirección.
 protocolo (sigue la 4) ni el canal: la baliza solo dice *dónde* llamar y
 *si se graba*; todo lo demás va por el canal cifrado de siempre.
 
-Código de referencia: `crates/pixpin-sincro/src/baliza.rs` (formato, firma,
+Código de referencia: `crates/pindesk-sincro/src/baliza.rs` (formato, firma,
 sockets, ritmo, barrido, prioridad, diagnóstico) y
-`apps/pixpin/src/sincronizar/baliza.rs` (lo del PC). Probado con sockets de
-verdad en `crates/pixpin-sincro/src/baliza_de_verdad.rs`.
+`apps/pindesk/src/sincronizar/baliza.rs` (lo del PC). Probado con sockets de
+verdad en `crates/pindesk-sincro/src/baliza_de_verdad.rs`.
 
 ### 11.1 Puertos y destinos
 
@@ -401,8 +401,8 @@ es la de PBKDF2 de siempre, `Identidad.kt`). Lo más largo son 182 bytes.
 | --- | --- |
 | Grabando | **cada 1 s** |
 | Al empezar, pausar, seguir o acabar | **al momento** |
-| Sin grabar (PixPin abierto o su servicio vivo) | cada **15 s** |
-| Al abrir PixPin, al volver la red | una con **pregunta**, al momento |
+| Sin grabar (PinDesk abierto o su servicio vivo) | cada **15 s** |
+| Al abrir PinDesk, al volver la red | una con **pregunta**, al momento |
 | Contestar a una pregunta | al momento, directa a quien preguntó (como mucho una por segundo a cada IP) |
 | «Sigue grabando» | hasta **4 s** después de la última baliza con grabando |
 
@@ -434,7 +434,7 @@ sonda), el PC lo dice una vez (bandeja y «Actividad»):
   (`baliza-movil-otra-red`);
 - es de la misma red → «puede que esta Wi-Fi aísle a los aparatos (las de
   invitados, hotel o empresa lo hacen) o que un cortafuegos bloquee
-  PixPin…», con el punto de acceso del móvil como salida
+  PinDesk…», con el punto de acceso del móvil como salida
   (`baliza-movil-aislado`).
 
 ### 11.5 Qué hace quien oye una baliza del grupo
@@ -458,7 +458,7 @@ sonda), el PC lo dice una vez (bandeja y «Actividad»):
 
 Mientras **cualquier** aparato del grupo graba (el propio, o uno oído con
 grabando hace menos de 4 s), el orden es
-(`pixpin_sincro::baliza::que_toca`):
+(`pindesk_sincro::baliza::que_toca`):
 
 1. **La cámara**: `camara_remota` y los `suelto` con `destino:"grabacion"`
    (fotos y clips). Es lo único que se hace.
@@ -499,13 +499,13 @@ Para que una foto empiece a subir **en menos de 1 s** desde el disparo:
 
 - [ ] **Oír** en UDP 47475 (`DatagramSocket` atado a `0.0.0.0:47475` con
       `reuseAddress`, y `MulticastSocket.joinGroup(239.255.74.74)` en la
-      interfaz Wi-Fi) mientras PixPin esté a la vista **o** viva su servicio
+      interfaz Wi-Fi) mientras PinDesk esté a la vista **o** viva su servicio
       de grabación o de subida. Con un **`WifiManager.MulticastLock`**
       (`setReferenceCounted(false)`) mientras se oye —sin él, muchos
       teléfonos tiran la difusión y la multidifusión con la pantalla
       apagada— y soltarlo al dejar de oír (gasta batería).
 - [ ] Leer y comprobar la baliza como §11.2 y actuar como §11.5.
-- [ ] **Mandar la suya**: una con pregunta al abrir PixPin y al volver la
+- [ ] **Mandar la suya**: una con pregunta al abrir PinDesk y al volver la
       red; cada 15 s mientras esté a la vista; **cada 1 s y al momento al
       empezar/pausar/seguir/acabar** cuando el móvil grabe (grabando, en
       pausa, `ms_actual`, id de su grabación): así el PC lo oye igual.
@@ -541,9 +541,9 @@ grabación también guarda su hora, si la hora de la foto está fuera de la
 grabación, que la ignore; si está dentro, que calcule dónde va y la ponga
 ahí».
 
-Código: `crates/pixpin-proyecto/src/por_su_hora.rs` (lógica pura con sus
+Código: `crates/pindesk-proyecto/src/por_su_hora.rs` (lógica pura con sus
 pruebas), `camara_del_movil.rs` (la cámara en directo) y
-`apps/pixpin/src/sincronizar/por_su_hora.rs` (el repaso y los desfases).
+`apps/pindesk/src/sincronizar/por_su_hora.rs` (el repaso y los desfases).
 
 ### 12.1 La grabación guarda su ventana: `resto.reloj`
 
@@ -575,7 +575,7 @@ acabar y **cada 15 s**; al guardarse la clase entra en la nota y el fichero
 se borra.
 
 **Un solo reloj de pared.** El diario de la grabación
-(`grabacion_a_medias::Reloj`, en `crates/pixpin-proyecto/src/grabacion_a_medias.rs`) y este son
+(`grabacion_a_medias::Reloj`, en `crates/pindesk-proyecto/src/grabacion_a_medias.rs`) y este son
 el mismo: `RelojDeGrabacion::del_diario` pasa uno al otro y
 `Diario::ms_en` hace la cuenta de `RelojDeGrabacion::ms_hasta`. **Al
 recuperar una grabación cortada** se pone en su nota el reloj del diario
@@ -587,7 +587,7 @@ Android, al grabar él, escribe lo mismo en su nota.
 
 ### 12.2 Cada foto lleva su hora: `resto.tomadaEn`
 
-Cualquier foto hecha con PixPin (con o sin conexión, para una grabación o
+Cualquier foto hecha con PinDesk (con o sin conexión, para una grabación o
 no) lleva en su mensaje:
 
 | Campo | Qué es |
@@ -697,7 +697,7 @@ al oírlo otra vez. La × lo cierra hasta la grabación siguiente.
 
 **El móvil atiende ese `suelto`** exactamente como el PC atiende los del
 móvil (§2.3-§4): con `ms`, ahí; sin él, por su hora. En Rust es el mismo
-`Camaras` (`crates/pixpin-proyecto/tests/movil_como_camara.rs`,
+`Camaras` (`crates/pindesk-proyecto/tests/movil_como_camara.rs`,
 `el_pc_manda_capturas_a_la_grabacion_del_movil`): el código de «quien
 graba» vale para cualquier aparato. Al guardar la clase en el móvil, cada
 captura del PC va en `capturas` y en su carpeta con `fuente: "pantalla"`.

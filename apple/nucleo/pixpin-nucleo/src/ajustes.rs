@@ -1,5 +1,5 @@
 //! **Los ajustes que valen en los dos sistemas**, en el mismo
-//! `pixpinmax.toml` que Windows (`pixpin_store::ajustes`), en la raiz de la
+//! `pixpinmax.toml` que Windows (`pindesk_store::ajustes`), en la raiz de la
 //! carpeta de datos.
 //!
 //! Solo cruzan las claves que significan lo mismo en Mac y en Windows: los
@@ -14,7 +14,7 @@
 //! fichero que hay no se entiende, **no se guarda** (se dice): reescribirlo
 //! con los valores de fabrica le borraria al usuario todo lo de Windows.
 
-use pixpin_store::{Ubicacion, ajustes};
+use pindesk_store::{Ubicacion, ajustes};
 
 use crate::{ErrorNucleo, Nucleo};
 

@@ -1,7 +1,7 @@
 # Novedades del 25-oct-2026: lo que tienen que hacer los otros aparatos
 
-Lo que entro en `main` el 25-oct-2026 en PixPin Max (Windows) y lo que
-necesitan PixPin Android y la version de Mac, iPad e iPhone (`apple/`) para
+Lo que entro en `main` el 25-oct-2026 en PinDesk (Windows) y lo que
+necesitan PinDesk Android y la version de Mac, iPad e iPhone (`apple/`) para
 leerlo y escribirlo igual. Todo viaja por la sincronizacion de siempre: no hay
 mensajes nuevos en el protocolo, solo ficheros y campos de `resto`.
 
@@ -64,7 +64,7 @@ Al terminar una grabacion entran en el chat, con numeros seguidos:
 
   Son distintos de las banderitas (`marcas: [ms]`), que siguen igual; la
   ventana del PC ensena las dos cosas juntas y quita cada una de su campo.
-  Las cuentas (y su formato) estan en `crates/pixpin-proyecto/src/clase.rs`.
+  Las cuentas (y su formato) estan en `crates/pindesk-proyecto/src/clase.rs`.
 - **Android / apple**: conservar `marcadores` (viaja en `resto`) y, si se
   quiere, ensenarlos en la letra de la nota como fichas con su minuto que
   llevan el audio ahi.
@@ -101,7 +101,7 @@ resolucion que tenga, guardada tal cual en JPEG; y **«Video»**: un clip corto
 con la camara (1080p30 como mucho, HEVC si la grafica lo codifica, si no
 H.264, ~5 Mbps a ritmo variable, AAC 96 kbps). Con varias camaras se elige
 en Preparar (la de atras primero: mira a la sala) y se recuerda. La barra
-vive en su propio hilo: cerrar el chat o dejar PixPin en la bandeja no corta
+vive en su propio hilo: cerrar el chat o dejar PinDesk en la bandeja no corta
 nada; el icono de la bandeja dice «Grabando…» y «Salir» pregunta antes
 («Si» termina y guarda; «No» sigue grabando). Las capturas de pantalla de
 los otros modos van en PNG a los pixeles de la pantalla, sin escalar; en el
@@ -120,7 +120,7 @@ En la carpeta de la grabacion (§3.2) las fotos van como las capturas («⏱
 1:05») y cada clip con «▶ 1:05» en su minuto. `fuente` falta en las capturas
 de pantalla (y en todo lo de antes): **falta = pantalla**. Las cuentas puras
 (modos, que camara, que resolucion, nombres, `clips`) estan en
-`crates/pixpin-proyecto/src/presencial.rs`.
+`crates/pindesk-proyecto/src/presencial.rs`.
 
 **`fuente` y no `origen`** (27-oct-2026, al juntarlo con la camara del
 movil): la primera version escribia `origen: "camara"` en `resto`, pero
@@ -199,7 +199,7 @@ la camara del movil, §3.4); el PC rescata al leer las lineas escritas con
 
 ## 4. La ficha del chat (la isla al pulsar el nombre)
 
-- Pestanas nuevas en `Seccion` (`crates/pixpin-proyecto/src/cuaderno.rs`):
+- Pestanas nuevas en `Seccion` (`crates/pindesk-proyecto/src/cuaderno.rs`):
   **Videos** (imagen o archivo con extension de video, `es_video`) y
   **Enlaces** (mensajes con una direccion web, `tiene_enlace`). Fotos y
   Archivos ya no cuentan los videos. Copiado en `apple/nucleo`.

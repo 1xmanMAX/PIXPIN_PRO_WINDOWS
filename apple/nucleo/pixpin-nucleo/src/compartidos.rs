@@ -1,6 +1,6 @@
 //! **Chats compartidos con otras personas** (Android 13-oct-2026), del lado
 //! del Mac: es `sincronizar/compartidos_ui.rs` de Windows sin la ventana,
-//! sobre `pixpin_sincro::compartidos` e `invitacion`, que son los mismos
+//! sobre `pindesk_sincro::compartidos` e `invitacion`, que son los mismos
 //! crates (las firmas, la valla de archivos y el protocolo estan alli,
 //! probados contra Android).
 //!
@@ -16,7 +16,7 @@
 //!   (`PXC1`).
 //! - **Sincronizar** con cada persona ([`Nucleo::sincronizar_con_persona`]):
 //!   solo los chats donde estamos los dos, con **la valla** de
-//!   `pixpin_sincro::valla` (ningun fichero de otro chat sale ni entra).
+//!   `pindesk_sincro::valla` (ningun fichero de otro chat sale ni entra).
 //!   Las personas tambien llaman a la [`crate::Escucha`] de siempre.
 //! - **Quitar** a alguien (solo quien lo creo) o **salir** uno mismo.
 //!
@@ -38,11 +38,11 @@ use std::net::{TcpListener, TcpStream};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
 
-use pixpin_proyecto::vista::DiscoPc;
-use pixpin_sincro::canal::{ErrorCanal, MAGIA_DE_INVITACION, MAGIA_DE_PERSONA};
-use pixpin_sincro::compartidos::{self, ChatCompartido, CompartidosEnDisco};
-use pixpin_sincro::invitacion;
-use pixpin_sincro::protocolo::{ErrorSincro, Respondedor};
+use pindesk_proyecto::vista::DiscoPc;
+use pindesk_sincro::canal::{ErrorCanal, MAGIA_DE_INVITACION, MAGIA_DE_PERSONA};
+use pindesk_sincro::compartidos::{self, ChatCompartido, CompartidosEnDisco};
+use pindesk_sincro::invitacion;
+use pindesk_sincro::protocolo::{ErrorSincro, Respondedor};
 
 use crate::red::{conectar, nonce};
 use crate::sincro::{AnuncioBonjour, ParTxt};
@@ -162,7 +162,7 @@ impl Nucleo {
     /// El id de chat que viaja de una ficha de aqui (o el mismo si no hay
     /// otro).
     fn chat_de(&self, ficha: &str) -> String {
-        pixpin_proyecto::vista::chat_de_ficha(self.ruta(), ficha).unwrap_or_else(|| ficha.into())
+        pindesk_proyecto::vista::chat_de_ficha(self.ruta(), ficha).unwrap_or_else(|| ficha.into())
     }
 
     fn para_ver(&self, c: &ChatCompartido, yo: &str) -> ChatCompartidoMac {
@@ -429,7 +429,7 @@ pub enum AvisoInvitacion {
 }
 
 /// **La puerta de una invitacion** (`invitacion::Puerta` de
-/// `pixpin_sincro`, sin su hilo que sondea cada 100 ms: aqui `accept`
+/// `pindesk_sincro`, sin su hilo que sondea cada 100 ms: aqui `accept`
 /// bloquea en un hilo de Swift y se despierta al cerrar). Atiende la
 /// invitacion (`PXI1`) y, detras, la conversacion de persona (`PXC1`) con
 /// la que el otro se trae el chat.

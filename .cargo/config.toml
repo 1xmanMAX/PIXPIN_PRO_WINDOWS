@@ -11,7 +11,7 @@
 # busca como subcadenas en el fichero entero, comentarios incluidos.)
 #
 # Hoy `x86-64` es ademas el valor por defecto del toolchain; este fichero lo
-# convierte en decision escrita. Lo vigila apps/pixpin/tests/baseline.rs.
+# convierte en decision escrita. Lo vigila apps/pindesk/tests/baseline.rs.
 # En aarch64 no hace falta nada: NEON es baseline.
 
 [target.x86_64-pc-windows-msvc]

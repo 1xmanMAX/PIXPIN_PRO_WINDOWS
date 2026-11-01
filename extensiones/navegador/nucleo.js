@@ -1,15 +1,15 @@
 // Lo que la extension decide sin tocar el navegador: el menu, el mensaje
-// para el puente (`pixpin-puente.exe`) y las cuentas de la captura de la
+// para el puente (`pindesk-puente.exe`) y las cuentas de la captura de la
 // pagina entera. Aparte de `fondo.js` para probarlo en Node
 // (`pruebas/nucleo.test.js`) sin Chrome.
 //
-// La extension NO sabe nada de los pedidos de PixPin: manda QUE se eligio
+// La extension NO sabe nada de los pedidos de PinDesk: manda QUE se eligio
 // con lo que habia en la pagina, y el puente lo traduce
-// (`apps/pixpin-puente/src/traducir.rs`). Las dos tablas de acciones tienen
+// (`apps/pindesk-puente/src/traducir.rs`). Las dos tablas de acciones tienen
 // que coincidir; la prueba de Node lo comprueba leyendo la de Rust.
 
 /** El nombre del puente registrado en HKCU (herramientas/registrar-navegador.ps1). */
-export const HOST = "com.pixpinmax.puente";
+export const HOST = "com.pindesk.puente";
 
 /** Version del mensaje que entiende el puente. */
 export const VERSION = 1;

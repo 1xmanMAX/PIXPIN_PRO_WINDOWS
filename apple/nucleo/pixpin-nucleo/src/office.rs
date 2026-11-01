@@ -1,4 +1,4 @@
-//! **Word y PowerPoint paginados como los imprime Office** (`pixpin-office`),
+//! **Word y PowerPoint paginados como los imprime Office** (`pindesk-office`),
 //! para el lector de documentos: las mismas hojas que el lector de Windows
 //! (`lector_pdf/office.rs`), asi que la tinta de cada hoja
 //! (`anot-<uid>-p<n>`, ver [`crate::documentos`]) cae en la misma pagina en
@@ -41,10 +41,10 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use pixpin_office::pagina::{
+use pindesk_office::pagina::{
     Campo, Discontinuo, Elemento, Figura, Relleno, Sombra, Subrayado, Tramo, Trazo,
 };
-use pixpin_office::{Documento, Letra, Medidor, Metricas};
+use pindesk_office::{Documento, Letra, Medidor, Metricas};
 
 use crate::ErrorNucleo;
 
@@ -88,7 +88,7 @@ struct Cache {
     existe: HashMap<String, bool>,
 }
 
-/// El [`Medidor`] de `pixpin-office` sobre el de Swift, con cache.
+/// El [`Medidor`] de `pindesk-office` sobre el de Swift, con cache.
 struct MedidorConCache {
     swift: Box<dyn MedidorLetras>,
     cache: Mutex<Cache>,
@@ -208,7 +208,7 @@ struct Bufer {
     indice_imagen: HashMap<String, usize>,
 }
 
-fn rgba(c: pixpin_office::Color) -> [f32; 4] {
+fn rgba(c: pindesk_office::Color) -> [f32; 4] {
     [
         c.r as f32 / 255.0,
         c.g as f32 / 255.0,
@@ -413,7 +413,7 @@ impl Bufer {
     }
 }
 
-fn empaquetar(indice: u32, p: &pixpin_office::Pagina, total: Option<usize>) -> PaginaOffice {
+fn empaquetar(indice: u32, p: &pindesk_office::Pagina, total: Option<usize>) -> PaginaOffice {
     let mut b = Bufer::default();
     b.f.push(VERSION_PAGINA_OFFICE as f32);
     b.elementos(&p.elementos, total);
@@ -487,7 +487,7 @@ impl DocumentoOffice {
 
     /// Si es un PowerPoint (cada diapositiva, una hoja).
     pub fn es_presentacion(&self) -> bool {
-        self.tomar().tipo() == pixpin_office::Tipo::PowerPoint
+        self.tomar().tipo() == pindesk_office::Tipo::PowerPoint
     }
 
     /// Cuantas paginas hay (Word: la estimacion de Word hasta maquetar todo).
@@ -524,7 +524,7 @@ impl DocumentoOffice {
 /// Si el nombre es de los que se paginan aqui (`.docx`, `.pptx`...).
 #[uniffi::export]
 pub fn es_documento_office(nombre: String) -> bool {
-    pixpin_office::tipo_de(&nombre).is_some()
+    pindesk_office::tipo_de(&nombre).is_some()
 }
 
 #[cfg(test)]
@@ -533,7 +533,7 @@ mod pruebas {
     use std::io::Write;
 
     /// Un medidor de ancho fijo, como `MedidorFijo` de las pruebas de
-    /// `pixpin-office`, que cuenta cuantas veces le preguntan.
+    /// `pindesk-office`, que cuenta cuantas veces le preguntan.
     struct Fijo(std::sync::atomic::AtomicUsize);
 
     impl MedidorLetras for Fijo {

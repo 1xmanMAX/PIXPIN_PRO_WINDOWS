@@ -1,6 +1,6 @@
 // **La maqueta de la tinta** (20-oct-2026): la medida de la columna con que
 // se anoto una nota, para que la tinta caiga siempre sobre lo anotado. Ver
-// `apps/pixpin/src/visor_html/capa_web.rs` (`Maqueta`) y el riel, que la
+// `apps/pindesk/src/visor_html/capa_web.rs` (`Maqueta`) y el riel, que la
 // guarda y decide; aqui solo se mide la columna, se pone a una medida y se
 // dice cuanto se movio (el desfase con que se cuelga la capa de la tinta).
 //

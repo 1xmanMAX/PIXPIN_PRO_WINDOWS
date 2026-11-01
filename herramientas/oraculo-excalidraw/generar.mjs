@@ -1,4 +1,4 @@
-// Genera crates/pixpin-motor2d/tests/oraculo/tinta.json con la tinta REAL de
+// Genera crates/pindesk-motor2d/tests/oraculo/tinta.json con la tinta REAL de
 // Excalidraw. Las dos envolturas y getSvgPathFromStroke son copia literal de
 // excalidraw/excalidraw packages/element/src/shape.ts @afa3a65 (MIT,
 // Copyright (c) 2020 Excalidraw); getStroke y LaserPointer vienen de npm, en
@@ -11,7 +11,7 @@ import { LaserPointer } from "@excalidraw/laser-pointer/dist/esm.js";
 import { casos } from "./casos.mjs";
 
 const aqui = dirname(fileURLToPath(import.meta.url));
-const destino = join(aqui, "..", "..", "crates", "pixpin-motor2d", "tests", "oraculo", "tinta.json");
+const destino = join(aqui, "..", "..", "crates", "pindesk-motor2d", "tests", "oraculo", "tinta.json");
 
 function variable(c) {
   const simulatePressure = c.presiones.length === 0;

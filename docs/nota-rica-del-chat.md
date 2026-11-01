@@ -30,7 +30,7 @@ escribe el editor de notas de los dos aparatos.
 
 ## Como se ensena (Windows)
 
-`pixpin_ui::nota_rica` parte el texto en bloques; el chat los mide y los
+`pindesk_ui::nota_rica` parte el texto en bloques; el chat los mide y los
 pinta con la misma disposicion (`ventana_chat/nota_rica.rs`):
 
 - Un salto de linea es un salto de linea (es un chat, no un `.md`).
@@ -64,7 +64,7 @@ chat; la cuenta de la pestana las incluye. Pulsar una abre su previa dentro
 de la isla, con las flechas a la anterior y la siguiente; «Abrir» la pone en
 un pin (como pulsarla en la burbuja) y «Ver en el chat» lleva a su nota. Se
 cuentan con el mismo parser y en el mismo orden que la burbuja
-(`pixpin_ui::info::fotos_de_la_nota`, `con_las_fotos_de_las_notas`); un
+(`pindesk_ui::info::fotos_de_la_nota`, `con_las_fotos_de_las_notas`); un
 `![…](…)` que no es foto no sale. Si el fichero aun no esta en el aparato,
 su celda es el recuadro con el icono de imagen. La nota en si sigue en
 «Todo» (y en «Enlaces» si lleva una direccion web) como un mensaje.

@@ -26,7 +26,7 @@ la máquina de referencia es un Core i3 de 3.ª generación con 4 GB.
 
 > [!NOTE]
 > Hasta noviembre de 2026 se llamaba **PixPin Max**. El nombre **PixPin** pertenece a DepthPixel,
-> así que la app pasó a llamarse **PinDesk**; tus datos, tus proyectos `.pixpin` y la
+> así que la app pasó a llamarse **PinDesk**; tus datos, tus proyectos `.pindesk` y la
 > sincronización con el móvil siguen igual (ver [docs/nombre-pindesk.md](docs/nombre-pindesk.md)).
 > Es una implementación personal e independiente, igual que su versión Android.
 
@@ -52,7 +52,7 @@ Dicho fácil, para cualquier persona:
 
 ## Índice
 
-- [¿Qué puedo hacer?](#qué-puedo-hacer-con-pixpin-max)
+- [¿Qué puedo hacer?](#qué-puedo-hacer-con-pindesk)
 - [Un vistazo](#un-vistazo)
 - [Qué hace](#qué-hace)
   - [Capturar](#capturar)
@@ -206,7 +206,7 @@ miniatura.
   queda como descripción de la foto y se puede editar después.
 - **Cambiar el nombre** de cualquier archivo o audio (`F2`).
 - **PDF**: entra como un solo mensaje. Sus páginas son hojas del proyecto que se anotan como
-  lienzos, con lectura seguida, marcadores, búsqueda y fusión. `pixpin-aligerar.exe` lo comprime
+  lienzos, con lectura seguida, marcadores, búsqueda y fusión. `pindesk-aligerar.exe` lo comprime
   en segundo plano.
 - **Documentos**: Word, EPUB, HTML, Markdown y texto se leen dentro, con zoom, marcadores y
   tinta. PowerPoint se presenta a pantalla completa y Excel entra como tablas que calculan.
@@ -219,7 +219,7 @@ miniatura.
 
 ### El asistente
 
-Un chat más, «Asistente», con una IA que hace cosas dentro de PixPin. **Solo si tú la activas**
+Un chat más, «Asistente», con una IA que hace cosas dentro de PinDesk. **Solo si tú la activas**
 en Ajustes → Asistente, con tu propia clave: Claude (Haiku) o DeepSeek. Contesta solo con la nube
 (el modelo local se quitó el 27-oct-2026, como en Android); quien lo tenía bajado ve una vez en el
 chat cuánto ocupa y un botón para liberar el espacio. El modelo se cambia desde la pastilla de
@@ -554,7 +554,7 @@ como el de un `.docx`. La siguiente vez abre directamente en el visor propio:
 | 📮 Visio y correos `.msg` | Con la vista previa que Office instala en Windows; Office se cierra al cerrar el pin. |
 
 - **Vista rápida**: en el Explorador o el escritorio, elige archivos y pulsa **Espacio**: se
-  abren en PixPin. Otro Espacio los cierra. Se apaga en Ajustes → Apps.
+  abren en PinDesk. Otro Espacio los cierra. Se apaga en Ajustes → Apps.
 
 ### Compartir y arrastrar
 
@@ -565,10 +565,10 @@ pinea desde ahí.
 
 <img src="docs/img/v2/salida.png" width="420" alt="Ventanita para arrastrar lo exportado">
 
-- **`.pixpin` con todo dentro**: el chat entero (o el fichero suelto) con su tinta, marcos
+- **`.pindesk` con todo dentro**: el chat entero (o el fichero suelto) con su tinta, marcos
   numerados, marcadores con su zoom y lo anotado en planos y modelos 3D. Al abrirlo en otro PinDesk
   o en el móvil, todo vuelve a su sitio; «Crear como nuevo» no lo suelta.
-- **Lo editable de un lienzo es el `.pixpin`**: el `.excalidraw` suelto ya no se ofrece. Los
+- **Lo editable de un lienzo es el `.pindesk`**: el `.excalidraw` suelto ya no se ofrece. Los
   `.excalidraw` que tengas se siguen abriendo.
 - Una foto **con anotaciones** sale siempre **fusionada**: al arrastrar o copiar un pin dibujado,
   al arrastrar una foto anotada del chat (también si se dibujó en el móvil) y al compartirla.
@@ -596,19 +596,19 @@ p c                             → capturar una zona
 sequenceDiagram
     participant U as Tú
     participant F as Flow Launcher
-    participant L as pixpin-lanzador.exe
+    participant L as pindesk-lanzador.exe
     participant P as PinDesk
     U->>F: p t revisar fisura + Ctrl V
     F->>L: JSON-RPC (query)
     L-->>F: resultados (lee el índice en caché)
     U->>F: Intro
     F->>L: JSON-RPC (acción)
-    L->>P: WM_COPYDATA {"pixpin":1,"accion":"anadir_tarea",...}
+    L->>P: WM_COPYDATA {"pindesk":1,"accion":"anadir_tarea",...}
     P-->>U: la tarea aparece en el Inbox, con su imagen
 ```
 
 El protocolo está documentado en [`docs/protocolo-pedidos.md`](docs/protocolo-pedidos.md):
-cualquier programa puede pedirle cosas a PixPin.
+cualquier programa puede pedirle cosas a PinDesk.
 
 ### Sincronizar con el móvil
 
@@ -682,44 +682,44 @@ son letras que **solo valen dentro de la ventana abierta**, y cada botón muestr
 1. Descarga el ZIP de la última versión en [Releases](https://github.com/1xmanMAX/PIXPIN_PRO_WINDOWS/releases).
 2. Descomprímelo y ejecuta `Instalar.cmd` (lo deja en `%LOCALAPPDATA%\Programs\PinDesk` y lo
    abre) o `pindesk.exe` directamente. Se queda en la bandeja y arranca con Windows. Si tenías
-   PixPin Max, `Instalar.cmd` la sustituye y conserva tus datos.
+   PixPin Max (el nombre de antes), `Instalar.cmd` la sustituye y conserva tus datos.
 3. Opcional: en **Ajustes → Apps predeterminadas** elige PinDesk para fotos, vídeos y audios.
 
-**Modo portable**: si junto a `pindesk.exe` hay un `pixpinmax.toml` (el nombre de antes, a propósito), todo se guarda en esa
+**Modo portable**: si junto a `pindesk.exe` hay un `pindesk.toml` (o el `pixpinmax.toml` de antes de PinDesk), todo se guarda en esa
 carpeta y nada en el registro, así que se puede llevar en un USB.
 
 ## Cómo está hecho
 
 Un espacio de trabajo de Rust con **tres ejecutables** y **33 crates por capas**. Una prueba
-(`apps/pixpin/tests/capas.rs`) comprueba que ningún crate dependa de uno de su misma capa o de
+(`apps/pindesk/tests/capas.rs`) comprueba que ningún crate dependa de uno de su misma capa o de
 una capa superior.
 
 ```mermaid
 flowchart TB
     L5["<b>Capa 5 · la app</b><br/>pixpin → pindesk.exe"]
-    L4["<b>Capa 4 · ventanas propias</b><br/>pixpin-notas (editor de notas)"]
-    L3["<b>Capa 3 · interfaz</b><br/>pixpin-ui · pixpin-flow · pixpin-plugin"]
-    L2["<b>Capa 2 · funciones</b><br/>pixpin-capture · pixpin-pin · pixpin-pila · pixpin-proyecto<br/>pixpin-pdf · pixpin-docs · pixpin-ocr · pixpin-record · pixpin-store<br/>pixpin-lanzador (Flow) · pixpin-aligerar (PDF)<br/>pixpin-cad (planos y 3D) · pixpin-bim (Revit, IFC, Civil 3D)"]
-    L1["<b>Capa 1 · Windows y motores</b><br/>pixpin-shell · pixpin-render · pixpin-gpu · pixpin-codec<br/>pixpin-motor2d · pixpin-tinta · pixpin-sincro · pixpin-audio<br/>pixpin-voz · pixpin-web · pdfsqueeze-core"]
-    L0["<b>Capa 0 · cimientos puros</b><br/>pixpin-geom · pixpin-model · pixpin-nivel · pixpin-lecciones"]
+    L4["<b>Capa 4 · ventanas propias</b><br/>pindesk-notas (editor de notas)"]
+    L3["<b>Capa 3 · interfaz</b><br/>pindesk-ui · pindesk-flow · pindesk-plugin"]
+    L2["<b>Capa 2 · funciones</b><br/>pindesk-capture · pindesk-pin · pindesk-pila · pindesk-proyecto<br/>pindesk-pdf · pindesk-docs · pindesk-ocr · pindesk-record · pindesk-store<br/>pindesk-lanzador (Flow) · pindesk-aligerar (PDF)<br/>pindesk-cad (planos y 3D) · pindesk-bim (Revit, IFC, Civil 3D)"]
+    L1["<b>Capa 1 · Windows y motores</b><br/>pindesk-shell · pindesk-render · pindesk-gpu · pindesk-codec<br/>pindesk-motor2d · pindesk-tinta · pindesk-sincro · pindesk-audio<br/>pindesk-voz · pindesk-web · pdfsqueeze-core"]
+    L0["<b>Capa 0 · cimientos puros</b><br/>pindesk-geom · pindesk-model · pindesk-nivel · pindesk-lecciones"]
     L5 --> L4 --> L3 --> L2 --> L1 --> L0
 ```
 
 | Pieza | Qué hace |
 |---|---|
-| `pixpin-render`, `pixpin-gpu` | Pintar con Direct2D/DirectWrite sobre un dispositivo D3D11 compartido |
-| `pixpin-motor2d`, `pixpin-tinta` | El lienzo (formato de Excalidraw) y el trazo a mano |
-| `pixpin-capture`, `pixpin-record`, `pixpin-pila` | Captura, GIF/MP4 y la pila de capturas de la esquina |
-| `pixpin-pin` | Las ventanas flotantes: imagen, vídeo, PDF, en vivo, herramientas |
-| `pixpin-proyecto`, `pixpin-sincro` | Proyectos en disco (mismo formato que Android) y la sincronización por Wi‑Fi |
-| `pixpin-pdf`, `pixpin-docs`, `pdfsqueeze-core` | Leer y anotar PDF, Word y EPUB, y aligerar PDF |
-| `pixpin-office`, `pixpin-hojas` | Word y PowerPoint maquetados como en Office, y hojas de Excel, sin Office |
-| `pixpin-ocr`, `pixpin-voz`, `pixpin-audio` | Texto de las imágenes, transcripción y audio |
-| `pixpin-codec` | Imágenes: `image` y, para HEIC/AVIF/TIFF/RAW, los decodificadores de Windows (WIC) |
-| `pixpin-lecciones` | Lecciones aprendidas: buscador, etiquetador y repaso, igual que en Android |
-| `pixpin-cad` | El visor de planos DWG/DXF (con su regla, marcos e impresión) y el visor 3D con la GPU |
-| `pixpin-bim` | Leer Revit, IFC, LandXML y puntos de Civil 3D: niveles, medidas y terrenos |
-| `pixpin-lanzador` | El plugin de Flow Launcher |
+| `pindesk-render`, `pindesk-gpu` | Pintar con Direct2D/DirectWrite sobre un dispositivo D3D11 compartido |
+| `pindesk-motor2d`, `pindesk-tinta` | El lienzo (formato de Excalidraw) y el trazo a mano |
+| `pindesk-capture`, `pindesk-record`, `pindesk-pila` | Captura, GIF/MP4 y la pila de capturas de la esquina |
+| `pindesk-pin` | Las ventanas flotantes: imagen, vídeo, PDF, en vivo, herramientas |
+| `pindesk-proyecto`, `pindesk-sincro` | Proyectos en disco (mismo formato que Android) y la sincronización por Wi‑Fi |
+| `pindesk-pdf`, `pindesk-docs`, `pdfsqueeze-core` | Leer y anotar PDF, Word y EPUB, y aligerar PDF |
+| `pindesk-office`, `pindesk-hojas` | Word y PowerPoint maquetados como en Office, y hojas de Excel, sin Office |
+| `pindesk-ocr`, `pindesk-voz`, `pindesk-audio` | Texto de las imágenes, transcripción y audio |
+| `pindesk-codec` | Imágenes: `image` y, para HEIC/AVIF/TIFF/RAW, los decodificadores de Windows (WIC) |
+| `pindesk-lecciones` | Lecciones aprendidas: buscador, etiquetador y repaso, igual que en Android |
+| `pindesk-cad` | El visor de planos DWG/DXF (con su regla, marcos e impresión) y el visor 3D con la GPU |
+| `pindesk-bim` | Leer Revit, IFC, LandXML y puntos de Civil 3D: niveles, medidas y terrenos |
+| `pindesk-lanzador` | El plugin de Flow Launcher |
 
 La interfaz no usa HTML ni un framework: cada ventana se dibuja con Direct2D, con tema claro y
 oscuro según Windows. El diseño de cada parte está en `docs/superpowers/specs/` y las
@@ -730,7 +730,7 @@ investigaciones en `docs/investigacion/`.
 Hace falta Rust estable (1.85 o superior) en Windows.
 
 ```powershell
-cargo build --release -p pixpin -p pixpin-aligerar -p pixpin-lanzador
+cargo build --release -p pindesk -p pindesk-aligerar -p pindesk-lanzador
 ```
 
 Para dejarlo instalado en `%LOCALAPPDATA%\Programs\PinDesk`, con el acceso del menú Inicio y
@@ -759,4 +759,4 @@ cargo test --workspace --no-fail-fast -- --test-threads=1
 ## Licencia
 
 MIT. Las letras incluidas llevan su propia licencia (OFL o MIT), en
-`crates/pixpin-render/letras/LICENCIAS.txt`.
+`crates/pindesk-render/letras/LICENCIAS.txt`.

@@ -1,4 +1,4 @@
-// Los comentarios de la nota, como en el editor de antes (pixpin-notas,
+// Los comentarios de la nota, como en el editor de antes (pindesk-notas,
 // `panel_comentarios.rs`): tarjetas a la derecha a la altura de su frase,
 // el texto comentado resaltado, responder, resolver, editar y borrar. Las
 // cuentas (anclar, reanclar, fusionar) las hace PixPin (`comentarios_web.rs`):

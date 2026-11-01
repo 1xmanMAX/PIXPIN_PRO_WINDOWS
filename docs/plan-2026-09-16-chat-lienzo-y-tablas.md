@@ -14,16 +14,16 @@ está a medias.
 ## Reglas que no cambian
 
 1. **Telegram Desktop es GPL-3.0.** De ahí salen medidas, colores y
-   comportamientos; nunca código ni recursos. PixPin Max es MIT y `deny.toml`
+   comportamientos; nunca código ni recursos. PinDesk es MIT y `deny.toml`
    rechaza copyleft: copiar su código obligaría a publicar todo el motor bajo
    GPL.
-2. **PixPin Android es del usuario y es la referencia.** Ahí sí se lee y se
+2. **PinDesk Android es del usuario y es la referencia.** Ahí sí se lee y se
    cita el código. Cuando Android y Telegram discrepan (las fechas «Hoy» y
    «Ayer», por ejemplo), manda Android: esta app es su puerto.
 3. **Lo que no se entiende se conserva.** Todo modelo lleva su `resto` con
    `#[serde(flatten)]`: abrir y volver a guardar desde Windows no puede tirar
    campos de una versión más nueva del móvil.
-4. **La geometría va en `pixpin-ui`, pura y probada.** Medir texto necesita
+4. **La geometría va en `pindesk-ui`, pura y probada.** Medir texto necesita
    las fuentes del sistema, así que mide quien pinta y pasa el alto ya hecho.
 5. **Nada de datos de ejemplo en la carpeta del usuario sin borrarlos después.**
 
@@ -31,7 +31,7 @@ está a medias.
 
 ## Fase 1 · Las tablas (empezada)
 
-**Hecho**: `pixpin_proyecto::tabla` — el mismo `tablas/<id>.json` de Android,
+**Hecho**: `pindesk_proyecto::tabla` — el mismo `tablas/<id>.json` de Android,
 con referencias `B7` ↔ (columna, fila), y cinco pruebas. Es un **mapa de celda
 a texto**, no una matriz: una tabla con una celda en `A1` y otra en `Z900`
 ocupa dos entradas, y la fusión celda a celda sale gratis porque un mapa se
@@ -44,7 +44,7 @@ junta clave por clave.
    paréntesis), las funciones que use Android (`SUMA`, `PROMEDIO`, `MIN`,
    `MAX`, `CONTAR`), y **detección de ciclos** — sin ella, `A1 = B1` y
    `B1 = A1` cuelgan la aplicación. Puro y con pruebas.
-2. **La rejilla en pantalla**: `pixpin_ui::rejilla` con alto de fila, ancho de
+2. **La rejilla en pantalla**: `pindesk_ui::rejilla` con alto de fila, ancho de
    columna, cabeceras `A B C` y `1 2 3`, y **solo se pintan las celdas que se
    ven** (igual que las filas del chat).
 3. **Editar una celda**: escribir, `Entrar` baja, `Tab` avanza, `Escape`
@@ -63,7 +63,7 @@ viajaría por la red como si fuera un cambio.
 Es lo que el usuario pidió primero: pulsar el nombre en la cabecera y ver el
 proyecto separado por tipos.
 
-1. **`pixpin_ui::info`** — geometría pura: la columna de la derecha (ancho
+1. **`pindesk_ui::info`** — geometría pura: la columna de la derecha (ancho
    mínimo/máximo, y a partir de qué ancho de ventana pasa a pantalla
    completa), la cabecera con su botón de volver, la ficha con el avatar
    grande, y la **barra de pestañas** con su rayita indicadora.
@@ -84,7 +84,7 @@ proyecto separado por tipos.
 
 El buscador de la izquierda ya filtra proyectos. Falta el de dentro:
 
-1. `pixpin_ui::resaltado` — dónde cae cada coincidencia dentro de un texto,
+1. `pindesk_ui::resaltado` — dónde cae cada coincidencia dentro de un texto,
    sin distinguir mayúsculas ni acentos. Puro y probado.
 2. Pintar el resaltado en la burbuja.
 3. Saltar de una coincidencia a otra, y que el historial se desplace hasta
@@ -146,12 +146,12 @@ que lo demuestre sobre un fichero real del móvil.
 
 ## Fase 7 · Terminar la sincronización por wifi
 
-Lo que falta del crate `pixpin-sincro`, ya con el protocolo 4 portado:
+Lo que falta del crate `pindesk-sincro`, ya con el protocolo 4 portado:
 
-1. **Descubrimiento mDNS** `_pixpin._tcp.` y la sonda `PING`/`PONG`.
+1. **Descubrimiento mDNS** `_pindesk._tcp.` y la sonda `PING`/`PONG`.
 2. **El bucle del diálogo**, los dos papeles.
 3. **Diferencia y fusión** con sus parches.
-4. **El envío puntual**, incluido el sentido invertido (`_pixpinrecibe._tcp.`):
+4. **El envío puntual**, incluido el sentido invertido (`_pindeskrecibe._tcp.`):
    el ordenador enseña su código y el móvil le manda algo.
 
 **Tres cosas que NO se deducen a ojo**, porque romperían la compatibilidad en

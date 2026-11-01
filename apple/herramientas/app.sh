@@ -27,8 +27,8 @@ set -euo pipefail
 APPLE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_SRC="$APPLE/app"
 XC="$APPLE/xcode"
-VERSION="${PIXPIN_VERSION:-0.1.0}"
-COMPILACION="${PIXPIN_COMPILACION:-$(date +%Y%m%d%H%M)}"
+VERSION="${PINDESK_VERSION:-0.1.0}"
+COMPILACION="${PINDESK_COMPILACION:-$(date +%Y%m%d%H%M)}"
 
 MODO="${1:-auto}"
 if [ "$MODO" = auto ]; then

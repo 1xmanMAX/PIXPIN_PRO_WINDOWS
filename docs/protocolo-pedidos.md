@@ -2,12 +2,12 @@
 
 Cualquier programa del mismo equipo puede pedirle cosas a la PinDesk que esta abierta:
 abrir un proyecto, escribir en el chat, crear un lienzo, grabar, añadir una tarea... Lo usa
-el plugin de Flow Launcher (`apps/pixpin-lanzador`), y sirve igual para un script propio
+el plugin de Flow Launcher (`apps/pindesk-lanzador`), y sirve igual para un script propio
 (AutoHotkey, PowerShell, otro lanzador).
 
 ## Transporte
 
-- `WM_COPYDATA` a la ventana de clase **`PixPinMaxVentanaMensajes`** (`FindWindowW`), con
+- `WM_COPYDATA` a la ventana de clase **`PinDeskVentanaMensajes`** (`FindWindowW`), con
   `dwData = 0x5049_5851` y en `lpData` el **JSON en UTF-8, sin nulo final**, de 64 KB como
   mucho. Se manda con `SendMessageW` (sincrono) y despues se le postea `WM_NULL` para
   despertar su bucle.
@@ -21,10 +21,12 @@ el plugin de Flow Launcher (`apps/pixpin-lanzador`), y sirve igual para un scrip
 ## El pedido
 
 ```json
-{ "pixpin": 1, "accion": "<accion>", ... }
+{ "pindesk": 1, "accion": "<accion>", ... }
 ```
 
-- `pixpin` es la version. Un campo nuevo opcional no la sube; quitar o cambiar uno si.
+- `pindesk` es la version. Un campo nuevo opcional no la sube; quitar o cambiar uno si. Hasta
+  nov-2026 el campo se llamaba `pixpin` (`{ "pixpin": 1, … }`), y se sigue aceptando; si vienen
+  los dos, manda `pindesk` (docs/formato-pindesk.md).
 - Lo que no se conoce se ignora.
 - `proyecto` es el `id` de la carpeta del proyecto (`proyectos/<id>`, el de
   `proyectos/indice.json`). `null` o ausente = **Mensajes guardados**.
@@ -72,13 +74,13 @@ el plugin de Flow Launcher (`apps/pixpin-lanzador`), y sirve igual para un scrip
 | `timeline` | `texto?` | (15-oct) Con `texto`, apunta un momento en el timeline con la hora de ahora (la primera frase es el título, como la caja de su ventana) y lo dice en el globo; sin `texto`, abre el timeline |
 | `leer_en_voz` | `texto?`, `ruta?`, `titulo?`, `parar?` | **Lee en voz alta** (15-oct) con la voz de la app (la de Windows o las de Microsoft, como en los lectores), **sin abrir ninguna ventana**; calla lo que sonara antes. Un `texto` suelto (la selección de una página desde la extensión del navegador): un párrafo por renglón. O un fichero (`ruta`, el asistente: PDF, Word, PowerPoint, Excel, nota o texto): su texto se saca en un hilo. Se pausa, salta y para con los mandos de reproductor de Windows y las teclas multimedia, que enseñan `titulo` (sin él, «PinDesk» o el nombre del fichero). Con `parar: true`, calla lo que suene, sea de quien sea. Sin nada que leer, o un fichero que no está, se avisa |
 | `ocr` | `ruta`, `rutas?` | **El texto de esa imagen al portapapeles** (15-oct, «Texto (OCR)» de la extensión del navegador; con `rutas`, más imágenes detrás de `ruta`, todo en un texto con una línea en blanco entre imagen e imagen: «Copiar texto (OCR)» del menú del Explorador con varias elegidas): el OCR de Windows, en orden de lectura, como «Texto» de la captura. En su hilo; el globo dice lo copiado («Texto copiado (120 caracteres): «…»»), que no había texto o que falta el OCR de Windows. Una `ruta` que no está o no es una imagen se rechaza con aviso |
-| `herramienta` | `nombre`, `args?`, `respuesta?`, `preguntar?`, `origen?` | **Hace una herramienta del asistente con esos argumentos y devuelve lo que salió** (15-oct-2026, el servidor MCP `apps/pixpin-mcp`). `nombre` es una fila de `pixpin_ia::acciones::todas()` (`anadir_tarea`, `borrar_lista`, `anotar_documento`…; no `hoja_a_lienzo`), `args` sus argumentos tal como los describe su JSON Schema. Se hace en su hilo por el mismo camino que el asistente: las tareas por su nombre, los documentos por su nombre o ruta, y **lo que la fila manda preguntar se pregunta** (chat «Asistente» y aviso flotante, «Sí»/«No»; sin respuesta en 5 min, no). `preguntar`: otra pregunta que hacer antes (la usa MCP para lo que cambia algo que ya existe). Al acabar escribe `{"ok": bool, "texto": "…"}` en `respuesta`, que tiene que ser un `.json` **nuevo directamente dentro de `%TEMP%\pixpin-mcp\`** (si no, se hace igual pero no se escribe nada). Se escribe al lado (`.parte`) y se renombra: quien espera puede leerlo en cuanto aparece. `origen` («Claude») sale en el aviso y en la pregunta |
-| `lectura_veloz` | `doc`, `ruta`, `tipo`, `pagina?`, `frac?`, `fraccion?`, `t?`, `v?` | **Lectura Veloz mueve el marcador verde 🟢** de un documento a donde se va leyendo allí (27-oct-2026), **de fondo**: no abre ni trae nada al frente y no dice nada en el globo (lo que sale mal queda en el registro). Los campos (texto o número) se miran como los del enlace `pixpinmax://lectura-veloz?…`: `ruta` local con extensión de documento y que sea un fichero, números finitos y acotados. Por hojas (un PDF, o `tipo: "pdf"`) cambia `pagina` y el 🟢 de las marcas; de corrido, el verde de la voz (`-1:<fraccion>`) y el sitio. Si el lector de ese documento está abierto, lo lleva también en memoria y va ahí. Ver `docs/integracion-lectura-veloz.md` |
+| `herramienta` | `nombre`, `args?`, `respuesta?`, `preguntar?`, `origen?` | **Hace una herramienta del asistente con esos argumentos y devuelve lo que salió** (15-oct-2026, el servidor MCP `apps/pindesk-mcp`). `nombre` es una fila de `pindesk_ia::acciones::todas()` (`anadir_tarea`, `borrar_lista`, `anotar_documento`…; no `hoja_a_lienzo`), `args` sus argumentos tal como los describe su JSON Schema. Se hace en su hilo por el mismo camino que el asistente: las tareas por su nombre, los documentos por su nombre o ruta, y **lo que la fila manda preguntar se pregunta** (chat «Asistente» y aviso flotante, «Sí»/«No»; sin respuesta en 5 min, no). `preguntar`: otra pregunta que hacer antes (la usa MCP para lo que cambia algo que ya existe). Al acabar escribe `{"ok": bool, "texto": "…"}` en `respuesta`, que tiene que ser un `.json` **nuevo directamente dentro de `%TEMP%\pindesk-mcp\`** (si no, se hace igual pero no se escribe nada). Se escribe al lado (`.parte`) y se renombra: quien espera puede leerlo en cuanto aparece. `origen` («Claude») sale en el aviso y en la pregunta |
+| `lectura_veloz` | `doc`, `ruta`, `tipo`, `pagina?`, `frac?`, `fraccion?`, `t?`, `v?` | **Lectura Veloz mueve el marcador verde 🟢** de un documento a donde se va leyendo allí (27-oct-2026), **de fondo**: no abre ni trae nada al frente y no dice nada en el globo (lo que sale mal queda en el registro). Los campos (texto o número) se miran como los del enlace `pindesk://lectura-veloz?…`: `ruta` local con extensión de documento y que sea un fichero, números finitos y acotados. Por hojas (un PDF, o `tipo: "pdf"`) cambia `pagina` y el 🟢 de las marcas; de corrido, el verde de la voz (`-1:<fraccion>`) y el sitio. Si el lector de ese documento está abierto, lo lleva también en memoria y va ahí. Ver `docs/integracion-lectura-veloz.md` |
 
 ### El asistente desde fuera (`asistente`, 13-oct-2026)
 
 ```json
-{ "pixpin": 1, "accion": "asistente", "texto": "apunta comprar yeso y mañana revisar el encofrado",
+{ "pindesk": 1, "accion": "asistente", "texto": "apunta comprar yeso y mañana revisar el encofrado",
   "proyecto": "pr-1789412424738", "imagenes": [] }
 ```
 
@@ -88,13 +90,13 @@ el plugin de Flow Launcher (`apps/pixpin-lanzador`), y sirve igual para un scrip
   del chat: las acciones de la app van por este mismo protocolo, y lo dibujado, sin un lienzo
   abierto, al lienzo del asistente en su chat.
 - **Cola de encargos** (15-oct, `automatizaciones::cola`): el pedido solo apunta el encargo; un
-  hilo los hace de uno en uno (con el modelo local solo cabe uno cargado, `pixpin_ia::relevo`).
+  hilo los hace de uno en uno (con el modelo local solo cabe uno cargado, `pindesk_ia::relevo`).
   Se guardan en `<raiz>\asistente-encargos.json`
   (`{"version":1,"encargos":[{id, texto, proyecto?, imagenes, estado: "en_cola"|"haciendo"|"hecha"|"fallo", creado, empezado?, acabado?, resumen, con_fallos?, abrir?: {proyecto, codigo, lienzo?}}]}`):
   lo que quedó en cola al cerrar PinDesk se hace al volver; el que estaba a medias **no se
   repite** (podría apuntar dos veces lo mismo): queda como fallido y se avisa. Se guardan los
   10 últimos acabados.
-- Al acabar cada uno, **notificación de Windows** (`pixpin_shell::notificacion`): «✅ Hecho: …» /
+- Al acabar cada uno, **notificación de Windows** (`pindesk_shell::notificacion`): «✅ Hecho: …» /
   «⚠️ Hecho a medias: …» / «❌ No se pudo: …», una línea con la respuesta o el motivo y
   **«Abrir»** (el lienzo si dibujó; si no, la respuesta en el chat «Asistente»). Si Windows no
   la deja salir, el aviso flotante de siempre. Si el turno pide permiso (algo que borra o
@@ -109,8 +111,8 @@ el plugin de Flow Launcher (`apps/pixpin-lanzador`), y sirve igual para un scrip
 
 Las notificaciones de Windows de PinDesk (asistente, recordatorios, capturas que caducan) llevan
 botones; cada botón es **un pedido de este protocolo**. Como PinDesk no está empaquetado, Windows
-los devuelve por protocolo: `pixpin:pedido?json=<pedido en %-código>` (o `pixpinmax:` si `pixpin:`
-es de otro programa, como el PixPin original de DepthPixel; `orden::esquema_de_la_casa`), que abre
+los devuelve por protocolo: `pindesk:pedido?json=<pedido en %-código>` (los de antes,
+`pixpinmax:` y `pixpin:`, se siguen entendiendo; `orden::esquema_de_la_casa`), que abre
 `pindesk.exe --url "<seña>"`. Es **el mismo protocolo, traductor y lista blanca** que los enlaces
 de `docs/integraciones.md` (`orden::de_enlace`, `orden::seguridad`); los botones van **firmados**
 (`orden::firma`) y se hacen sin preguntar. `--atajo url "<seña>"` (como se registraba antes) es un
@@ -150,7 +152,7 @@ como un `.leccion`.
   estaba apagado a esa hora, corre al encenderse si no han pasado 6 h), `al_sincronizar` (al acabar
   una vuelta de fondo que trajo algo) o `a_mano`.
 - Cada paso es `{"tipo":"accion", herramienta, args?, proyecto?, imagenes?}` —una fila de la tabla
-  del asistente (`crates/pixpin-ia/src/acciones.rs`, el pedido que armaría el asistente; `proyecto`
+  del asistente (`crates/pindesk-ia/src/acciones.rs`, el pedido que armaría el asistente; `proyecto`
   es el nombre o el id del chat)— o `{"tipo":"asistente", pedido, proyecto?, imagenes?}`, un turno
   del asistente como `asistente` (al capturar, la captura va adjunta aunque no se diga).
 - Variables en cualquier texto: `{captura}`, `{resultado}` (lo que contestó el paso anterior),
@@ -188,15 +190,15 @@ Excalidraw del móvil (prueba de ida y vuelta: `biblioteca_figuras::pruebas`).
 ### Una imagen al lienzo del móvil (`enviar_al_movil`, 6-oct-2026)
 
 ```json
-{ "pixpin": 1, "accion": "enviar_al_movil", "aparato": "6f1c…-…",
-  "imagenes": ["C:\\Users\\yo\\AppData\\Roaming\\PixPinMax\\cache\\lanzador-imagenes\\img-1.png"] }
+{ "pindesk": 1, "accion": "enviar_al_movil", "aparato": "6f1c…-…",
+  "imagenes": ["C:\\Users\\yo\\AppData\\Roaming\\PinDesk\\cache\\lanzador-imagenes\\img-1.png"] }
 ```
 
 - La app contesta «aceptado» al momento y lo hace **en un hilo** (`sincronizar::al_movil`):
   busca al móvil en su ultima direccion (`sincro\direcciones.txt`, un `PING` de un segundo) y,
-  si no contesta, por mDNS (`_pixpin._tcp`, por el `id` y la etiqueta del grupo de su TXT);
+  si no contesta, por mDNS (`_pindesk._tcp`, por el `id` y la etiqueta del grupo de su TXT);
   conecta por el canal cifrado del grupo (puerto 47474), saluda y manda cada fichero con la
-  peticion `suelto` (`crates/pixpin-sincro/src/al_lienzo.rs`).
+  peticion `suelto` (`crates/pindesk-sincro/src/al_lienzo.rs`).
 - El móvil la pone **en el centro del lienzo que tenga delante** y la guarda; si no tiene un
   lienzo abierto, va a su Conversación general. Lo que no es una imagen (`archivos`) va siempre
   a su chat.
@@ -218,8 +220,8 @@ este equipo. En `texto`, las fichas `[img 01]`, `[img 02]`… (desde 1, en el or
 `[img 01]` es `imagenes[0]`) marcan donde va cada una:
 
 ```json
-{ "pixpin": 1, "accion": "anadir_tarea", "texto": "comprar yeso [img 01]",
-  "imagenes": ["C:\\Users\\yo\\AppData\\Roaming\\PixPinMax\\cache\\lanzador-imagenes\\pegada-1.bmp"] }
+{ "pindesk": 1, "accion": "anadir_tarea", "texto": "comprar yeso [img 01]",
+  "imagenes": ["C:\\Users\\yo\\AppData\\Roaming\\PinDesk\\cache\\lanzador-imagenes\\pegada-1.bmp"] }
 ```
 
 - PinDesk **copia** cada imagen a `archivos/` del chat de la lista (con nombre propio,
@@ -240,9 +242,9 @@ este equipo. En `texto`, las fichas `[img 01]`, `[img 02]`… (desde 1, en el or
 cada uno y se quitan del texto:
 
 ```json
-{ "pixpin": 1, "accion": "chat", "proyecto": "pr-1789412424738",
+{ "pindesk": 1, "accion": "chat", "proyecto": "pr-1789412424738",
   "texto": "el plano [archivo 01] y la foto [img 01]",
-  "imagenes": ["C:\\Users\\yo\\AppData\\Roaming\\PixPinMax\\cache\\lanzador-imagenes\\img-1.png"],
+  "imagenes": ["C:\\Users\\yo\\AppData\\Roaming\\PinDesk\\cache\\lanzador-imagenes\\img-1.png"],
   "archivos": ["C:\\Users\\yo\\Desktop\\plano.pdf"] }
 ```
 
@@ -269,7 +271,7 @@ PinDesk) y desaparece al acabar (o sola a los 10 s). Esc mientras graba la desca
 ## Donde leer (sin pedir nada)
 
 Buscar se hace leyendo el disco, sin pasar por la app (funciona aunque este cerrada). La raiz
-es `%APPDATA%\PixPinMax` (o la carpeta del exe si al lado hay un `pixpinmax.toml`):
+es `%APPDATA%\PinDesk` (o la carpeta del exe si al lado hay un `pindesk.toml`):
 
 - `proyectos/indice.json`: `{"proyectos":[{id, nombre, tocado, hojas, guardados?, ...}]}`.
   El de `guardados: true` es «Mensajes guardados».
@@ -284,7 +286,7 @@ es `%APPDATA%\PixPinMax` (o la carpeta del exe si al lado hay un `pixpinmax.toml
   acaba en `.leccion` (normalmente `pixpin:files/guardados/lecciones/<id>.leccion`, que vive en
   `proyectos/<id>/android/guardados/lecciones/`). Ese fichero es la verdad: JSON en camelCase
   (`titulo, quePaso, porQue, proxima, tipo, area, gravedad, etiquetas, etiquetasAuto,
-  referencias, causas, repeticiones, caja, repasar, adjuntos…`, ver `crates/pixpin-lecciones`).
+  referencias, causas, repeticiones, caja, repasar, adjuntos…`, ver `crates/pindesk-lecciones`).
   `adjuntos` son ids de mensajes `IMAGEN`/`VOZ` del mismo chat con `respondeA: "lec-<id>"`.
   Toca repasarla cuando `repasar <= ahora` (ms).
 - Nunca escribir en esos ficheros desde fuera: la app los protege con un cerrojo que solo
@@ -294,9 +296,9 @@ es `%APPDATA%\PixPinMax` (o la carpeta del exe si al lado hay un `pixpinmax.toml
 
 Lo normal es el propio `pindesk.exe` (15-oct): `pindesk --pedido '<json>'`,
 `pindesk --pedido-archivo <ruta|->`, los verbos legibles (`pindesk tarea "comprar yeso"`) y
-los enlaces `pixpinmax://…` / `pixpin://…`. Todo en **`docs/integraciones.md`**. Desde Rust, la
-función para reutilizar es `pixpin_shell::mensajero::enviar_pedidos_o_arrancar`.
+los enlaces `pindesk://…` / `pindesk://…`. Todo en **`docs/integraciones.md`**. Desde Rust, la
+función para reutilizar es `pindesk_shell::mensajero::enviar_pedidos_o_arrancar`.
 
-`pixpin-lanzador.exe pedido '<json>'` manda un pedido (arranca PinDesk si hace falta) y
-`pixpin-lanzador.exe buscar "<texto>"` escribe los resultados, una linea JSON por resultado.
+`pindesk-lanzador.exe pedido '<json>'` manda un pedido (arranca PinDesk si hace falta) y
+`pindesk-lanzador.exe buscar "<texto>"` escribe los resultados, una linea JSON por resultado.
 Sin argumentos es el plugin de Flow Launcher (JSON-RPC por stdin/stdout).

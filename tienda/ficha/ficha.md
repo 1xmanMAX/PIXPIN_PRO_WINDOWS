@@ -75,10 +75,8 @@ Edge, compartir por enlace, descarga de modelos), la sincronización local
 cifrada, los permisos, «Reportar respuesta…», el borrado y el contacto. Se
 comprobó en el código que no hay analítica, telemetría ni envío de fallos.
 
-Un detalle a corregir en `main`: el enlace «[English]» del principio apunta a
-`#pixpin-max-privacy-policy-english`, pero el título ahora es «PinDesk
-Privacy Policy (English)», así que el ancla correcta es
-`#pindesk-privacy-policy-english`.
+El enlace «[English]» del principio ya apunta en `main` al ancla correcta,
+`#pindesk-privacy-policy-english` (antes `#pixpin-max-privacy-policy-english`).
 
 ## Lo que la ficha dice y por qué (honestidad)
 
@@ -122,7 +120,7 @@ Privacy Policy (English)», así que el ancla correcta es
 
 ## Logos (opcionales)
 
-En `logos/` (dibujados de nuevo a partir del icono `pixpinmax.ico`, aro azul
+En `logos/` (dibujados de nuevo a partir del icono `pindesk.ico`, aro azul
 `#2A7AE2`):
 
 | Fichero | Dónde va en Partner Center |

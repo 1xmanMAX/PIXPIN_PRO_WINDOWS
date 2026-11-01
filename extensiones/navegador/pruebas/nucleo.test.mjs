@@ -4,9 +4,9 @@
 // - Que el menu de la extension y la tabla del puente en Rust coinciden.
 // - Que el manifiesto es valido, sus ficheros existen y su "key" da el id
 //   que registra herramientas/registrar-navegador.ps1.
-// - Si esta compilado (PIXPIN_PUENTE_EXE o el target de siempre), una vuelta
+// - Si esta compilado (PINDESK_PUENTE_EXE o el target de siempre), una vuelta
 //   entera: el mensaje que arma la extension, por la tuberia, al
-//   pixpin-puente.exe de verdad en modo «en seco» (sin tocar PixPin).
+//   pindesk-puente.exe de verdad en modo «en seco» (sin tocar PixPin).
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -37,7 +37,7 @@ const PNG_1X1 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
 
 test("el menu y la tabla del puente en Rust tienen las mismas acciones", () => {
-  const rust = readFileSync(join(repo, "apps/pixpin-puente/src/traducir.rs"), "utf8");
+  const rust = readFileSync(join(repo, "apps/pindesk-puente/src/traducir.rs"), "utf8");
   const tabla = rust.slice(rust.indexOf("pub const ACCIONES"), rust.indexOf("];", rust.indexOf("pub const ACCIONES")));
   const deRust = [...tabla.matchAll(/\("([a-z_]+)",/g)].map((m) => m[1]);
   assert.equal(deRust.length, 12);
@@ -133,9 +133,9 @@ test("el manifiesto es valido y su clave da el id que se registra", () => {
 
 function exeDelPuente() {
   const candidatos = [
-    process.env.PIXPIN_PUENTE_EXE,
-    process.env.CARGO_TARGET_DIR && join(process.env.CARGO_TARGET_DIR, "debug", "pixpin-puente.exe"),
-    "F:/pixpin-targets/integ-navegador/debug/pixpin-puente.exe",
+    process.env.PINDESK_PUENTE_EXE,
+    process.env.CARGO_TARGET_DIR && join(process.env.CARGO_TARGET_DIR, "debug", "pindesk-puente.exe"),
+    "F:/pixpin-targets/integ-navegador/debug/pindesk-puente.exe",
   ];
   return candidatos.find((c) => c && existsSync(c));
 }
@@ -147,7 +147,7 @@ function alPuente(exe, carpeta, cuerpo) {
   const inicio = performance.now();
   const r = spawnSync(exe, ["chrome-extension://hcbhbfnjmdofjkdgeljognmjgppdiflo/"], {
     input: Buffer.concat([largo, json]),
-    env: { ...process.env, PIXPIN_PUENTE_EN_SECO: carpeta },
+    env: { ...process.env, PINDESK_PUENTE_EN_SECO: carpeta },
   });
   const ms = performance.now() - inicio;
   assert.equal(r.status, 0);
@@ -158,7 +158,7 @@ function alPuente(exe, carpeta, cuerpo) {
 test("de la extension al puente de verdad por la tuberia (en seco)", (t) => {
   const exe = exeDelPuente();
   if (!exe) {
-    t.skip("pixpin-puente.exe sin compilar");
+    t.skip("pindesk-puente.exe sin compilar");
     return;
   }
   const carpeta = mkdtempSync(join(tmpdir(), "pixpin-ext-"));

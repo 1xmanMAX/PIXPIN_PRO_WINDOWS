@@ -25,13 +25,13 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Compilar (release)
-        run: cargo build --release -p pixpin -p pixpin-aligerar -p pixpin-lanzador -p pixpin-puente -p pixpin-mcp
+        run: cargo build --release -p pindesk -p pindesk-aligerar -p pindesk-lanzador -p pindesk-puente -p pindesk-mcp
       - name: Empaquetar
         shell: pwsh
         run: |
           $dir = "PinDesk"
           New-Item -ItemType Directory $dir | Out-Null
-          foreach ($exe in 'pindesk','pixpin-aligerar','pixpin-lanzador','pixpin-puente','pixpin-mcp') {
+          foreach ($exe in 'pindesk','pindesk-aligerar','pindesk-lanzador','pindesk-puente','pindesk-mcp') {
             Copy-Item "target\release\$exe.exe" $dir
           }
           # Instalar.cmd: copia todo a %LOCALAPPDATA%\Programs\PinDesk (el
@@ -39,12 +39,14 @@ jobs:
           # arranque con Windows apunte siempre a la ultima) y la abre.
           #
           # Y migra la instalacion de cuando se llamaba PixPin Max
-          # (Programs\PixPinMax\pixpinmax.exe; docs/nombre-pindesk.md):
-          # cierra los dos nombres, pasa la entrada de arranque «PixPinMax» a
-          # «PinDesk» (la app tambien lo hace al abrirse), quita los .exe
-          # viejos (salvo si hay un pixpinmax.toml: es una copia portable con
-          # datos) y cambia el acceso del menu Inicio «PixPin Max» por
-          # «PinDesk». Los datos de %APPDATA%\PixPinMax no se tocan.
+          # (Programs\PixPinMax\pindesk.exe; docs/nombre-pindesk.md):
+          # cierra los dos nombres (y los ayudantes, nuevos y viejos), pasa la
+          # entrada de arranque «PixPinMax» a «PinDesk» (la app tambien lo
+          # hace al abrirse), quita los .exe viejos de las dos carpetas (salvo
+          # si hay un pindesk.toml: es una copia portable con datos) y
+          # cambia el acceso del menu Inicio «PixPin Max» por «PinDesk». Los
+          # datos de %APPDATA%\PixPinMax los pasa a %APPDATA%\PinDesk la
+          # propia app al abrirse (docs/formato-pindesk.md).
           @'
           @echo off
           setlocal
@@ -52,10 +54,25 @@ jobs:
           set "VIEJO=%LOCALAPPDATA%\Programs\PixPinMax"
           set "RUN=HKCU\Software\Microsoft\Windows\CurrentVersion\Run"
           set "INICIO=%APPDATA%\Microsoft\Windows\Start Menu\Programs"
-          taskkill /im pindesk.exe /f >nul 2>&1
-          taskkill /im pixpinmax.exe /f >nul 2>&1
+          for %%e in (pindesk pixpinmax pindesk-aligerar pixpin-aligerar pindesk-lanzador pixpin-lanzador pindesk-puente pixpin-puente) do (
+            taskkill /im %%e.exe /f >nul 2>&1
+          )
           if not exist "%DEST%" mkdir "%DEST%"
           copy /y "%~dp0*.exe" "%DEST%\" >nul
+          for %%e in (pixpin-aligerar pixpin-lanzador pixpin-puente) do (
+            if exist "%DEST%\%%e.exe" del /f /q "%DEST%\%%e.exe" >nul 2>&1
+          )
+          rem pixpin-mcp.exe: si la configuracion de Claude aun lo nombra, se
+          rem queda como copia de pindesk-mcp.exe (para no romperla); si no, fuera.
+          if not exist "%DEST%\pixpin-mcp.exe" goto mcp_hecho
+          findstr /m /c:"pixpin-mcp" "%APPDATA%\Claude\claude_desktop_config.json" "%USERPROFILE%\.claude.json" >nul 2>&1
+          if errorlevel 1 (
+            del /f /q "%DEST%\pixpin-mcp.exe" >nul 2>&1
+          ) else (
+            copy /y "%~dp0pindesk-mcp.exe" "%DEST%\pixpin-mcp.exe" >nul
+            echo Tu configuracion de Claude usa pixpin-mcp.exe: cambiala a pindesk-mcp.exe ^(docs\integraciones-mcp.md^).
+          )
+          :mcp_hecho
           reg query "%RUN%" /v PixPinMax >nul 2>&1
           if not errorlevel 1 (
             reg add "%RUN%" /v PinDesk /t REG_SZ /d "\"%DEST%\pindesk.exe\"" /f >nul

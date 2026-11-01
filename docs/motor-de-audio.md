@@ -1,10 +1,10 @@
-# El motor de audio (`crates/pixpin-motor-audio`)
+# El motor de audio (`crates/pindesk-motor-audio`)
 
 25-oct-2026. Grabar el micrófono y el sonido del equipo **a la vez, bien y gastando poco**: notas
 de voz, el micrófono flotante y la grabadora de clases y reuniones (con su vídeo). Equipo de
 referencia: Core i3 de 3.ª generación, 4 GB, Windows 10 21H2 / 11.
 
-El vídeo de la reunión es otro motor (`pixpin-motor-video`); este solo le da el sonido, por el
+El vídeo de la reunión es otro motor (`pindesk-motor-video`); este solo le da el sonido, por el
 contrato de [PCM](#el-pcm-para-el-video-y-los-demás).
 
 Lo que se aprendió de OBS, wasapi-rs, cpal, el ejemplo ApplicationLoopback de Microsoft,
@@ -17,10 +17,10 @@ speexdsp, rubato, zita-ajbridge, PipeWire y Oboe, y qué se cambió por ello, es
 
 | Quién | Por dónde | Qué pide |
 |---|---|---|
-| Notas de voz, dictado, micrófono flotante | `pixpin_audio::Grabadora::empezar` | micrófono, mono, realce de la voz |
+| Notas de voz, dictado, micrófono flotante | `pindesk_audio::Grabadora::empezar` | micrófono, mono, realce de la voz |
 | Grabar clase / reunión | `Grabadora::empezar_con_copia(…, Fuentes::LAS_DOS, copia)` | micrófono + equipo |
 | Vídeo de la reunión | la `Copia` de siempre, o `Grabadora::empezar_con_pcm` | bloques i16 con posición |
-| Cualquier cosa nueva | `pixpin_motor_audio::MotorAudio::empezar(Opciones { … })` | todo |
+| Cualquier cosa nueva | `pindesk_motor_audio::MotorAudio::empezar(Opciones { … })` | todo |
 | Otro sistema (Android, pruebas) | `MotorAudio::empezar_en(Arc<impl Sistema>, Opciones)` | lo mismo |
 
 `Grabadora` mantiene su cara de siempre (el `.parte` que se renombra al parar bien, los picos de
@@ -28,7 +28,7 @@ la onda, el mínimo de 700 ms, `ErrorAudio` con `SinMicrofono` / `SinSonidoDelEq
 `SinCodificadorAac`), y por debajo es el motor.
 
 ```rust
-let (sus, rx) = pixpin_motor_audio::suscripcion(512);
+let (sus, rx) = pindesk_motor_audio::suscripcion(512);
 let motor = MotorAudio::empezar(Opciones {
     microfono: Some(Microfono::Defecto),
     equipo: Some(Equipo::Proceso(pid_de_chrome)), // o Equipo::Todo
@@ -209,7 +209,7 @@ equipo:                                                          ganancia ──
 - **Paso alto** Butterworth 80 Hz (`paso_alto`).
 - **Puerta** (`puerta`, apagada por defecto): abre a -50 dBFS, cierra a -56, espera 150 ms, baja a
   -30 dB (no a cero).
-- **Realce de la voz** (`realce_voz`): el control de ganancia de siempre de `pixpin-audio` (picos a
+- **Realce de la voz** (`realce_voz`): el control de ganancia de siempre de `pindesk-audio` (picos a
   -3 dBFS, de 0 a +24 dB, ataque 10 ms, suelta 300 ms, sin subir el silencio). **Solo al
   micrófono**, como antes.
 - **Ganancia** por fuente, cambiable en marcha (`ganancia_microfono` / `ganancia_equipo`), sin
@@ -250,7 +250,7 @@ pero son ~1 300 líneas con FFT y un 3-5 % de un i3: queda anotado en la investi
 - **`.m4a`**: AAC-LC en MPEG-4, `IMFSinkWriter` + codificador AAC del sistema. Mono a 96 kbps
   (12 000 B/s, lo más bajo que admite) o estéreo a 128. 44 100 o 48 000 Hz. `Grabadora` escribe
   siempre **mono a 48 000**, como antes: lo leen el móvil, el reproductor del chat
-  (`IMFMediaEngine`) y `pixpin-voz`, que lo descodifica a 16 kHz mono con `IMFSourceReader` sin
+  (`IMFMediaEngine`) y `pindesk-voz`, que lo descodifica a 16 kHz mono con `IMFSourceReader` sin
   mirar con qué tasa se escribió. Un bloque que se perdiera en la cola se escribe como silencio:
   la duración es siempre la buena. Si escribir falla (disco lleno), se deja de escribir, se sigue
   vaciando la cola y **se cierra igual** (`Finalize` siempre, una vez): lo escrito queda legible.
@@ -269,7 +269,7 @@ pero son ~1 300 líneas con FFT y un 3-5 % de un i3: queda anotado en la investi
 - Al terminar, la cola se cierra: `recibir()` devuelve `None`.
 - `Receptor::devolver(bloque)` reutiliza la memoria (opcional).
 
-La `Copia` de `pixpin-audio` (un `Sender<Vec<i16>>` mono) sigue igual para quien ya la usaba.
+La `Copia` de `pindesk-audio` (un `Sender<Vec<i16>>` mono) sigue igual para quien ya la usaba.
 
 ### Niveles
 
@@ -307,7 +307,7 @@ Sin permiso de micrófono en la privacidad de Windows (`E_ACCESSDENIED`) es `Sin
 ## 8. Android
 
 El núcleo (todo menos `sistema/`) compila para Android sin tocar nada
-(`cargo clippy -p pixpin-motor-audio --target aarch64-linux-android`). Lo que falta es el
+(`cargo clippy -p pindesk-motor-audio --target aarch64-linux-android`). Lo que falta es el
 **sistema de Android**: un `impl Sistema` que dé la captura de cada fuente y la salida AAC. Las
 pruebas `motor::pruebas::un_sistema_que_empuja_como_android_graba_igual` y las de `empuje.rs`
 hacen ya ese camino en Linux.
@@ -388,7 +388,7 @@ Windows y el móvil ya sabe leerlo.
 // <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION"/>    // API 34+
 // <service android:name=".Grabadora" android:foregroundServiceType="microphone|mediaProjection"/>
 
-object Motor {                     // lo de Rust, por JNI (crate pixpin-motor-audio + un sistema Android)
+object Motor {                     // lo de Rust, por JNI (crate pindesk-motor-audio + un sistema Android)
     external fun empezar(m4a: String, conEquipo: Boolean): Long        // MotorAudio::empezar_en(Android, …)
     external fun empujar(fuente: Int, bloque: ShortArray, n: Int, finNs: Long)  // Empujador::empujar_i16
     external fun cerrarFuente(fuente: Int)                              // suelta el Empujador → reabrir
@@ -469,8 +469,8 @@ va y vuelve con reintentos, avisos repetidos, el hueco y el fallo del AAC, el mo
 con un micrófono que se va, y el motor «como Android»:
 
 ```
-cargo test -p pixpin-motor-audio
-cargo clippy -p pixpin-motor-audio --target aarch64-linux-android -- -D warnings
+cargo test -p pindesk-motor-audio
+cargo clippy -p pindesk-motor-audio --target aarch64-linux-android -- -D warnings
 ```
 
 En Windows, con micrófono y altavoces de verdad (graba 3 s de micrófono + equipo, con una pausa,
@@ -478,8 +478,8 @@ y comprueba duración, `.m4a` y PCM sin huecos; pon algo a sonar para ver el niv
 cancelación de eco y el sonido de un proceso):
 
 ```
-cargo test -p pixpin-motor-audio -- --ignored --nocapture
-cargo test -p pixpin-audio -- --ignored --nocapture
+cargo test -p pindesk-motor-audio -- --ignored --nocapture
+cargo test -p pindesk-audio -- --ignored --nocapture
 ```
 
 Para probar a mano lo que no se automatiza: desenchufar los cascos a mitad (tiene que seguir y

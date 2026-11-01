@@ -1,0 +1,114 @@
+[package]
+name = "pindesk"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+# El ejecutable se llama `pindesk.exe` desde nov-2026 (antes
+# `pixpinmax.exe`); el paquete y el crate siguen siendo `pixpin`
+# (docs/nombre-pindesk.md).
+[[bin]]
+name = "pindesk"
+path = "src/main.rs"
+
+[features]
+# La version de la Microsoft Store (solo en la rama `microsoft-store`, ver
+# docs/tienda.md y src/tienda.rs): la tarea de inicio del paquete en vez de
+# `HKCU\...\Run`, nada escrito en el registro y el manifiesto del exe sin el
+# elemento <msix> del paquete de identidad. La compila .github/workflows/tienda.yml.
+tienda = []
+
+[dependencies]
+anyhow = "1.0.104"
+fluent-bundle = "0.16.0"
+pindesk-audio = { version = "0.1.0", path = "../../crates/pindesk-audio" }
+pindesk-capture = { version = "0.1.0", path = "../../crates/pindesk-capture" }
+pindesk-ocr = { version = "0.1.0", path = "../../crates/pindesk-ocr" }
+# «Mi vocabulario» de los ajustes del OCR se parte con la misma regla que
+# usa el lector Indra.
+pindesk-indra = { path = "../../crates/pindesk-indra" }
+# El asistente del chat: la nube (Claude o DeepSeek), herramientas y bucle.
+pindesk-ia = { path = "../../crates/pindesk-ia" }
+# Lo que se reconoce al escribir una tarea: el parser que comparten la app,
+# el pedido `anadir_tarea` y el plugin de Flow Launcher.
+pindesk-frase = { path = "../../crates/pindesk-frase" }
+pindesk-docs = { version = "0.1.0", path = "../../crates/pindesk-docs" }
+# El editor de notas Markdown (H12): el RichEdit de Windows, en su crate
+# porque este ejecutable no admite `unsafe`.
+pindesk-notas = { version = "0.1.0", path = "../../crates/pindesk-notas" }
+pindesk-pdf = { version = "0.1.0", path = "../../crates/pindesk-pdf" }
+# Word y PowerPoint maquetados como en Office (el pin de paginas de Office).
+pindesk-office = { path = "../../crates/pindesk-office" }
+pindesk-proyecto = { version = "0.1.0", path = "../../crates/pindesk-proyecto" }
+pindesk-codec = { version = "0.1.0", path = "../../crates/pindesk-codec" }
+pindesk-geom = { version = "0.1.0", path = "../../crates/pindesk-geom" }
+pindesk-motor2d = { version = "0.1.0", path = "../../crates/pindesk-motor2d" }
+pindesk-nivel = { version = "0.1.0", path = "../../crates/pindesk-nivel" }
+pindesk-pin = { version = "0.1.0", path = "../../crates/pindesk-pin" }
+pindesk-pila = { version = "0.1.0", path = "../../crates/pindesk-pila" }
+pindesk-record = { version = "0.1.0", path = "../../crates/pindesk-record" }
+# El video de «Grabar clase»: la pantalla por la GPU hasta el codificador de
+# la grafica (ver docs/motor-de-video.md).
+pindesk-motor-video = { version = "0.1.0", path = "../../crates/pindesk-motor-video" }
+pindesk-render = { version = "0.1.0", path = "../../crates/pindesk-render" }
+pindesk-shell = { version = "0.1.0", path = "../../crates/pindesk-shell" }
+pindesk-sincro = { version = "0.1.0", path = "../../crates/pindesk-sincro" }
+# Si lo que dejo una grabacion cortada se puede abrir (`mp4::mirar`) y
+# cuanto cabe en el disco mientras se graba (`archivos::espacio_libre`).
+pindesk-sistema = { version = "0.1.0", path = "../../crates/pindesk-sistema" }
+# Lecciones aprendidas: la logica pura (ficha, repaso, buscador, etiquetas).
+pindesk-lecciones = { path = "../../crates/pindesk-lecciones" }
+pindesk-timeline = { path = "../../crates/pindesk-timeline" }
+pindesk-store = { version = "0.1.0", path = "../../crates/pindesk-store" }
+# Las hojas de Excel (.xlsx) en su visor como pin (`visor_hoja`).
+pindesk-hojas = { path = "../../crates/pindesk-hojas" }
+pindesk-tinta = { version = "0.1.0", path = "../../crates/pindesk-tinta" }
+pindesk-ui = { version = "0.1.0", path = "../../crates/pindesk-ui" }
+pindesk-cad = { path = "../../crates/pindesk-cad" }
+pindesk-bim = { path = "../../crates/pindesk-bim" }
+pindesk-web = { version = "0.1.0", path = "../../crates/pindesk-web" }
+pindesk-voz = { version = "0.1.0", path = "../../crates/pindesk-voz" }
+# Tarjetas de Anki de una clase, una foto o una nota (24-oct-2026).
+pindesk-anki = { version = "0.1.0", path = "../../crates/pindesk-anki" }
+# Jev de TypeSafe (28-oct-2026, docs/jev.md): lo importante de una clase, las
+# tarjetas que valen la pena, la prioridad de las tareas y el modelo de cada
+# pedido. Sin clave, nada cambia.
+pindesk-typesafe = { version = "0.1.0", path = "../../crates/pindesk-typesafe" }
+# El borrador de las imagenes pegadas en Flow (`[img 01]` -> fichero): el
+# mismo modulo que lee el plugin, asi el formato es uno solo. Solo serde y
+# `windows`, que ya estan; el plugin no depende de nada de PixPin.
+pindesk-lanzador = { version = "0.1.0", path = "../pindesk-lanzador" }
+# La huella de los PDF ya aligerados (ver src/aligerar.rs). Ya esta en el
+# arbol. pdfsqueeze NO va aqui: vive en su ejecutable, pindesk-aligerar.
+sha2 = "0.10"
+qrcodegen = "1.8.0"
+# El dialogo de sincronizar viaja en JSON: mismas versiones que pindesk-sincro.
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+# Comprimir el PDF de un plano exportado (`plano_cad::exportar`). Ya esta en el arbol.
+flate2 = "1.1"
+tracing = "0.1.44"
+tracing-appender = "0.2.5"
+tracing-subscriber = "0.3.23"
+windows = { version = "0.62.2", features = ["Win32_Foundation", "Win32_Graphics_Direct2D", "Win32_Graphics_Direct3D11"] }
+
+[dev-dependencies]
+toml = "0.8"
+# Las pruebas de aligerar fabrican un PDF cifrado; la misma que pdfsqueeze.
+lopdf = { version = "0.42", default-features = false }
+# El compresor en el propio hilo de las pruebas (no hay pindesk-aligerar.exe
+# al lado del ejecutable de pruebas) y los PDF sinteticos de pdfsqueeze.
+pindesk-aligerar = { workspace = true }
+pdfsqueeze-core = { workspace = true }
+# El «movil» de mentira de las pruebas de sincronizar (planos anotados que
+# viajan, `plano_cad::anotar`) y sus dibujos comprimidos.
+pindesk-sincro = { version = "0.1.0", path = "../../crates/pindesk-sincro", features = ["simulador"] }
+# Ver el plano a PNG en el banco del asistente (`documentos_acciones`).
+pindesk-cad = { path = "../../crates/pindesk-cad", features = ["pintar-png"] }
+flate2 = "1.1"
+# (Y la ventana de mentira que recibe los pedidos en `tests/orden_de_punta_a_punta.rs`.)
+windows = { version = "0.62.2", features = ["Win32_Graphics_Direct3D11", "Win32_Graphics_Dxgi_Common", "Win32_UI_WindowsAndMessaging", "Win32_System_DataExchange", "Win32_System_LibraryLoader"] }
+
+[build-dependencies]
+embed-resource = "3.0.11"

@@ -47,7 +47,7 @@ control.
 
 ## 2. Datos que se quedan en tu PC
 
-PinDesk guarda en su carpeta de datos (`%APPDATA%\PixPinMax`, o junto al
+PinDesk guarda en su carpeta de datos (`%APPDATA%\PinDesk`, o junto al
 ejecutable en la versión portátil) lo que tú creas o traes a ella:
 
 - Chats, mensajes, notas, tareas, horarios, recordatorios, lecciones y
@@ -59,7 +59,7 @@ ejecutable en la versión portátil) lo que tú creas o traes a ella:
   reconocedor de voz de Windows).
 - El reconocimiento de texto en imágenes (OCR) y la lectura de PDF, Word,
   Excel y planos también se hacen en el PC.
-- Tus ajustes (`pixpinmax.toml`).
+- Tus ajustes (`pindesk.toml`).
 - Las claves de API que pegues (Anthropic, DeepSeek, TypeSafe, Brave Search,
   Google): se guardan **cifradas con tu usuario de Windows** (DPAPI) y nunca
   en el fichero de ajustes.
@@ -210,7 +210,7 @@ its own, so we do not receive or store your data.
 Chats, notes, tasks, schedules, reminders, documents, screenshots, pins,
 drawings, photos, videos, voice notes, class and meeting recordings,
 transcripts and settings are stored in the data folder
-(`%APPDATA%\PixPinMax`, or next to the executable in the portable version).
+(`%APPDATA%\PinDesk`, or next to the executable in the portable version).
 Speech-to-text, OCR and document reading run on the PC. API keys you enter
 are encrypted with your Windows user (DPAPI) and never written to the
 settings file. Reports you make about AI responses are kept in

@@ -1,0 +1,3 @@
+#include <winuser.h>
+1 24 "pindesk.manifest"
+1 ICON "recursos/pindesk.ico"

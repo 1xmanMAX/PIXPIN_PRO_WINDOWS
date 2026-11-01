@@ -5,12 +5,12 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use pixpin_motor2d::excalidraw;
-use pixpin_motor2d::pintado::{self, Orden};
+use pindesk_motor2d::excalidraw;
+use pindesk_motor2d::pintado::{self, Orden};
 use pixpin_nucleo::lienzo::{self, decodificar};
 use pixpin_nucleo::{ErrorNucleo, Lienzo, Nucleo};
-use pixpin_proyecto::almacen;
-use pixpin_proyecto::cuaderno::{self, Mensaje};
+use pindesk_proyecto::almacen;
+use pindesk_proyecto::cuaderno::{self, Mensaje};
 
 /// Una carpeta temporal que se borra al terminar.
 struct Temporal(PathBuf);
@@ -596,10 +596,10 @@ fn una_sonda_se_contesta_sin_sincronizar() {
     let e = Arc::clone(&escucha);
     let hilo = std::thread::spawn(move || e.atender());
     let mut s = std::net::TcpStream::connect(("127.0.0.1", puerto)).unwrap();
-    s.write_all(pixpin_sincro::SONDA).unwrap();
+    s.write_all(pindesk_sincro::SONDA).unwrap();
     let mut r = [0u8; 4];
     s.read_exact(&mut r).unwrap();
-    assert_eq!(&r, pixpin_sincro::SONDA_RESPUESTA);
+    assert_eq!(&r, pindesk_sincro::SONDA_RESPUESTA);
     assert_eq!(
         hilo.join().unwrap().unwrap(),
         pixpin_nucleo::Atendido::Sonda

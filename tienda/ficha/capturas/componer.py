@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Compone las capturas de la Microsoft Store (1920×1080) a partir de las
-muestras que pintan las pruebas `#[ignore]` de `apps/pixpin` (Direct2D fuera
+muestras que pintan las pruebas `#[ignore]` de `apps/pindesk` (Direct2D fuera
 de pantalla, ver `.github/workflows/capturas-tienda.yml`).
 
 Cada escena toma la primera muestra que exista de su lista, la centra sobre

@@ -5,7 +5,10 @@
 
   A diferencia de herramientas/paquete-identidad/AppxManifest.xml (que solo da
   identidad a la carpeta instalada con el ZIP), este paquete LLEVA DENTRO el
-  programa: pindesk.exe y sus ayudantes en la raiz, y los logos en Assets\.
+  programa: pindesk.exe y sus ayudantes en la raiz (pindesk-mcp.exe,
+  pindesk-puente.exe, pindesk-lanzador.exe y pindesk-aligerar.exe; los dos
+  primeros con alias, abajo), y los logos en Assets\. Una sola <Application>:
+  el WACK no deja mas (Application count).
   Lo arma .github/workflows/tienda.yml: pone la version (Identity/@Version,
   cuatro numeros y el ultimo 0) y lo empaqueta sin firmar; la Store lo firma.
 
@@ -16,7 +19,8 @@
   (y la app, compilada con la feature `tienda`, ya no lo escribe):
     HKCU\...\Run                         -> desktop:StartupTask (PinDeskInicio)
     asociaciones.rs / abrir_con.rs        -> uap3:FileTypeAssociation
-    notificacion.rs (AUMID + pixpinmax:)  -> la identidad del paquete + uap3:Protocol
+    notificacion.rs (AUMID PinDesk.App,   -> la identidad del paquete + uap3:Protocol
+      pindesk: y pixpinmax:)
     paquete-identidad (Compartir, verbos) -> windows.shareTarget + uap2:SupportedVerbs
 -->
 <Package
@@ -40,13 +44,15 @@
     <PublisherDisplayName>Ming Xuan</PublisherDisplayName>
     <Logo>Assets\StoreLogo.png</Logo>
     <Description>Capturas, pines flotantes, notas y chat con tus documentos.</Description>
-    <!-- Sin virtualizar: los datos se quedan en %APPDATA%\PixPinMax de
-         verdad, donde los leen los ayudantes que corren FUERA del paquete
-         (el plugin de Flow Launcher, el MCP de Claude, el puente del
-         navegador) y donde siguen los de quien venia del ZIP. Pide la
-         capacidad restringida unvirtualizedResources (justificarla en Partner
-         Center). Windows 10 1903 o mas nuevo; en 1809 se ignora y lo escrito
-         se virtualiza (ver docs/tienda.md). -->
+    <!-- Sin virtualizar: los datos se quedan en %APPDATA%\PinDesk (y
+         %LOCALAPPDATA%\PinDesk) de verdad, donde los leen los ayudantes que
+         corren FUERA del paquete (el plugin de Flow Launcher, el MCP de
+         Claude, el puente del navegador) y donde siguen los de quien venia
+         del ZIP. Asi tambien la mudanza que hace la app al arrancar
+         (%APPDATA%\PixPinMax -> %APPDATA%\PinDesk, pindesk_sistema::nombre)
+         ve las carpetas de verdad. Pide la capacidad restringida
+         unvirtualizedResources (justificarla en Partner Center). desktop6
+         es de Windows 10 1903; el paquete ya pide 2004 (MinVersion). -->
     <desktop6:FileSystemWriteVirtualization>disabled</desktop6:FileSystemWriteVirtualization>
     <desktop6:RegistryWriteVirtualization>disabled</desktop6:RegistryWriteVirtualization>
   </Properties>
@@ -109,7 +115,7 @@
       <Extensions>
         <!-- Arrancar con Windows: APAGADA de fabrica. La enciende el
              interruptor de Ajustes (StartupTask.RequestEnableAsync en
-             crates/pixpin-shell/src/tienda.rs, con este mismo TaskId) y el
+             crates/pindesk-shell/src/tienda.rs, con este mismo TaskId) y el
              usuario la ve en Configuracion › Aplicaciones › Inicio. -->
         <desktop:Extension Category="windows.startupTask" Executable="pindesk.exe" EntryPoint="Windows.FullTrustApplication">
           <desktop:StartupTask TaskId="PinDeskInicio" Enabled="false" DisplayName="PinDesk" />
@@ -137,7 +143,7 @@
         </uap3:Extension>
 
         <!-- Compartir: lo que mandan otras apps va al chat
-             (crates/pixpin-shell/src/compartido.rs). -->
+             (crates/pindesk-shell/src/compartido.rs). -->
         <uap:Extension Category="windows.shareTarget">
           <uap:ShareTarget Description="Guardar en PinDesk">
             <uap:SupportedFileTypes>
@@ -152,7 +158,9 @@
         </uap:Extension>
 
         <!-- Los proyectos de PinDesk: doble clic los abre (main.rs mira la
-             extension .pixpin del primer argumento). -->
+             extension del primer argumento): .pindesk, el formato de ahora,
+             y .pixpin, el de antes, que se sigue leyendo
+             (docs/formato-pindesk.md). -->
         <uap3:Extension Category="windows.fileTypeAssociation" Executable="pindesk.exe" EntryPoint="Windows.FullTrustApplication">
           <uap3:FileTypeAssociation Name="pindesk.proyecto" Parameters="&quot;%1&quot;">
             <uap:DisplayName>Proyecto de PinDesk</uap:DisplayName>
@@ -164,7 +172,7 @@
           </uap3:FileTypeAssociation>
         </uap3:Extension>
 
-        <!-- Imagenes, videos y audios: los de crates/pixpin-shell/src/asociaciones.rs
+        <!-- Imagenes, videos y audios: los de crates/pindesk-shell/src/asociaciones.rs
              (IMAGENES, VIDEOS, AUDIOS). Solo se OFRECE en «Abrir con» y en
              Aplicaciones predeterminadas; no se queda con nada. -->
         <uap3:Extension Category="windows.fileTypeAssociation" Executable="pindesk.exe" EntryPoint="Windows.FullTrustApplication">
@@ -260,15 +268,15 @@
         </uap3:Extension>
 
         <!-- El servidor MCP: el alias es la ruta estable para Claude Desktop y otros clientes MCP. -->
-        <uap3:Extension Category="windows.appExecutionAlias" Executable="pixpin-mcp.exe" EntryPoint="Windows.FullTrustApplication">
+        <uap3:Extension Category="windows.appExecutionAlias" Executable="pindesk-mcp.exe" EntryPoint="Windows.FullTrustApplication">
           <uap3:AppExecutionAlias>
-            <desktop:ExecutionAlias Alias="pixpin-mcp.exe" />
+            <desktop:ExecutionAlias Alias="pindesk-mcp.exe" />
           </uap3:AppExecutionAlias>
         </uap3:Extension>
-        <!-- El puente del navegador (mensajeria nativa): ruta estable %LOCALAPPDATA%\Microsoft\WindowsApps\pixpin-puente.exe. -->
-        <uap3:Extension Category="windows.appExecutionAlias" Executable="pixpin-puente.exe" EntryPoint="Windows.FullTrustApplication">
+        <!-- El puente del navegador (mensajeria nativa, anfitrion com.pindesk.puente): ruta estable %LOCALAPPDATA%\Microsoft\WindowsApps\pindesk-puente.exe. -->
+        <uap3:Extension Category="windows.appExecutionAlias" Executable="pindesk-puente.exe" EntryPoint="Windows.FullTrustApplication">
           <uap3:AppExecutionAlias>
-            <desktop:ExecutionAlias Alias="pixpin-puente.exe" />
+            <desktop:ExecutionAlias Alias="pindesk-puente.exe" />
           </uap3:AppExecutionAlias>
         </uap3:Extension>
       </Extensions>

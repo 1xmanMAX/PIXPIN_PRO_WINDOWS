@@ -1,6 +1,6 @@
 # La ventana principal: Funciones y Chats
 
-Como es la ventana principal de PixPin Max (la del chat) desde el
+Como es la ventana principal de PinDesk (la del chat) desde el
 25-oct-2026, para que **Android y Mac** la repliquen igual que Windows. Cada
 parte de la pantalla tiene su seccion; cada seccion la escribe quien la hizo y
 no toca las demas (añadir una seccion nueva al final, con su propio titulo
@@ -32,7 +32,7 @@ chat, y la bandeja no cambia.
 ### Los mosaicos, en su orden
 
 El orden es el de uso, y es el mismo en todos los aparatos. El nombre estable
-(`pixpin_ui::funciones::Funcion::nombre`) sirve para atajos, pruebas o
+(`pindesk_ui::funciones::Funcion::nombre`) sirve para atajos, pruebas o
 analitica.
 
 | # | Nombre estable | Titulo (es / en) | Descripcion (es) | Icono (Material) | Color del circulo | Que hace |
@@ -78,11 +78,11 @@ mismos textos.
 
 ### Donde esta en el codigo (Windows)
 
-- `crates/pixpin-ui/src/funciones.rs`: el orden, las claves, la rejilla
+- `crates/pindesk-ui/src/funciones.rs`: el orden, las claves, la rejilla
   (`rejilla`) y las flechas (`mover`), con pruebas.
-- `crates/pixpin-ui/src/interruptor.rs` y
-  `apps/pixpin/src/ventana_chat/interruptor.rs`: el interruptor.
-- `apps/pixpin/src/ventana_chat/funciones.rs`: pintar, raton, teclado y lo que
+- `crates/pindesk-ui/src/interruptor.rs` y
+  `apps/pindesk/src/ventana_chat/interruptor.rs`: el interruptor.
+- `apps/pindesk/src/ventana_chat/funciones.rs`: pintar, raton, teclado y lo que
   hace cada mosaico.
 
 ## Buscar en todos los chats y sincronizar
@@ -132,7 +132,7 @@ escrito, como en Telegram. N es cuantos hay en total.
 - La lista se desplaza entera, chats y seccion, con la rueda.
 
 **Pestañas por tipo, abrir lo encontrado e ir al mensaje** (27-oct-2026, lo
-de PixPin Android 8815b492 y 80e76094).
+de PinDesk Android 8815b492 y 80e76094).
 
 - **Pestañas** encima de la seccion, mientras se busca (el buscador con el
   teclado, algo escrito o una pestaña puesta): Todo, Fotos, Vídeos, Archivos,
@@ -184,7 +184,7 @@ seccion debajo y lo mismo al tocar (abrir el chat en ese mensaje,
 resaltado). En el movil, el indice en una corrutina de fondo
 (`Dispatchers.Default`) y la espera de 180 ms con `debounce`; en el Mac/iPad,
 una `Task` de fondo. Las reglas de comparar y del trozo estan en
-`crates/pixpin-ui/src/buscar_en_chats.rs` con sus pruebas: copiarlas tal cual
+`crates/pindesk-ui/src/buscar_en_chats.rs` con sus pruebas: copiarlas tal cual
 (o llamar al nucleo Rust en Apple) para que den lo mismo en todos los
 aparatos.
 
@@ -212,12 +212,12 @@ aparatos.
 
 **Donde esta en el codigo (Windows)**
 
-- `crates/pixpin-ui/src/buscar_en_chats.rs`: aplanar, buscar con tope y
+- `crates/pindesk-ui/src/buscar_en_chats.rs`: aplanar, buscar con tope y
   cuenta, el trozo, la espera y como se reparte la seccion; con pruebas.
-- `crates/pixpin-ui/src/giro.rs`: el angulo y cuando repintar; con pruebas.
-- `apps/pixpin/src/ventana_chat/buscar_en_chats.rs`: el hilo del indice y
+- `crates/pindesk-ui/src/giro.rs`: el angulo y cuando repintar; con pruebas.
+- `apps/pindesk/src/ventana_chat/buscar_en_chats.rs`: el hilo del indice y
   pintar y pulsar la seccion.
-- `apps/pixpin/src/sincronizar.rs` (`EnCurso`, `ultima_fallo`,
+- `apps/pindesk/src/sincronizar.rs` (`EnCurso`, `ultima_fallo`,
   `olvidar_fallo`): cuantas vueltas hay y como acabo la ultima.
 
 ## Foto del chat
@@ -231,12 +231,12 @@ del chat…» (sustituye a «Poner/Quitar imagen de logo»), o pulsar el avatar
 de arriba en la isla del chat (la ficha que sale al pulsar el nombre; con
 el raton encima sale un aro azul).
 
-**La hoja** (`apps/pixpin/src/ventana_chat/foto_del_chat.rs`), pequena,
+**La hoja** (`apps/pindesk/src/ventana_chat/foto_del_chat.rs`), pequena,
 siempre encima, en el tema claro u oscuro del chat:
 
 - El circulo grande con lo que quedara. Con una imagen, **arrastrar** la
   mueve y la **rueda** acerca hacia el raton; lo que se ve en el circulo es
-  lo que se guarda (`pixpin_ui::foto_del_chat::Recorte`: el cuadrado nunca
+  lo que se guarda (`pindesk_ui::foto_del_chat::Recorte`: el cuadrado nunca
   se sale de la foto).
 - **Elegir imagen…** (el dialogo de Windows), **Pegar imagen** (o Ctrl+V:
   una imagen copiada o el fichero de una imagen copiado en el Explorador) y
@@ -262,7 +262,7 @@ siempre y se vuelve a mirar cada 3 s.
 
 **Como se guarda y viaja.** En la ficha del proyecto (`resto["avatar"]` del
 indice) y, por la red, como el campo `avatar` del `Proyecto`
-(`crates/pixpin-proyecto/src/avatar.rs`). La imagen, cuadrada, recortada y a
+(`crates/pindesk-proyecto/src/avatar.rs`). La imagen, cuadrada, recortada y a
 256 px como mucho, es `<proyecto>/avatar-<ms>.png` y viaja con el proyecto.
 El `logo.png` de antes sigue saliendo y empieza a viajar como `tipo: imagen`
 hasta que se cambie. Formato y reglas para Android y Apple:
@@ -272,7 +272,7 @@ hasta que se cambie. Formato y reglas para Android y Apple:
 
 Lo pidió el usuario en el móvil (27-oct-2026): «Quiero guardar música, con su
 letra adjunta, para poder cantar cuando quiera». El PC hace lo mismo con el
-**mismo formato**, sin campos nuevos (`apps/pixpin/src/ventana_chat/musica.rs`).
+**mismo formato**, sin campos nuevos (`apps/pindesk/src/ventana_chat/musica.rs`).
 
 **El formato.** Una canción es una nota de voz (`clase: "VOZ"`) con
 `estadoDelTexto: "letra"` y la letra en `transcripcion`: `[m:ss] línea`, un
@@ -285,12 +285,12 @@ pantalla de la letra de los dos aparatos y viaja como cualquier nota.
   como música; un `.lrc` o `.txt` con el mismo nombre al lado del audio es
   su letra. Con una sola canción se abre su karaoke.
 - **Pegar un LRC** en el lápiz de la letra: se convierte solo
-  (`pixpin_voz::letra_de_cancion`: centésimas, varias marcas en una línea,
+  (`pindesk_voz::letra_de_cancion`: centésimas, varias marcas en una línea,
   `[offset:]`, `[ti:]`/`[ar:]`, marcas por palabra `<mm:ss.xx>`), redondeado
   al segundo, y la nota queda como música. Lo que no es LRC se guarda tal
   cual.
 - **La tarjeta** de la burbuja: la portada que trae el fichero (ID3 `APIC`,
-  `covr` de MP4, `PICTURE` de FLAC; `pixpin_voz::etiquetas`) o un degradado
+  `covr` de MP4, `PICTURE` de FLAC; `pindesk_voz::etiquetas`) o un degradado
   con la nota, y el título y el artista de sus etiquetas en vez de la onda.
   Su pastilla (icono de letra) abre el karaoke; pulsar la burbuja la toca.
 - **El karaoke** (la pantalla de la letra de una canción): **sin la tira de
@@ -331,10 +331,10 @@ pantalla de la letra de los dos aparatos y viaja como cualquier nota.
   aviso dice cuántas líneas se oyeron («12 de 30»); con menos de un tercio,
   que va a ojo. Si la letra se edita mientras, no se guarda. El idioma con
   el que se oye es el de la letra si se nota (`idioma_de_la_letra`: una
-  canción en inglés se oye en inglés con PixPin en castellano) y si no, el
+  canción en inglés se oye en inglés con PinDesk en castellano) y si no, el
   de Ajustes con su segundo idioma.
 
-### Cómo se alinea la letra con lo oído (`pixpin_voz::alinear_letra`)
+### Cómo se alinea la letra con lo oído (`pindesk_voz::alinear_letra`)
 
 Puro, sin sonido ni ventanas, con sus pruebas (errores del reconocedor,
 estribillos repetidos, líneas que no se oyen, coros de fondo y «yeah»,
@@ -415,12 +415,12 @@ Cómo imprime entero cada visor en Windows:
 | Hoja de cálculo (`visor_hoja`) | Lo usado de la hoja abierta, en trozos de papel (A4 tumbado). |
 | Página web y notas (`visor_html`, `notas_md/lector_web`) | El imprimir de la página (`window.print()`), con lo anotado dentro. |
 | Pin de Office (formatos viejos) | Su aplicación (el verbo «Imprimir» de Windows). |
-| Plano (`pixpin-cad`) | El plano entero en una lámina, como Ctrl+P sin marcos. |
-| Modelo 3D (`pixpin-cad`) | La vista de ahora. |
+| Plano (`pindesk-cad`) | El plano entero en una lámina, como Ctrl+P sin marcos. |
+| Modelo 3D (`pindesk-cad`) | La vista de ahora. |
 
 El menú lo hacen `marcos_doc::menu_de_imprimir` (las entradas en
 `marcos_doc::entradas_de_imprimir`) y, en el plano y el modelo,
-`pixpin_cad::ventana::menu_de_imprimir` con los mismos textos.
+`pindesk_cad::ventana::menu_de_imprimir` con los mismos textos.
 
 ## El menú del mensaje según su tipo
 
@@ -430,7 +430,7 @@ falsa"… es absurdo y solo ocupa espacio; quita lo que no aplica».
 
 El orden del menú (clic derecho sobre una burbuja) ya era el del PC y el
 móvil lo copió. Lo que cambia es **qué sale en cada tipo**; la decisión vive
-en `apps/pixpin/src/ventana_chat/opciones_del_mensaje.rs` (`tipo_de`,
+en `apps/pindesk/src/ventana_chat/opciones_del_mensaje.rs` (`tipo_de`,
 `recordar`, `leccion`), con pruebas:
 
 | Tipo | Recordármelo / llamada secreta | Hacer lección |
@@ -457,11 +457,11 @@ una canción siguen con su letra (el karaoke del PC, ver «Música con letra»).
 
 *29-oct-2026, como el móvil (201d327, `CompartirCarpeta.kt`).* El usuario
 (checklist 51): «compartir un cuaderno con todos los formatos (PDF, HTML,
-PixPin, fotos…), con la misma hoja de compartir de siempre».
+PinDesk, fotos…), con la misma hoja de compartir de siempre».
 
 Un cuaderno (una carpeta de páginas del chat) entra en la hoja de compartir
 de toda la app con sus páginas, cada una con su título («Día 1», «Día 2»),
-todas marcadas al abrir (`apps/pixpin/src/compartir/carpeta.rs`,
+todas marcadas al abrir (`apps/pindesk/src/compartir/carpeta.rs`,
 `preparar`):
 
 - **PDF, página web, PNG, JPG y SVG**, con la regla del cuaderno: de un
@@ -470,7 +470,7 @@ todas marcadas al abrir (`apps/pixpin/src/compartir/carpeta.rs`,
 - **Word, Markdown y Texto**, si alguna página lleva texto (una nota, la
   transcripción de una nota de voz), cada página bajo su título.
 - **Original**: los ficheros de sus páginas tal cual.
-- **PixPin (.pixpin)**: el chat entero, con la carpeta dentro, que se abre
+- **PinDesk (.pindesk)**: el chat entero, con la carpeta dentro, que se abre
   en otro PC y en el móvil con su carpeta. Y por Wi‑Fi, el botón de siempre.
 
 Se llega desde tres sitios, y los tres dan la misma hoja:
@@ -518,8 +518,8 @@ lista (columna de 11 px que se le quita al buscador). De arriba abajo:
 gasta:
 
 - Cada peticion del asistente, de «Probar» en Ajustes y de Jev avisa de
-  como acabo (`pixpin_ia::nube::al_contestar`,
-  `pixpin_typesafe::cliente::al_contestar`). Lo que sale del cache de Jev no
+  como acabo (`pindesk_ia::nube::al_contestar`,
+  `pindesk_typesafe::cliente::al_contestar`). Lo que sale del cache de Jev no
   cuenta.
 - La comprobacion: **Anthropic** `GET https://api.anthropic.com/v1/models?limit=1`
   (cabeceras `x-api-key` y `anthropic-version`), **DeepSeek**
@@ -536,17 +536,17 @@ gasta:
 
 **Donde esta en el codigo (Windows)**
 
-- `crates/pixpin-ui/src/estado_ia.rs`: estados, motivos, colores, cuando toca
+- `crates/pindesk-ui/src/estado_ia.rs`: estados, motivos, colores, cuando toca
   comprobar y «hace cuanto»; con pruebas (portable).
-- `crates/pixpin-ui/src/chat.rs`: `luces_ia` y `puntitos_ia` (el sitio).
-- `apps/pixpin/src/estado_ia.rs`: el tablero del proceso, el hilo y las
+- `crates/pindesk-ui/src/chat.rs`: `luces_ia` y `puntitos_ia` (el sitio).
+- `apps/pindesk/src/estado_ia.rs`: el tablero del proceso, el hilo y las
   comprobaciones.
-- `apps/pixpin/src/ventana_chat/estado_ia.rs`: pintar, el globo y el menu.
-- `crates/pixpin-ia/src/nube/mod.rs` (`comprobar`, `al_contestar`) y
-  `crates/pixpin-typesafe/src/cliente.rs` (`al_contestar`).
+- `apps/pindesk/src/ventana_chat/estado_ia.rs`: pintar, el globo y el menu.
+- `crates/pindesk-ia/src/nube/mod.rs` (`comprobar`, `al_contestar`) y
+  `crates/pindesk-typesafe/src/cliente.rs` (`al_contestar`).
 - Claves de idioma `ia-estado-*` (al final de los `main.ftl`).
 
-**En Android y en el Mac.** Copiar las reglas de `pixpin_ui::estado_ia` tal
+**En Android y en el Mac.** Copiar las reglas de `pindesk_ui::estado_ia` tal
 cual (o llamar al nucleo en Apple): mismos codigos, mismos tiempos y mismas
 claves de idioma. En Android, tres `Box` de 5 dp con `CircleShape` junto al
 boton de sincronizar de la lista; el estado en un `StateFlow` que alimentan
@@ -562,7 +562,7 @@ El usuario (1-nov-2026): «al subir por un chat con muchas cosas no se traba,
 pero *carga*: sale una imagen, puf, crece su sitio y me empuja hacia arriba».
 
 **La causa.** Las fotos ya median bien desde el principio (el tamano sale de
-la cabecera del fichero, `pixpin_codec::imagen::medidas`, sin descomprimir),
+la cabecera del fichero, `pindesk_codec::imagen::medidas`, sin descomprimir),
 pero:
 
 - Un **PDF** (y una pagina del documento del proyecto) no tenia vista hasta
@@ -584,7 +584,7 @@ pero:
    mide siempre lo mismo en su burbuja (`tamano_de_vista`), asi que la pagina
    llega y aparece encima sin mover nada. Una foto que aun se lee pinta su
    caja exacta en un tono apagado (`pintar_foto`).
-2. **El ancla** (`pixpin_ui::desliz::ancla`/`reanclar`, el `overflow-anchor`
+2. **El ancla** (`pindesk_ui::desliz::ancla`/`reanclar`, el `overflow-anchor`
    de CSS). Al recolocar, la primera burbuja que asoma entera por arriba se
    queda en su pixel y el desplazamiento absorbe la diferencia
    (`Abierto::corrimiento`, que el bucle aplica al acabar el fotograma; los
@@ -595,14 +595,14 @@ pero:
    pantallas por cada lado (`PANTALLAS_DE_PRECARGA`), empezando por hacia
    donde se mueve la vista (`desliz::a_precargar`); lo que queda lejos se
    cancela antes de leerlo. Lee **a la medida de la vista previa**
-   (`pixpin_codec::vista::cargar_para_ver`: WIC reduce el JPEG en la propia
+   (`pindesk_codec::vista::cargar_para_ver`: WIC reduce el JPEG en la propia
    transformada) y despierta a la ventana con cada una.
-4. **Tope de memoria** (`pixpin_ui::cupo::Cupo`, LRU por bytes):
+4. **Tope de memoria** (`pindesk_ui::cupo::Cupo`, LRU por bytes):
    `miniaturas::CUPO_BYTES` = 96 MB por juego de miniaturas, contando los
    pixeles y su copia en la GPU (unas sesenta vistas previas de 520 px).
    Pasado el tope se suelta lo que hace mas que no se ve; lo del fotograma en
    curso nunca, aunque no quepa.
-5. **La rueda animada** (`pixpin_ui::desliz::Desliz`). Una muesca mueve el
+5. **La rueda animada** (`pindesk_ui::desliz::Desliz`). Una muesca mueve el
    destino y la vista lo persigue frenando (tau 38 ms: llega en ~150 ms);
    las muescas seguidas se suman. Un panel tactil (deltas que no son
    multiplos de 120) va tal cual, sin animar. Solo se repinta mientras se
@@ -610,9 +610,9 @@ pero:
    lo que se ve, buscado por busqueda binaria (`historial::visibles`), y la
    colocacion solo se rehace al cambiar el ancho o los mensajes.
 
-**Donde esta.** `crates/pixpin-ui/src/desliz.rs` y `cupo.rs` (logica pura,
-con pruebas), `apps/pixpin/src/miniaturas.rs` (hilo, cupo),
-`apps/pixpin/src/pdf_en_chat.rs` (`en_camino`) y `ventana_chat.rs`
+**Donde esta.** `crates/pindesk-ui/src/desliz.rs` y `cupo.rs` (logica pura,
+con pruebas), `apps/pindesk/src/miniaturas.rs` (hilo, cupo),
+`apps/pindesk/src/pdf_en_chat.rs` (`en_camino`) y `ventana_chat.rs`
 (`pintar_historial`, `fotos_a_precargar`, la rueda).
 
 **En Android y en el Mac.** Lo mismo con sus piezas: el `LazyColumn` ya

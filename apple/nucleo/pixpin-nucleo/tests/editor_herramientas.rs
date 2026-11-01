@@ -1,16 +1,16 @@
 //! Las herramientas del editor que faltaban en Mac: el lazo, las de medir,
 //! las cuatro de construir, el gesto de pararse, el estilo de la barra, las
 //! imagenes pegadas (en el formato de Windows y el movil) y las lapidas de
-//! lo borrado, comprobadas contra la fusion de `pixpin-sincro`.
+//! lo borrado, comprobadas contra la fusion de `pindesk-sincro`.
 
 use std::path::PathBuf;
 
-use pixpin_motor2d::excalidraw;
+use pindesk_motor2d::excalidraw;
 use pixpin_nucleo::{
     CambioDeEstilo, ColorEstilo, EditorLienzo, FasePuntero, GrosorEstilo, Nucleo, PeticionLienzo,
 };
-use pixpin_sincro::canonico::Json;
-use pixpin_sincro::fusion::{self, Criterio, Cuenta};
+use pindesk_sincro::canonico::Json;
+use pindesk_sincro::fusion::{self, Criterio, Cuenta};
 use serde_json::Value;
 
 struct Temporal(PathBuf);
@@ -270,7 +270,7 @@ fn quieto_dibujando_a_mano_el_trazo_se_vuelve_figura() {
     ed.puntero(FasePuntero::Pulsar, 0.0, 0.0, Some(0.5), 0, 1.0);
     assert_eq!(
         ed.espera_forma_ms(),
-        Some(pixpin_motor2d::forma_rapida::ESPERA_PARA_LA_FORMA_MS)
+        Some(pindesk_motor2d::forma_rapida::ESPERA_PARA_LA_FORMA_MS)
     );
     for i in 1..=40 {
         ed.puntero(FasePuntero::Mover, i as f32 * 5.0, 0.0, Some(0.5), 0, 1.0);
@@ -374,7 +374,7 @@ fn la_imagen_pegada_se_guarda_como_en_windows_y_el_movil() {
     assert_eq!(ed.cuantos_elegidos(), 1);
     assert!(ed.guardar().unwrap());
 
-    let clave = pixpin_motor2d::enlace::id_de_texto(foto.id_objeto);
+    let clave = pindesk_motor2d::enlace::id_de_texto(foto.id_objeto);
     let v = json(&ed.ruta());
     let e = v["elements"]
         .as_array()
@@ -400,13 +400,13 @@ fn la_imagen_pegada_se_guarda_como_en_windows_y_el_movil() {
     );
 
     // El fichero, en `imagenes/` de la carpeta del chat, con los mismos bytes.
-    let carpeta = pixpin_proyecto::almacen::carpeta(&t.0.join("datos"), &chat.id);
+    let carpeta = pindesk_proyecto::almacen::carpeta(&t.0.join("datos"), &chat.id);
     let escrito = carpeta.join("imagenes").join(&clave);
     assert_eq!(std::fs::read(&escrito).unwrap(), bytes);
     assert!(
         !carpeta
             .join("imagenes")
-            .join(pixpin_motor2d::enlace::id_de_texto(borrada.id_objeto))
+            .join(pindesk_motor2d::enlace::id_de_texto(borrada.id_objeto))
             .exists()
     );
 
@@ -431,7 +431,7 @@ fn la_imagen_pegada_se_guarda_como_en_windows_y_el_movil() {
     );
 }
 
-/// La fusion de `pixpin-sincro` (`fusion::json`, figura por figura) de dos
+/// La fusion de `pindesk-sincro` (`fusion::json`, figura por figura) de dos
 /// textos de lienzo sobre una base.
 fn juntar(base: Option<&str>, mio: &str, suyo: &str) -> String {
     let b = base.map(|b| Json::analizar(b).unwrap());

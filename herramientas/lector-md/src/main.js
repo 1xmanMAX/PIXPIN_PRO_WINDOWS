@@ -1,10 +1,10 @@
 // El editor de notas de PixPin (8-oct-2026): la misma cara y las mismas
-// teclas que el de antes (pixpin-notas, sobre el RichEdit), con un motor
+// teclas que el de antes (pindesk-notas, sobre el RichEdit), con un motor
 // nuevo: CodeMirror dentro de WebView2. El usuario: «no mejores la UI
 // anterior sino la funcionalidad, ya que no funcionaba bien».
 //
 // Con PixPin se habla por `chrome.webview` (JSON con `tipo`): ver
-// `apps/pixpin/src/notas_md/lector_web.rs`.
+// `apps/pindesk/src/notas_md/lector_web.rs`.
 
 import { EditorState, Transaction, Annotation, EditorSelection, Compartment } from '@codemirror/state'
 import { EditorView, keymap, drawSelection, placeholder, dropCursor } from '@codemirror/view'

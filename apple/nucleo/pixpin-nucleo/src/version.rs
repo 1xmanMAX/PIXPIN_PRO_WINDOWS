@@ -23,10 +23,10 @@
 //!    ninguno de antes se sube `version` a 5 en el cable.
 //!
 //! Esto **no esta encendido** ([`NEGOCIAR`] es `false`): el `hola` del Mac
-//! es el de `pixpin_sincro` tal cual. Encenderlo exige cambiar a la vez
-//! `pixpin_sincro::mensajes::Hola` aqui y en `crates/`, y `Hola` de Android.
+//! es el de `pindesk_sincro` tal cual. Encenderlo exige cambiar a la vez
+//! `pindesk_sincro::mensajes::Hola` aqui y en `crates/`, y `Hola` de Android.
 
-use pixpin_sincro::VERSION;
+use pindesk_sincro::VERSION;
 
 /// Si el Mac negocia la version. **Apagado**: no cambia nada del cable.
 pub const NEGOCIAR: bool = false;

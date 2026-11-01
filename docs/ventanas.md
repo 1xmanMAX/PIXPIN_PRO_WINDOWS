@@ -4,7 +4,7 @@
 
 Los eventos de raton del overlay (`EventoOverlay::BotonPulsado(p)` y los
 demas) llegan en coordenadas del **escritorio virtual**: el WndProc de
-`pixpin-shell` suma al punto del cliente el origen que la ventana tiene **en
+`pindesk-shell` suma al punto del cliente el origen que la ventana tiene **en
 ese momento** (`GetWindowRect`). Cada ventana los pasa a las suyas restando
 su `marco`.
 
@@ -27,18 +27,18 @@ Por eso:
   lo hace bien.
 - Las ventanas con `PinLector` (visores, lector de PDF, lienzo, estudiar
   clase…) siguen la ventana con `seguir_ventana`, que ademas toma el tamano.
-- Los pines (`pixpin-pin`) atienden `WM_WINDOWPOSCHANGED`: con el mismo
+- Los pines (`pindesk-pin`) atienden `WM_WINDOWPOSCHANGED`: con el mismo
   tamano y otro sitio que el esperado, el contenido va con la ventana
   (`marco_vivo::contenido_seguido`).
 - Lo que hable directamente con Win32 usa el `lparam` del mensaje (cliente,
   con signo: `as i16 as i32`) o `ScreenToClient` en el momento.
 
-La aritmetica pura esta en `pixpin_geom::marco_vivo`, con sus pruebas.
+La aritmetica pura esta en `pindesk_geom::marco_vivo`, con sus pruebas.
 Una ventana nueva que se salte `seguir_sitio` vuelve a tener el fallo.
 
 ## Arrastrar por la cabecera
 
-Las ventanas de PixPin no tienen barra de Windows. Las que se mueven por su
+Las ventanas de PinDesk no tienen barra de Windows. Las que se mueven por su
 cuenta (la caja de soltar, las flotantes, la galeria, tareas…) lo hacen al
 arrastrar su cabecera. Las demas le dicen a Windows por donde se arrastran
 con `VentanaOverlay::poner_arrastre(zonas, botones)`, en pixeles del
@@ -46,7 +46,7 @@ cliente: dentro de una zona y fuera de todos los botones, `WM_NCHITTEST`
 contesta `HTCAPTION` y Windows la mueve como a cualquier otra.
 
 - Ajustes: la franja del titulo encima del buscador y la cabecera de la
-  seccion, sin «Restablecer» (`pixpin_ui::ajustes::zonas_de_arrastre`).
+  seccion, sin «Restablecer» (`pindesk_ui::ajustes::zonas_de_arrastre`).
 - Repaso oral, conversacion y Pronunciar: la franja de arriba sin sus
   botones (`ventanita::arrastre_por_arriba`, tras pintar).
 

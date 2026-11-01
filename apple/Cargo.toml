@@ -18,7 +18,7 @@ authors = ["Max Anthony Mamani Maquera"]
 repository = "https://github.com/1xmanMAX/pixpin-max"
 
 [workspace.dependencies]
-pixpin-geom = { path = "nucleo/pixpin-geom" }
+pindesk-geom = { path = "nucleo/pindesk-geom" }
 pdfsqueeze-core = { path = "nucleo/pdfsqueeze-core" }
 
 [profile.release]
@@ -36,7 +36,7 @@ opt-level = 3
 inherits = "release"
 panic = "unwind"
 
-# El de la CI (`PIXPIN_PERFIL=ffi-rapido`): el mismo codigo, con LTO fino y en
+# El de la CI (`PINDESK_PERFIL=ffi-rapido`): el mismo codigo, con LTO fino y en
 # paralelo. Optimiza casi igual y compila en una fraccion del tiempo; lo que
 # se publica sigue saliendo con `ffi`.
 [profile.ffi-rapido]
@@ -62,7 +62,7 @@ opt-level = 3
 opt-level = 3
 # Y el propio cable: sincronizar un chat de cientos de mensajes recorre su
 # JSON decenas de veces (resumenes, copias, inventarios en los dos lados).
-[profile.dev.package.pixpin-sincro]
+[profile.dev.package.pindesk-sincro]
 opt-level = 2
 # Aligerar un PDF: sin optimizar, pdfsqueeze tarda minutos en lo que en
 # release son segundos (zopfli y las carreras de JPEG), y las pruebas que
@@ -94,5 +94,5 @@ opt-level = 3
 # que bajar de 50 ms tambien en las pruebas (formula/pruebas_funciones.rs), y
 # sin optimizar tardaba ~80 ms. El nivel 1 lo deja en ~15 ms; el resto del
 # crate sigue igual de depurable.
-[profile.dev.package.pixpin-proyecto]
+[profile.dev.package.pindesk-proyecto]
 opt-level = 1

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Logos de la ficha de la Store a partir del icono de la app.
 
-El icono (`apps/pixpin/recursos/pixpinmax.ico`) es un aro azul #2A7AE2 con
+El icono (`apps/pindesk/recursos/pindesk.ico`) es un aro azul #2A7AE2 con
 el centro gris muy claro #F0F0F5: radio exterior 108.5/256 e interior 56/256,
 centrado. Aqui se vuelve a dibujar a la medida (con 4x de sobremuestreo) en
 vez de agrandar el PNG de 256 px, para que salga nitido.
