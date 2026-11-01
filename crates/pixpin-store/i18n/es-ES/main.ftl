@@ -1943,6 +1943,10 @@ ajustes2-vista-rapida = Vista rápida con la barra espaciadora
 ajustes2-ayuda-vista-rapida = En el Explorador o el escritorio, elige ficheros y pulsa Espacio: se abren al momento en PinDesk (fotos, vídeos, PDF, Word, planos DWG, modelos IFC y Revit…). Otro Espacio lo cierra.
 ajustes2-abrir-con = Ofrecer PinDesk para imágenes y vídeos
 ajustes2-ayuda-abrir-con = Sale en «Abrir con» y en Aplicaciones predeterminadas. Apagarlo borra lo escrito en el registro.
+# Solo en la version de la Microsoft Store (rama microsoft-store, apps/pixpin/src/tienda.rs).
+tienda-ayuda-arranque = Se queda en la bandeja sin abrir ninguna ventana. Lo guarda Windows: también lo ves y lo cambias en Configuración › Aplicaciones › Inicio.
+tienda-ayuda-abrir-con = Windows ya ofrece PinDesk en «Abrir con» para imágenes, vídeos, audios y documentos. Para que sea la de siempre, elígela en Configuración › Aplicaciones predeterminadas.
+tienda-ayuda-presencia = El móvil ve este equipo en cuanto abre Sincronizar. La primera vez, Windows puede preguntar si PinDesk puede usar la red: pulsa «Permitir» en las redes privadas. Apagado no se abre ninguna puerta en la red.
 ajustes2-predeterminada = App predeterminada
 ajustes2-ayuda-predeterminada = Windows solo deja elegirla en Configuración: allí, PinDesk → Establecer como predeterminada.
 ajustes2-hacer-predeterminada = Hacer PinDesk la app predeterminada…
