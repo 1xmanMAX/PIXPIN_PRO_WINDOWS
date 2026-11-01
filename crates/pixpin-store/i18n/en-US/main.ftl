@@ -1942,6 +1942,10 @@ ajustes2-vista-rapida = Quick look with the space bar
 ajustes2-ayuda-vista-rapida = In File Explorer or on the desktop, select files and press Space: they open right away in PixPin (photos, videos, PDF, Word, DWG plans, IFC and Revit models…). Space again closes it.
 ajustes2-abrir-con = Offer PixPin for images and videos
 ajustes2-ayuda-abrir-con = Shows in “Open with” and in Default apps. Turning it off removes what was written to the registry.
+# Microsoft Store version only (microsoft-store branch, apps/pixpin/src/tienda.rs).
+tienda-ayuda-arranque = Stays in the tray without opening any window. Windows keeps this setting: you can also see and change it in Settings › Apps › Startup.
+tienda-ayuda-abrir-con = Windows already offers PinDesk in “Open with” for images, videos, audio and documents. To make it the default, pick it in Settings › Apps › Default apps.
+tienda-ayuda-presencia = The phone sees this computer as soon as it opens Sync. The first time, Windows may ask whether PinDesk can use the network: click “Allow” on private networks. Off, no port is opened on the network.
 ajustes2-predeterminada = Default app
 ajustes2-ayuda-predeterminada = Windows only lets you choose it in Settings: there, PixPin Max → Set default.
 ajustes2-hacer-predeterminada = Make PixPin the default app…

@@ -168,6 +168,8 @@ mod sincronizar;
 mod tareas;
 mod teleprompter;
 mod tema_cosmos;
+// Lo propio de la Microsoft Store (solo en la rama `microsoft-store`).
+mod tienda;
 mod timeline;
 mod turno_pesado;
 mod v2;
@@ -506,42 +508,46 @@ fn arrancar(
     // Y como app de imagenes y videos en Configuracion → Aplicaciones
     // predeterminadas (`asociaciones`): ahi el usuario la hace la de siempre
     // con un boton, y todo se abre como pin.
-    if config.abrir_con {
-        if let Err(e) = pixpin_shell::asociaciones::registrar(&ruta_exe) {
-            tracing::warn!(?e, "no se pudo registrar PixPin para imagenes y videos");
+    // En la Store no se escribe en el registro: lo dan el manifiesto y la
+    // tarea de inicio del paquete (`tienda.rs`, rama `microsoft-store`).
+    if !tienda::al_arrancar(&mut config) {
+        if config.abrir_con {
+            if let Err(e) = pixpin_shell::asociaciones::registrar(&ruta_exe) {
+                tracing::warn!(?e, "no se pudo registrar PixPin para imagenes y videos");
+            }
+        } else {
+            pixpin_shell::asociaciones::quitar();
         }
-    } else {
-        pixpin_shell::asociaciones::quitar();
-    }
-    let inscripcion = if config.abrir_con {
-        pixpin_shell::abrir_con::inscribir(&ruta_exe)
-    } else {
-        // Apagarlo BORRA lo escrito, no solo deja de escribir: si no, el
-        // rastro se quedaria ahi para siempre y el interruptor no serviria
-        // de nada a quien va en modo portable.
-        pixpin_shell::abrir_con::desinscribir(&ruta_exe)
-    };
-    if let Err(e) = inscripcion {
-        tracing::warn!(
-            ?e,
-            activo = config.abrir_con,
-            "no se pudo tocar «Abrir con»"
-        );
-    }
-    match arranque::establecer(
-        config.arranque_con_windows,
-        ubicacion.es_portable(),
-        &ruta_exe,
-    ) {
-        Ok(()) => {}
-        Err(arranque::ErrorArranque::ModoPortable) => {
-            // No es un fallo: es la regla del modo portable funcionando. Se
-            // deja constancia para que nadie piense que la casilla esta rota.
-            tracing::info!(
-                "arranque con Windows ignorado: en modo portable no se toca el registro"
+        let inscripcion = if config.abrir_con {
+            pixpin_shell::abrir_con::inscribir(&ruta_exe)
+        } else {
+            // Apagarlo BORRA lo escrito, no solo deja de escribir: si no, el
+            // rastro se quedaria ahi para siempre y el interruptor no serviria
+            // de nada a quien va en modo portable.
+            pixpin_shell::abrir_con::desinscribir(&ruta_exe)
+        };
+        if let Err(e) = inscripcion {
+            tracing::warn!(
+                ?e,
+                activo = config.abrir_con,
+                "no se pudo tocar «Abrir con»"
             );
         }
-        Err(e) => tracing::warn!(?e, "no se pudo aplicar el arranque con Windows"),
+        match arranque::establecer(
+            config.arranque_con_windows,
+            ubicacion.es_portable(),
+            &ruta_exe,
+        ) {
+            Ok(()) => {}
+            Err(arranque::ErrorArranque::ModoPortable) => {
+                // No es un fallo: es la regla del modo portable funcionando. Se
+                // deja constancia para que nadie piense que la casilla esta rota.
+                tracing::info!(
+                    "arranque con Windows ignorado: en modo portable no se toca el registro"
+                );
+            }
+            Err(e) => tracing::warn!(?e, "no se pudo aplicar el arranque con Windows"),
+        }
     }
 
     // 5b. Nivel de rendimiento (D13-D19): se decide UNA vez, se registra con
@@ -864,7 +870,8 @@ fn arrancar(
         idioma: lengua,
         opciones: opciones_lienzo,
     });
-    if !ubicacion.es_portable() {
+    // En la Store la identidad y el protocolo son del paquete (`tienda.rs`).
+    if !ubicacion.es_portable() && !tienda::activa() {
         automatizaciones::cola::registrar_notificaciones(
             ruta_exe.clone(),
             ubicacion.raiz().to_path_buf(),
