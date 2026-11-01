@@ -2633,7 +2633,7 @@ fn abrir(
     let ancho = ANCHO.min(monitor.area.ancho as f32 / e - 40.0).max(760.0);
     let alto = ALTO.min(monitor.area.alto as f32 / e - 60.0).max(520.0);
     let (fisico_ancho, fisico_alto) = ((ancho * e) as u32, (alto * e) as u32);
-    let marco = Rect {
+    let mut marco = Rect {
         x: monitor.area.x + (monitor.area.ancho as i32 - fisico_ancho as i32) / 2,
         y: monitor.area.y + (monitor.area.alto as i32 - fisico_alto as i32) / 2,
         ancho: fisico_ancho,
@@ -2703,6 +2703,26 @@ fn abrir(
 
     loop {
         pixpin_shell::overlay::bombear_pendientes();
+        // Donde esta la ventana AHORA: si otro la movio (AltSnap, o el
+        // arrastre por la cabecera), los clics se reparten desde ahi y no
+        // desde donde se abrio (docs/ventanas.md).
+        ventana.seguir_sitio(&mut marco);
+        // La cabecera vacia arrastra la ventana; su boton sigue siendo boton.
+        {
+            let restablecer = (!estado.buscando())
+                .then(|| boton_restablecer_seccion(ancho, &rotulo_restablecer(&estado, textos)));
+            let (zonas, botones) = pixpin_ui::ajustes::zonas_de_arrastre(ancho, restablecer);
+            let fisico = |r: &Recta| Rect {
+                x: (r.x * e).round() as i32,
+                y: (r.y * e).round() as i32,
+                ancho: (r.ancho * e).round().max(0.0) as u32,
+                alto: (r.alto * e).round().max(0.0) as u32,
+            };
+            ventana.poner_arrastre(
+                zonas.iter().map(fisico).collect(),
+                botones.iter().map(fisico).collect(),
+            );
+        }
         let n = crate::asistente::nube::novedades()
             + crate::asistente::conexiones::novedades()
             + crate::jev::novedades()
