@@ -3509,3 +3509,20 @@ reportar-ia-campo-version = Versione
 reportar-ia-campo-contenido = Ciò che ha scritto l'IA
 reportar-ia-comentario = (Se vuoi, raccontaci qui che cosa non va.)
 repaso-jev-fallo-red = Nessuna connessione.
+
+## Esportare le attività: la pagina, il PDF e il Markdown di un elenco (1-nov-2026)
+tareas-exportar-titulo = Attività
+tareas-exportar-exportado = Esportato il { $fecha }
+tareas-exportar-pendientes = Da fare
+tareas-exportar-hechas = Fatte
+tareas-exportar-completado = Completato
+tareas-exportar-pendiente = Da fare
+tareas-exportar-hecha = Fatta
+tareas-exportar-todo-hecho = Tutto fatto
+tareas-exportar-vacia = Nessuna attività
+tareas-exportar-recordatorio = Promemoria
+tareas-exportar-pasada = Scaduta
+tareas-exportar-creada = Creata il { $fecha }
+tareas-exportar-de = { $hechas } di { $total }
+tareas-exportar-foto = Foto
+compartir-tipo-tareas = Elenco attività

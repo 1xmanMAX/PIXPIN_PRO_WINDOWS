@@ -3585,3 +3585,20 @@ reportar-ia-campo-version = 版本
 reportar-ia-campo-contenido = AI 所写的内容
 reportar-ia-comentario = （如果愿意，请在这里说明哪里有问题。）
 repaso-jev-fallo-red = 无网络连接。
+
+## 导出任务：清单的网页、PDF 和 Markdown（2026-11-01）
+tareas-exportar-titulo = 任务
+tareas-exportar-exportado = 导出于 { $fecha }
+tareas-exportar-pendientes = 待办
+tareas-exportar-hechas = 已完成
+tareas-exportar-completado = 完成度
+tareas-exportar-pendiente = 待办
+tareas-exportar-hecha = 已完成
+tareas-exportar-todo-hecho = 全部完成
+tareas-exportar-vacia = 没有任务
+tareas-exportar-recordatorio = 提醒
+tareas-exportar-pasada = 已逾期
+tareas-exportar-creada = 创建于 { $fecha }
+tareas-exportar-de = { $hechas } / { $total }
+tareas-exportar-foto = 照片
+compartir-tipo-tareas = 任务清单

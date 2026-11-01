@@ -3657,3 +3657,20 @@ reportar-ia-comentario = (If you like, tell us here what is wrong.)
 
 ## Review aloud: if Jev fails, why (1-Nov-2026, like the phone)
 repaso-jev-fallo-red = No connection.
+
+## Export tasks: the page, PDF and Markdown of a list (1-Nov-2026)
+tareas-exportar-titulo = Tasks
+tareas-exportar-exportado = Exported on { $fecha }
+tareas-exportar-pendientes = To do
+tareas-exportar-hechas = Done
+tareas-exportar-completado = Complete
+tareas-exportar-pendiente = To do
+tareas-exportar-hecha = Done
+tareas-exportar-todo-hecho = All done
+tareas-exportar-vacia = No tasks
+tareas-exportar-recordatorio = Reminder
+tareas-exportar-pasada = Overdue
+tareas-exportar-creada = Created { $fecha }
+tareas-exportar-de = { $hechas } of { $total }
+tareas-exportar-foto = Photo
+compartir-tipo-tareas = Task list

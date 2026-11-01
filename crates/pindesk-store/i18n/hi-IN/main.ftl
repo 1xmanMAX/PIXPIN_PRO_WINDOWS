@@ -3643,3 +3643,20 @@ reportar-ia-campo-version = संस्करण
 reportar-ia-campo-contenido = AI ने क्या लिखा
 reportar-ia-comentario = (अगर आप चाहें, तो यहाँ बताएँ कि क्या गलत है।)
 repaso-jev-fallo-red = कोई कनेक्शन नहीं।
+
+## कार्य निर्यात करें: सूची का पेज, PDF और Markdown (1-11-2026)
+tareas-exportar-titulo = कार्य
+tareas-exportar-exportado = { $fecha } को निर्यात किया गया
+tareas-exportar-pendientes = बाकी
+tareas-exportar-hechas = पूरे
+tareas-exportar-completado = पूर्ण
+tareas-exportar-pendiente = बाकी
+tareas-exportar-hecha = पूरा
+tareas-exportar-todo-hecho = सब पूरा
+tareas-exportar-vacia = कोई कार्य नहीं
+tareas-exportar-recordatorio = रिमाइंडर
+tareas-exportar-pasada = समय निकल गया
+tareas-exportar-creada = { $fecha } को बनाया
+tareas-exportar-de = { $total } में से { $hechas }
+tareas-exportar-foto = फ़ोटो
+compartir-tipo-tareas = कार्य सूची

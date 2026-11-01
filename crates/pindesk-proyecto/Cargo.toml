@@ -7,6 +7,10 @@ license.workspace = true
 
 [dependencies]
 pindesk-motor2d = { version = "0.1.0", path = "../pindesk-motor2d" }
+# Lo que se reconoce en el texto de una tarea (urgencia, #etiquetas, nota y
+# recordatorio), para sacar las listas bien (`tareas_exportar`). Sin
+# dependencias.
+pindesk-frase = { version = "0.1.0", path = "../pindesk-frase" }
 # El cable de sincronizar (capa 1): `vista` es su `Disco` sobre el almacen.
 pindesk-sincro = { version = "0.1.0", path = "../pindesk-sincro" }
 # Las uniones de directorio (enlaces simbolicos fuera de Windows): un

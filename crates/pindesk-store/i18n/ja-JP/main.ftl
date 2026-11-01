@@ -3585,3 +3585,20 @@ reportar-ia-campo-version = バージョン
 reportar-ia-campo-contenido = AI が書いた内容
 reportar-ia-comentario = （よろしければ、どこがおかしいかここに書いてください。）
 repaso-jev-fallo-red = 接続がありません。
+
+## タスクの書き出し：リストのページ・PDF・Markdown（2026-11-01）
+tareas-exportar-titulo = タスク
+tareas-exportar-exportado = { $fecha } に書き出し
+tareas-exportar-pendientes = 未完了
+tareas-exportar-hechas = 完了
+tareas-exportar-completado = 達成率
+tareas-exportar-pendiente = 未完了
+tareas-exportar-hecha = 完了
+tareas-exportar-todo-hecho = すべて完了
+tareas-exportar-vacia = タスクはありません
+tareas-exportar-recordatorio = リマインダー
+tareas-exportar-pasada = 期限切れ
+tareas-exportar-creada = { $fecha } 作成
+tareas-exportar-de = { $hechas } / { $total }
+tareas-exportar-foto = 写真
+compartir-tipo-tareas = タスクリスト

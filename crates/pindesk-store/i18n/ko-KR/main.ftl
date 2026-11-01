@@ -3585,3 +3585,20 @@ reportar-ia-campo-version = 버전
 reportar-ia-campo-contenido = AI가 쓴 내용
 reportar-ia-comentario = (원하면 무엇이 잘못되었는지 여기에 적어 주세요.)
 repaso-jev-fallo-red = 연결 없음.
+
+## 할 일 내보내기: 목록의 페이지, PDF, Markdown (2026-11-01)
+tareas-exportar-titulo = 할 일
+tareas-exportar-exportado = { $fecha }에 내보냄
+tareas-exportar-pendientes = 남은 일
+tareas-exportar-hechas = 완료
+tareas-exportar-completado = 진행률
+tareas-exportar-pendiente = 남은 일
+tareas-exportar-hecha = 완료
+tareas-exportar-todo-hecho = 모두 완료
+tareas-exportar-vacia = 할 일이 없습니다
+tareas-exportar-recordatorio = 알림
+tareas-exportar-pasada = 지남
+tareas-exportar-creada = { $fecha }에 만듦
+tareas-exportar-de = { $total }개 중 { $hechas }개
+tareas-exportar-foto = 사진
+compartir-tipo-tareas = 할 일 목록
