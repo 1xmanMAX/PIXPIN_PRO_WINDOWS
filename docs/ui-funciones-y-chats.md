@@ -486,3 +486,72 @@ Se llega desde tres sitios, y los tres dan la misma hoja:
 La carpeta de una **grabación** se comparte como la grabación entera (la
 página web con el reproductor, el PDF y el Word con las capturas en su
 minuto…). No hay campos nuevos: nada cambia en lo que se sincroniza.
+
+## El estado de las IA junto al boton de sincronizar
+
+*1-nov-2026.* El usuario: «unos puntitos rojo o verde, en un sitio donde no
+molesten, que digan si la API de Claude, DeepSeek o Jev funciona o si falta
+la clave; sobre todo en el chat, quiza al lado del boton de sincronizar».
+
+**Como se ve.** Una columna de **tres puntitos de 5 px** (3 px de hueco),
+pegada a la izquierda del boton redondo de sincronizar, en la cabecera de la
+lista (columna de 11 px que se le quita al buscador). De arriba abajo:
+**Claude, DeepSeek, Jev**, siempre los tres, para que «sin clave» se vea.
+
+| Estado | Puntito | Cuando |
+|---|---|---|
+| Funciona | verde lleno (`#43A047` de dia, `#66BB6A` de noche) | la ultima peticion o comprobacion contesto 2xx (o 400/413/422: era de esa peticion, la clave valio) |
+| Falla | rojo lleno (`#E53935` / `#EF5350`) | 401/403 clave mala, 402 (o 400 «credit balance») sin saldo, 429 limite, 5xx/529 servicio caido, sin red, otro codigo (404) |
+| Sin clave | solo el aro rojo | no hay clave guardada |
+| Sin comprobar | gris tenue (`apagado` al 55 %) | hay clave y aun no se sabe |
+
+- **Raton encima**: un globo oscuro (el de `globo_pista`) debajo, con una
+  linea por servicio: «Claude · funciona · hace 3 min», «DeepSeek · sin
+  clave», «Jev · la clave no es válida (401)», y al final «Clic: comprobar
+  ahora o ir a las claves».
+- **Clic**: un menu con las mismas tres lineas (cada una lleva a las claves),
+  **«Comprobar ahora»** y **«Claves en Ajustes → Asistente»** (abre Ajustes
+  directamente en la seccion Asistente).
+- Plegada la lista (o tan estrecha que no cabe el boton), no hay puntitos.
+
+**De donde sale.** De lo que se usa de verdad y de una comprobacion que no
+gasta:
+
+- Cada peticion del asistente, de «Probar» en Ajustes y de Jev avisa de
+  como acabo (`pixpin_ia::nube::al_contestar`,
+  `pixpin_typesafe::cliente::al_contestar`). Lo que sale del cache de Jev no
+  cuenta.
+- La comprobacion: **Anthropic** `GET https://api.anthropic.com/v1/models?limit=1`
+  (cabeceras `x-api-key` y `anthropic-version`), **DeepSeek**
+  `GET https://api.deepseek.com/models` (`Authorization: Bearer`; la misma
+  base que `https://api.deepseek.com/chat/completions`), **TypeSafe (Jev)**
+  `GET https://api.typesafe.ai/v1/models` (la misma prueba de la clave de
+  Ajustes). Ninguna gasta tokens; nunca se manda una peticion de pago para
+  comprobar.
+- Cuando: a los **10 s de arrancar**, al **guardar o borrar una clave** (ya),
+  con «Comprobar ahora», y como mucho **cada 30 min** desde lo ultimo que se
+  supo (una peticion de verdad tambien cuenta, y aplaza la comprobacion).
+  **Sin red**: otra vez a 1, 2, 4, 8... min, hasta 30. En su hilo
+  («estado-ia»): nunca bloquea la interfaz.
+
+**Donde esta en el codigo (Windows)**
+
+- `crates/pixpin-ui/src/estado_ia.rs`: estados, motivos, colores, cuando toca
+  comprobar y «hace cuanto»; con pruebas (portable).
+- `crates/pixpin-ui/src/chat.rs`: `luces_ia` y `puntitos_ia` (el sitio).
+- `apps/pixpin/src/estado_ia.rs`: el tablero del proceso, el hilo y las
+  comprobaciones.
+- `apps/pixpin/src/ventana_chat/estado_ia.rs`: pintar, el globo y el menu.
+- `crates/pixpin-ia/src/nube/mod.rs` (`comprobar`, `al_contestar`) y
+  `crates/pixpin-typesafe/src/cliente.rs` (`al_contestar`).
+- Claves de idioma `ia-estado-*` (al final de los `main.ftl`).
+
+**En Android y en el Mac.** Copiar las reglas de `pixpin_ui::estado_ia` tal
+cual (o llamar al nucleo en Apple): mismos codigos, mismos tiempos y mismas
+claves de idioma. En Android, tres `Box` de 5 dp con `CircleShape` junto al
+boton de sincronizar de la lista; el estado en un `StateFlow` que alimentan
+el cliente HTTP del asistente y el de Jev, y la comprobacion en un
+`WorkManager`/corrutina con las mismas esperas. En el Mac, tres `Circle()` de
+5 pt con `.help(...)` para el globo y un `Menu` al pulsar; la comprobacion en
+una `Task` de fondo. Las claves de cada aparato son suyas (no se
+sincronizan): cada uno ensena el estado de las suyas.
