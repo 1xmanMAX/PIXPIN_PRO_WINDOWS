@@ -3318,3 +3318,19 @@ clase-acta-propuestas = Proposals not accepted
 clase-acta-aceptar = Accept
 clase-acta-aceptada = Added to Tasks
 clase-acta-anadidas = { $n } questions added to the Tasks inbox
+
+## The month inside a date («October 5»), separate from the standalone month
+## (chat-mes-*): Russian and other inflected languages use the genitive here
+## («5 октября»). A language without these keys uses its chat-mes-*.
+chat-mes-dia-1 = January
+chat-mes-dia-2 = February
+chat-mes-dia-3 = March
+chat-mes-dia-4 = April
+chat-mes-dia-5 = May
+chat-mes-dia-6 = June
+chat-mes-dia-7 = July
+chat-mes-dia-8 = August
+chat-mes-dia-9 = September
+chat-mes-dia-10 = October
+chat-mes-dia-11 = November
+chat-mes-dia-12 = December

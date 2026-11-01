@@ -8617,11 +8617,21 @@ pub(crate) fn fecha_corta(textos: &Catalogo, cuando_utc: i64) -> String {
     let (_, mes, dia) = pixpin_ui::chat::partes_fecha(pixpin_shell::entorno::a_local(cuando_utc));
     let mut args = fluent_bundle::FluentArgs::new();
     args.set("dia", dia);
-    args.set(
-        "mes",
-        tarjetas::mes_corto(&textos.t(&format!("chat-mes-{mes}"))),
-    );
+    args.set("mes", tarjetas::mes_corto(&mes_en_fecha(textos, mes)));
     textos.t_args("chat-fecha-corta", &args)
+}
+
+/// El mes dentro de una fecha («5 de octubre», «5 октября»): `chat-mes-dia-*`,
+/// que en ruso y otros idiomas con casos no es el mes suelto (`chat-mes-*`,
+/// el de «octubre de 2026»). Un catalogo que aun no la trae usa su mes
+/// suelto antes que el del ingles.
+pub(crate) fn mes_en_fecha(textos: &Catalogo, mes: impl std::fmt::Display) -> String {
+    let clave = format!("chat-mes-dia-{mes}");
+    if textos.traducida(&clave) {
+        textos.t(&clave)
+    } else {
+        textos.t(&format!("chat-mes-{mes}"))
+    }
 }
 
 /// Abre fuera el enlace de la tarjeta de una nota (`abrirEnlace`), con el
@@ -9968,7 +9978,7 @@ fn fecha_larga(cuando_ms: i64, ahora_ms: i64, textos: &Catalogo) -> String {
     let (ano_ahora, _, _) = pixpin_ui::chat::partes_fecha(ahora_ms);
     let mut args = fluent_bundle::FluentArgs::new();
     args.set("dia", dia);
-    args.set("mes", textos.t(&format!("chat-mes-{mes}")));
+    args.set("mes", mes_en_fecha(textos, mes));
     if ano == ano_ahora {
         return textos.t_args("chat-fecha", &args);
     }
