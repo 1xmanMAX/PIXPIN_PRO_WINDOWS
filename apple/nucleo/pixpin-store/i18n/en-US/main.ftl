@@ -3127,3 +3127,23 @@ clase-acta-propuestas = Proposals not accepted
 clase-acta-aceptar = Accept
 clase-acta-aceptada = Added to Tasks
 clase-acta-anadidas = { $n } questions added to the Tasks inbox
+
+# AI status: the little dots next to the chat's sync button (1-nov-2026).
+# «Claude · working · 3 min ago».
+ia-estado-funciona = working
+ia-estado-sin-clave = no key
+ia-estado-desconocido = not checked yet
+ia-estado-clave-mala = the key is not valid ({ $codigo })
+ia-estado-sin-saldo = the account has no credit
+ia-estado-limite = too many requests or quota used up
+ia-estado-red = no connection
+ia-estado-servidor = the service is failing ({ $codigo })
+ia-estado-otro = not answering properly ({ $codigo })
+ia-estado-comprobando = checking…
+ia-estado-hace-nada = just now
+ia-estado-hace-min = { $n } min ago
+ia-estado-hace-horas = { $n } h ago
+ia-estado-pista = Click: check now or go to the keys
+ia-estado-comprobar = Check now
+ia-estado-claves = Keys in Settings → Assistant
+ia-estado-sin-ajustes = Settings open from the PixPin icon in the tray
