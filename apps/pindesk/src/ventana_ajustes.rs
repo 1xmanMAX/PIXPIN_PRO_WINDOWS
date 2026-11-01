@@ -1007,7 +1007,7 @@ fn filas_de_seccion(s: Seccion, a: &Ajustes, cx: &Contexto) -> Vec<(Clave, Fila)
                 a,
                 Clave::Arranque,
                 tt("ajustes-arranque"),
-                tt("ajustes2-ayuda-arranque"),
+                tt(crate::tienda::ayuda("ajustes2-ayuda-arranque")),
                 Control::Interruptor(a.arranque_con_windows),
             ),
             op(
@@ -1636,7 +1636,7 @@ fn filas_de_seccion(s: Seccion, a: &Ajustes, cx: &Contexto) -> Vec<(Clave, Fila)
                 a,
                 Clave::Presencia,
                 tt("ajustes2-presencia"),
-                tt("ajustes2-ayuda-presencia"),
+                tt(crate::tienda::ayuda("ajustes2-ayuda-presencia")),
                 Control::Interruptor(a.sincro.presencia),
             ),
             op(
@@ -1661,7 +1661,7 @@ fn filas_de_seccion(s: Seccion, a: &Ajustes, cx: &Contexto) -> Vec<(Clave, Fila)
                     a,
                     Clave::AbrirCon,
                     tt("ajustes2-abrir-con"),
-                    tt("ajustes2-ayuda-abrir-con"),
+                    tt(crate::tienda::ayuda("ajustes2-ayuda-abrir-con")),
                     Control::Interruptor(a.abrir_con),
                 ),
             ];
@@ -2609,6 +2609,8 @@ fn pulsar(clave: Clave, a: &Ajustes, ubicacion: &Ubicacion) {
             }
             pindesk_shell::abrir::abrir(&ruta)
         }
+        // En la Store: sin registro, a la pagina de la app del paquete.
+        Clave::Predeterminada if crate::tienda::abrir_predeterminadas() => Ok(()),
         Clave::Predeterminada => {
             // Si se acaba de encender «Ofrecer PinDesk» y aun no se ha
             // guardado, se inscribe ya: sin eso Configuracion no la lista.
@@ -2673,6 +2675,14 @@ fn pulsar(clave: Clave, a: &Ajustes, ubicacion: &Ubicacion) {
 fn aplicar_al_cerrar(antes: &Ajustes, a: &Ajustes, ubicacion: &Ubicacion) {
     crate::caducidad_capturas::fijar_dias(a.capturas.dias_caducidad);
     let Some(exe) = ruta_exe() else { return };
+    if crate::tienda::activa() {
+        // En la Store: la tarea de inicio del paquete y nada en el registro
+        // (los tipos de fichero los da el manifiesto).
+        if a.arranque_con_windows != antes.arranque_con_windows {
+            crate::tienda::fijar_arranque(a.arranque_con_windows);
+        }
+        return;
+    }
     if a.arranque_con_windows != antes.arranque_con_windows {
         match pindesk_shell::arranque::establecer(
             a.arranque_con_windows,

@@ -55,6 +55,7 @@ pub mod red;
 pub mod regional;
 pub mod reproductor_sistema;
 pub mod subir;
+pub mod tienda;
 pub mod uia;
 /// Movido a `pindesk-sistema` (portable); el nombre de siempre sigue valiendo.
 pub use pindesk_sistema::union;

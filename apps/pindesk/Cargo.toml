@@ -12,6 +12,13 @@ license.workspace = true
 name = "pindesk"
 path = "src/main.rs"
 
+[features]
+# La version de la Microsoft Store (solo en la rama `microsoft-store`, ver
+# docs/tienda.md y src/tienda.rs): la tarea de inicio del paquete en vez de
+# `HKCU\...\Run`, nada escrito en el registro y el manifiesto del exe sin el
+# elemento <msix> del paquete de identidad. La compila .github/workflows/tienda.yml.
+tienda = []
+
 [dependencies]
 anyhow = "1.0.104"
 fluent-bundle = "0.16.0"
