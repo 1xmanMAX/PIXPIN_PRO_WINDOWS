@@ -419,9 +419,12 @@ pub fn partes_de_fila(fila: &Fila, r: Recta) -> Vec<(Parte, Recta)> {
             }
             derecha -= total + 6.0 + HUECO;
         }
-        Control::Numero { .. } => {
+        Control::Numero { texto, .. } => {
+            // Lo de en medio se ensancha si el texto no cabe: el idioma se
+            // elige asi y «Bahasa Indonesia» no cabe en los 84 de un numero.
+            let valor = NUMERO_VALOR.max(ancho_estimado(texto, 14.0) + 16.0);
             let mas = caja(r, derecha, NUMERO_BOTON, CONTROL_ALTO);
-            let menos = caja(r, mas.x - NUMERO_VALOR, NUMERO_BOTON, CONTROL_ALTO);
+            let menos = caja(r, mas.x - valor, NUMERO_BOTON, CONTROL_ALTO);
             derecha = menos.x - HUECO;
             v.push((Parte::Menos, menos));
             v.push((Parte::Mas, mas));

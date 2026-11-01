@@ -114,11 +114,11 @@ fn compartir_html(e: &mut Estado, c: &Contenido, textos: &Catalogo) {
     }
     let d = Dia::de_instante(c.cuando, e.desfase);
     let secciones = [pixpin_timeline::html::Seccion {
-        rotulo: dias::nombre_del_dia(d, e.ingles),
+        rotulo: dias::nombre_del_dia(d, e.lengua),
         momentos: vec![&m],
     }];
     let titulo = c.titulo.lines().next().unwrap_or("").trim().to_string();
-    let op = super::opciones(e, textos, titulo.clone(), dias::nombre_del_dia(d, e.ingles));
+    let op = super::opciones(e, textos, titulo.clone(), dias::nombre_del_dia(d, e.lengua));
     // Las rutas van enteras: un momento tiene sus ficheros en el almacen y
     // una leccion, en el chat de su proyecto.
     let dentro = |ruta: &str| {
@@ -269,7 +269,7 @@ pub(super) fn imagen(
     motor
         .dibujar(&fuera.destino, |p| {
             p.limpiar(Color::NEGRO);
-            super::historia::tarjeta(p, c, bm, W as f32, H as f32, textos, e.desfase, e.ingles);
+            super::historia::tarjeta(p, c, bm, W as f32, H as f32, textos, e.desfase, e.lengua);
         })
         .context("no se pudo pintar")?;
     fuera.esperar_gpu().context("la GPU no acabo")?;

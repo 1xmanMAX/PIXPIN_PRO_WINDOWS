@@ -9,6 +9,7 @@
 //! ensenan igual, y no cambia de color cada vez que se abre.
 
 use crate::dias::{Dia, hora};
+use crate::lengua::{Lengua, Tabla};
 
 /// Los degradados, como `(arriba a la izquierda, abajo a la derecha)` en
 /// `0xRRGGBB`. Oscuros y saturados a medias: el texto blanco encima se lee
@@ -41,34 +42,21 @@ pub fn css(c: u32) -> String {
     format!("#{:06x}", c & 0xFF_FFFF)
 }
 
-const MESES_CORTOS_ES: [&str; 12] = [
-    "ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sept", "oct", "nov", "dic",
-];
-const MESES_CORTOS_EN: [&str; 12] = [
-    "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-];
-
 /// «oct» / «Oct»: el mes en corto (bajo el numero del mes en «Estado»).
-pub fn mes_corto(mes: u8, ingles: bool) -> &'static str {
+pub fn mes_corto(mes: u8, lengua: impl Into<Lengua>) -> &'static str {
     let i = usize::from(mes.clamp(1, 12) - 1);
-    if ingles {
-        MESES_CORTOS_EN[i]
-    } else {
-        MESES_CORTOS_ES[i]
-    }
+    lengua.into().tabla().meses_cortos[i]
 }
 
 /// «5 oct 2026 · 17:11» / «Oct 5, 2026 · 17:11»: la fecha de arriba de una
 /// tarjeta compartida.
-pub fn fecha_larga(utc_ms: i64, desfase: i64, ingles: bool) -> String {
+pub fn fecha_larga(utc_ms: i64, desfase: i64, lengua: impl Into<Lengua>) -> String {
+    let t = lengua.into().tabla();
     let d = Dia::de_instante(utc_ms, desfase);
     let i = usize::from(d.mes.clamp(1, 12) - 1);
     let h = hora(utc_ms, desfase);
-    if ingles {
-        format!("{} {}, {} · {h}", MESES_CORTOS_EN[i], d.dia, d.anio)
-    } else {
-        format!("{} {} {} · {h}", d.dia, MESES_CORTOS_ES[i], d.anio)
-    }
+    let fecha = Tabla::rellenar(t.fecha_corta, "", d.dia, "", t.meses_cortos[i], d.anio);
+    format!("{fecha} · {h}")
 }
 
 /// «0:42» de una duracion en ms (redondeada al segundo), o vacio.

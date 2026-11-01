@@ -22,8 +22,23 @@ use super::{Fila, Lista};
 // ------------------------------------------------------------------ buscar
 
 /// Las palabras de lo buscado. Sin palabras no se filtra nada.
+///
+/// «hari ini» (hoy, en indonesio) son dos palabras que nombran un dia: van
+/// juntas, o «hari» sola no encontraria nada.
 pub fn palabras(consulta: &str) -> Vec<String> {
-    consulta.split_whitespace().map(str::to_string).collect()
+    let mut v: Vec<String> = Vec::new();
+    for p in consulta.split_whitespace() {
+        if plano(p) == "ini"
+            && let Some(antes) = v.last_mut()
+            && plano(antes) == "hari"
+        {
+            antes.push(' ');
+            antes.push_str(p);
+            continue;
+        }
+        v.push(p.to_string());
+    }
+    v
 }
 
 /// Una palabra en su forma de comparar: minusculas y sin tildes. Solo para
@@ -38,6 +53,7 @@ fn plano(s: &str) -> String {
             'í' | 'ì' | 'ï' | 'î' => 'i',
             'ó' | 'ò' | 'ö' | 'ô' => 'o',
             'ú' | 'ù' | 'ü' | 'û' => 'u',
+            '’' => '\'',
             otra => otra,
         })
         .collect()
@@ -52,10 +68,17 @@ pub enum Dia {
     El(mini::Fecha),
 }
 
+///
+/// «Hoy» y «ayer» valen en los catorce idiomas de la interfaz, con las
+/// palabras que dice la pista del buscador (`tareas3-buscar`) en cada uno:
+/// se aceptan todas a la vez, porque quien busca puede escribir en otro
+/// idioma que el de PixPin. «कल» es ayer y mañana en hindi: aqui, ayer.
 pub fn dia_de(palabra: &str) -> Option<Dia> {
     match plano(palabra).as_str() {
-        "hoy" | "today" => Some(Dia::Hace(0)),
-        "ayer" | "yesterday" => Some(Dia::Hace(1)),
+        "hoy" | "today" | "今天" | "今日" | "आज" | "اليوم" | "hoje" | "aujourd'hui" | "heute"
+        | "сегодня" | "오늘" | "oggi" | "hari ini" | "bugun" => Some(Dia::Hace(0)),
+        "ayer" | "yesterday" | "昨天" | "昨日" | "कल" | "أمس" | "امس" | "ontem" | "hier"
+        | "gestern" | "вчера" | "어제" | "ieri" | "kemarin" | "dun" => Some(Dia::Hace(1)),
         "anteayer" => Some(Dia::Hace(2)),
         otra => fecha_escrita(otra).map(Dia::El),
     }
@@ -444,6 +467,15 @@ mod pruebas {
         assert_eq!(dia_de("2026-13-01"), None);
         assert_eq!(dia_de("2026"), None);
         assert_eq!(dia_de("hoyo"), None);
+        // Los otros idiomas, con lo que dice la pista de cada uno.
+        for hoy in ["今天", "今日", "Сегодня", "aujourd’hui", "bugün", "오늘"] {
+            assert_eq!(dia_de(hoy), Some(Dia::Hace(0)), "{hoy}");
+        }
+        for ayer in ["昨天", "вчера", "Gestern", "dün", "أمس", "kemarin"] {
+            assert_eq!(dia_de(ayer), Some(Dia::Hace(1)), "{ayer}");
+        }
+        assert_eq!(palabras("tarea hari ini"), ["tarea", "hari ini"]);
+        assert_eq!(dia_de(&palabras("Hari Ini")[0]), Some(Dia::Hace(0)));
     }
 
     #[test]

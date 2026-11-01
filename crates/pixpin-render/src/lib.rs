@@ -21,6 +21,7 @@ pub mod hoja_iconos;
 pub mod hoja_office;
 pub mod icono;
 pub mod iconos_excalidraw;
+pub mod idioma;
 pub mod imprimir;
 pub mod imprimir_moderno;
 pub mod lectura;

@@ -414,7 +414,8 @@ struct Estado {
     desfase: i64,
     cuenta: u32,
     pdf: Option<Receiver<Result<PathBuf, String>>>,
-    ingles: bool,
+    /// El idioma de las fechas (nombres de meses y dias).
+    lengua: pixpin_timeline::Lengua,
 }
 
 impl Estado {
@@ -478,7 +479,7 @@ impl Estado {
             desfase,
             cuenta: 0,
             pdf: None,
-            ingles: idioma == Idioma::Ingles,
+            lengua: pixpin_timeline::Lengua::de_codigo(idioma.codigo()),
         }
     }
 
@@ -1739,7 +1740,7 @@ fn exportar_lo_que_se_ve(e: &mut Estado, f: Formato, textos: &Catalogo) {
         }
         Modo::Dia(d) => (
             format!("timeline-{}", d.iso()),
-            dias::nombre_del_dia(d, e.ingles),
+            dias::nombre_del_dia(d, e.lengua),
             vec![d],
         ),
         Modo::Momentos | Modo::Estado => {
@@ -1749,12 +1750,12 @@ fn exportar_lo_que_se_ve(e: &mut Estado, f: Formato, textos: &Catalogo) {
                 return;
             };
             let sub = if a == b {
-                dias::nombre_del_dia(a, e.ingles)
+                dias::nombre_del_dia(a, e.lengua)
             } else {
                 format!(
                     "{} – {}",
-                    dias::nombre_del_dia(a, e.ingles),
-                    dias::nombre_del_dia(b, e.ingles)
+                    dias::nombre_del_dia(a, e.lengua),
+                    dias::nombre_del_dia(b, e.lengua)
                 )
             };
             let nombre = if a == b {
@@ -1779,7 +1780,7 @@ fn exportar_lo_que_se_ve(e: &mut Estado, f: Formato, textos: &Catalogo) {
         dias_sueltos
             .iter()
             .map(|d| Seccion {
-                rotulo: dias::nombre_del_dia(*d, e.ingles),
+                rotulo: dias::nombre_del_dia(*d, e.lengua),
                 momentos: dias::del_dia(&e.momentos, *d, e.desfase),
             })
             .filter(|s| !s.momentos.is_empty())
@@ -1905,14 +1906,14 @@ fn vista_en_imagen(
 /// Las opciones de la pagina exportada.
 fn opciones(e: &Estado, textos: &Catalogo, titulo: String, subtitulo: String) -> Opciones {
     let mut pie = fluent_bundle::FluentArgs::new();
-    pie.set("fecha", dias::nombre_del_dia(e.hoy(), e.ingles));
+    pie.set("fecha", dias::nombre_del_dia(e.hoy(), e.lengua));
     Opciones {
         titulo,
         subtitulo,
         pie: textos.t_args("timeline-exportado-pie", &pie),
         nota_de_voz: textos.t("timeline-nota-de-voz"),
         desfase: e.desfase,
-        ingles: e.ingles,
+        lengua: e.lengua,
         pestanas: [
             textos.t("timeline-pagina-linea"),
             textos.t("timeline-pestana-momentos"),
@@ -2087,7 +2088,7 @@ fn partir_por_dias<'a>(e: &Estado, v: Vec<&'a Momento>) -> Vec<Seccion<'a>> {
         if actual != Some(d) {
             actual = Some(d);
             out.push(Seccion {
-                rotulo: dias::nombre_del_dia(d, e.ingles),
+                rotulo: dias::nombre_del_dia(d, e.lengua),
                 momentos: Vec::new(),
             });
         }
@@ -2293,7 +2294,7 @@ fn pintar_todo(e: &mut Estado, p: &Pintor, marco: Rect, s: f32, textos: &Catalog
         Modo::Hoy => con_n(textos, "timeline-sub-ultimas", e.visibles().len()),
         Modo::Dia(d) => {
             let mut a = fluent_bundle::FluentArgs::new();
-            a.set("dia", dias::nombre_del_dia(d, e.ingles));
+            a.set("dia", dias::nombre_del_dia(d, e.lengua));
             a.set("n", e.visibles().len() as i64);
             textos.t_args("timeline-sub-dia", &a)
         }
@@ -2434,7 +2435,7 @@ fn barra_del_dia(e: &mut Estado, p: &Pintor, zona: RectF, d: Dia, s: f32, textos
         TEXTO_V,
         s,
     );
-    let nombre = dias::nombre_del_dia(d, e.ingles);
+    let nombre = dias::nombre_del_dia(d, e.lengua);
     let x = b.x + b.ancho + 16.0 * s;
     let (_, nh) = ui::medir_negrita(p, &nombre, 16.0 * s, zona.ancho - x - m);
     ui::negrita(
@@ -2548,7 +2549,7 @@ fn pintar_linea(e: &mut Estado, p: &Pintor, area: RectF, s: f32, textos: &Catalo
                     } else if d.numero() == hoy.numero() - 1 {
                         textos.t("timeline-ayer")
                     } else {
-                        dias::nombre_del_dia(d, e.ingles)
+                        dias::nombre_del_dia(d, e.lengua)
                     };
                     let (tw, th) = p.medir_texto(&rot, 12.5 * s);
                     let pill = RectF {
@@ -2979,12 +2980,12 @@ fn pintar_menu(
     );
     let que = match e.modo() {
         Modo::Hoy => textos.t("timeline-ultimas-24h"),
-        Modo::Dia(d) => dias::nombre_del_dia(d, e.ingles),
+        Modo::Dia(d) => dias::nombre_del_dia(d, e.lengua),
         Modo::Buscar => con_n(textos, "timeline-sub-buscar", e.visibles().len()),
         Modo::Momentos | Modo::Estado if !e.elegidos.is_empty() => {
             con_n(textos, "timeline-cal-elegidos", e.elegidos.len())
         }
-        Modo::Momentos | Modo::Estado => dias::nombre_del_mes(Mes::de(e.hoy()), e.ingles),
+        Modo::Momentos | Modo::Estado => dias::nombre_del_mes(Mes::de(e.hoy()), e.lengua),
         Modo::Lecciones => String::new(),
     };
     let ancho = 260.0 * s;

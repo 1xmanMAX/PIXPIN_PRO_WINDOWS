@@ -39,16 +39,99 @@ pub enum ErrorAjustes {
     SerializacionConservando(#[from] toml_edit::ser::Error),
 }
 
+/// El idioma elegido en los ajustes. En el TOML se escribe con la etiqueta
+/// corta de siempre (`es`, `en`) y, para los demas, con la parte de idioma
+/// de su etiqueta (`fr`, `ja`…) salvo chino y portugues, que llevan la
+/// region (`zh-CN`, `pt-BR`) porque el dia que haya chino tradicional o
+/// portugues de Portugal seran otra opcion. Los alias aceptan la etiqueta
+/// entera (`es-ES`, `fr-FR`) y la corta, para que un fichero escrito a mano
+/// no falle por eso.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "kebab-case")]
 pub enum PreferenciaIdioma {
     /// Se toma del idioma de Windows.
     #[default]
     Sistema,
-    #[serde(rename = "es")]
+    #[serde(rename = "es", alias = "es-ES")]
     Espanol,
-    #[serde(rename = "en")]
+    #[serde(rename = "en", alias = "en-US")]
     Ingles,
+    #[serde(rename = "zh-CN", alias = "zh", alias = "zh-Hans")]
+    ChinoSimplificado,
+    #[serde(rename = "hi", alias = "hi-IN")]
+    Hindi,
+    #[serde(rename = "ar", alias = "ar-SA")]
+    Arabe,
+    #[serde(rename = "pt-BR", alias = "pt")]
+    Portugues,
+    #[serde(rename = "fr", alias = "fr-FR")]
+    Frances,
+    #[serde(rename = "de", alias = "de-DE")]
+    Aleman,
+    #[serde(rename = "ja", alias = "ja-JP")]
+    Japones,
+    #[serde(rename = "ru", alias = "ru-RU")]
+    Ruso,
+    #[serde(rename = "ko", alias = "ko-KR")]
+    Coreano,
+    #[serde(rename = "it", alias = "it-IT")]
+    Italiano,
+    #[serde(rename = "id", alias = "id-ID")]
+    Indonesio,
+    #[serde(rename = "tr", alias = "tr-TR")]
+    Turco,
+}
+
+impl PreferenciaIdioma {
+    /// El idioma forzado, o `None` si se sigue al sistema.
+    pub fn idioma(self) -> Option<crate::Idioma> {
+        use crate::Idioma as I;
+        Some(match self {
+            PreferenciaIdioma::Sistema => return None,
+            PreferenciaIdioma::Espanol => I::Espanol,
+            PreferenciaIdioma::Ingles => I::Ingles,
+            PreferenciaIdioma::ChinoSimplificado => I::ChinoSimplificado,
+            PreferenciaIdioma::Hindi => I::Hindi,
+            PreferenciaIdioma::Arabe => I::Arabe,
+            PreferenciaIdioma::Portugues => I::Portugues,
+            PreferenciaIdioma::Frances => I::Frances,
+            PreferenciaIdioma::Aleman => I::Aleman,
+            PreferenciaIdioma::Japones => I::Japones,
+            PreferenciaIdioma::Ruso => I::Ruso,
+            PreferenciaIdioma::Coreano => I::Coreano,
+            PreferenciaIdioma::Italiano => I::Italiano,
+            PreferenciaIdioma::Indonesio => I::Indonesio,
+            PreferenciaIdioma::Turco => I::Turco,
+        })
+    }
+
+    /// La preferencia que fuerza `idioma`.
+    pub fn de(idioma: crate::Idioma) -> Self {
+        use crate::Idioma as I;
+        match idioma {
+            I::Espanol => PreferenciaIdioma::Espanol,
+            I::Ingles => PreferenciaIdioma::Ingles,
+            I::ChinoSimplificado => PreferenciaIdioma::ChinoSimplificado,
+            I::Hindi => PreferenciaIdioma::Hindi,
+            I::Arabe => PreferenciaIdioma::Arabe,
+            I::Portugues => PreferenciaIdioma::Portugues,
+            I::Frances => PreferenciaIdioma::Frances,
+            I::Aleman => PreferenciaIdioma::Aleman,
+            I::Japones => PreferenciaIdioma::Japones,
+            I::Ruso => PreferenciaIdioma::Ruso,
+            I::Coreano => PreferenciaIdioma::Coreano,
+            I::Italiano => PreferenciaIdioma::Italiano,
+            I::Indonesio => PreferenciaIdioma::Indonesio,
+            I::Turco => PreferenciaIdioma::Turco,
+        }
+    }
+
+    /// Las opciones del selector de los ajustes, en su orden: primero «el
+    /// de Windows» y despues cada idioma en el orden de [`crate::Idioma::TODOS`].
+    pub fn opciones() -> impl Iterator<Item = PreferenciaIdioma> {
+        std::iter::once(PreferenciaIdioma::Sistema)
+            .chain(crate::Idioma::TODOS.into_iter().map(PreferenciaIdioma::de))
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -710,6 +793,44 @@ mod pruebas {
         Ubicacion::Instalado { raiz: dir }
     }
 
+    /// Los idiomas del mundo (1-nov-2026): los ficheros de antes (`es`,
+    /// `en`, `sistema`) se siguen leyendo igual, los nuevos se escriben con
+    /// su etiqueta y cada uno vuelve a leerse como el mismo.
+    #[test]
+    fn el_idioma_de_antes_se_lee_igual_y_los_nuevos_ida_y_vuelta() {
+        for (toml_viejo, esperado) in [
+            ("idioma = \"es\"\n", PreferenciaIdioma::Espanol),
+            ("idioma = \"en\"\n", PreferenciaIdioma::Ingles),
+            ("idioma = \"sistema\"\n", PreferenciaIdioma::Sistema),
+            ("", PreferenciaIdioma::Sistema),
+            ("idioma = \"fr-FR\"\n", PreferenciaIdioma::Frances),
+            ("idioma = \"zh\"\n", PreferenciaIdioma::ChinoSimplificado),
+        ] {
+            let a: Ajustes = toml::from_str(toml_viejo).unwrap();
+            assert_eq!(a.idioma, esperado, "{toml_viejo:?}");
+        }
+        for p in PreferenciaIdioma::opciones() {
+            let a = Ajustes {
+                idioma: p,
+                ..Ajustes::default()
+            };
+            let texto = toml::to_string(&a).unwrap();
+            let vuelta: Ajustes = toml::from_str(&texto).unwrap();
+            assert_eq!(vuelta.idioma, p);
+            if let Some(i) = p.idioma() {
+                assert_eq!(PreferenciaIdioma::de(i), p);
+            }
+        }
+        assert_eq!(PreferenciaIdioma::opciones().count(), 15);
+        // Lo que se escribe para es/en no cambia: un PixPin de antes lo lee.
+        let a = Ajustes {
+            idioma: PreferenciaIdioma::Espanol,
+            ..Ajustes::default()
+        };
+        assert!(toml::to_string(&a).unwrap().contains("idioma = \"es\""));
+        assert!(toml::from_str::<Ajustes>("idioma = \"klingon\"\n").is_err());
+    }
+
     /// Unos ajustes con TODO cambiado respecto a los de fabrica.
     ///
     /// Que no quede ni un campo en su valor por defecto es lo que hace
@@ -774,7 +895,8 @@ mod pruebas {
             pinear: Pinear {
                 palabras_propias: true,
                 palabras: "reloj=TIMER
-sorteito=RULETA".into(),
+sorteito=RULETA"
+                    .into(),
             },
             ..Ajustes::default()
         }

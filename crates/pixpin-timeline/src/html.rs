@@ -51,7 +51,8 @@ pub struct Opciones {
     /// El rotulo de la chapa de un audio («Nota de voz»).
     pub nota_de_voz: String,
     pub desfase: i64,
-    pub ingles: bool,
+    /// El idioma de las fechas y del `lang` de la pagina.
+    pub lengua: crate::Lengua,
     /// Los rotulos de las pestanas: linea, momentos y estado.
     pub pestanas: [String; 3],
     /// «Sobre todo», en la pestana Estado.
@@ -67,7 +68,7 @@ pub fn pagina(
     audio: &dyn Fn(&str) -> Option<String>,
 ) -> String {
     let mut s = String::with_capacity(64 * 1024);
-    let lang = if op.ingles { "en" } else { "es" };
+    let lang = op.lengua.codigo();
     s.push_str(&format!(
         "<!doctype html>\n<html lang=\"{lang}\"><head><meta charset=\"utf-8\">\n"
     ));
@@ -149,7 +150,7 @@ pub fn pagina(
                 "id": id,
                 "dia": d.iso(),
                 "hora": hora(m.cuando, op.desfase),
-                "fecha": fecha_larga(m.cuando, op.desfase, op.ingles),
+                "fecha": fecha_larga(m.cuando, op.desfase, op.lengua),
                 "titulo": m.titulo,
                 "texto": m.descripcion,
                 "fotos": fotos,
@@ -187,7 +188,7 @@ pub fn pagina(
                 .map(|l| (format!("{:04}-{:02}", mes.anio, mes.mes), json!(l.texto())))
         })
         .collect();
-    let meses: Vec<&str> = (1..=12).map(|n| solo_el_mes(n, op.ingles)).collect();
+    let meses: Vec<&str> = (1..=12).map(|n| solo_el_mes(n, op.lengua)).collect();
     let todo = json!({
         "momentos": datos,
         "meses": meses,
@@ -665,7 +666,7 @@ mod pruebas {
             pie: "PixPin".into(),
             nota_de_voz: "Nota de voz".into(),
             desfase: 0,
-            ingles: false,
+            lengua: crate::Lengua::Es,
             pestanas: ["Línea".into(), "Momentos".into(), "Estado".into()],
             sobre_todo: "Sobre todo".into(),
         }
