@@ -154,6 +154,9 @@ mod pin_office;
 mod pin_vivo;
 mod pines;
 mod plano_cad;
+/// Privacidad y datos: lo que sale del PC y adonde, y reportar lo que
+/// escribe la IA (1-nov-2026, lo del movil para las tiendas).
+mod privacidad;
 mod pronunciar;
 mod punto_de_proyecto;
 mod recibir;

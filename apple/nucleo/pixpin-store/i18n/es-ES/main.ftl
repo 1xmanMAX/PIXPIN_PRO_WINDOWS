@@ -3178,3 +3178,76 @@ clase-temas-bateria = Batería baja: no se escucha en vivo para no gastarla (la 
 ## Dictar al chat: si Jev falla, se dice (1-nov-2026, como el movil)
 chat-anotar-fallo-red = Sin conexión: Jev no pudo mirar si había que anotarlo en otro chat. Lo dictado sigue en la caja.
 chat-anotar-fallo = Jev no contestó ({ $motivo }). Lo dictado sigue en la caja.
+
+## Escuchar en vivo con Vosk (1-nov-2026, lo que el movil ya hacia)
+ajustes2-voz-en-vivo = Escuchar la reunión en vivo con
+ajustes2-voz-en-vivo-sistema = Windows o Whisper
+ajustes2-voz-en-vivo-vosk = Vosk
+ajustes2-ayuda-voz-en-vivo = Para los temas y lo demás de la reunión con Jev. Vosk enseña lo que se va diciendo y cierra cada frase a las décimas de callarse (con Whisper, unos 3 s), sin red. Al elegirlo se bajan { $megas } MB (Apache-2.0).
+ajustes2-ayuda-voz-en-vivo-vosk-listo = Se escucha con Vosk, sin red: lo que se va diciendo sale en la pantalla completa de la grabación. Si alguna vez no carga, con Windows o Whisper.
+ajustes2-ayuda-voz-en-vivo-sin-idioma = Vosk se baja para castellano e inglés; en este idioma se escucha con Windows o Whisper.
+ajustes2-voz-en-vivo-bajando = Bajando Vosk… { $por-ciento } %. Mientras tanto se escucha con Windows o Whisper.
+ajustes2-voz-en-vivo-fallo = No se pudo bajar Vosk: { $fallo }. Vuelve a elegirlo para reintentar.
+ajustes2-voz-vosk-borrar = Borrar Vosk
+ajustes2-ayuda-voz-vosk-borrar = Libera lo bajado (unos 100 MB en disco). Se vuelve a bajar al elegirlo.
+clase-temas-bateria = Batería baja: no se escucha en vivo para no gastarla (la grabación sigue)
+
+## Dictar al chat: si Jev falla, se dice (1-nov-2026, como el movil)
+chat-anotar-fallo-red = Sin conexión: Jev no pudo mirar si había que anotarlo en otro chat. Lo dictado sigue en la caja.
+chat-anotar-fallo = Jev no contestó ({ $motivo }). Lo dictado sigue en la caja.
+
+## Privacidad y datos (1-nov-2026, lo del movil para las tiendas: Ajustes › General)
+ajustes2-g-privacidad = Privacidad y datos
+ajustes2-priv-politica = Política de privacidad
+ajustes2-ayuda-priv-politica = Qué hace PixPin Max con tus datos (en castellano y en inglés): todo se queda en este PC salvo lo de abajo, y solo cuando tú lo usas.
+ajustes2-g-privacidad-sale = Lo que sale de este PC y adónde
+ajustes2-priv-ver-ajustes = Ver sus ajustes
+ajustes2-priv-nada-mas = Nada más
+ajustes2-ayuda-priv-nada-mas = Sin anuncios, sin analíticas, sin informes de fallos, sin cuenta y sin servidores de PixPin. El dictado y pasar a texto van en este PC, sin red.
+ajustes2-g-privacidad-datos = Tus datos
+ajustes2-priv-carpeta = Tus datos, en tu disco
+ajustes2-ayuda-priv-carpeta = Capturas, chats, notas, grabaciones y ajustes viven en { $carpeta }. Para llevártelos, copia la carpeta; para borrarlos, cierra PixPin Max y bórrala. Las claves de la IA van cifradas con tu usuario de Windows.
+ajustes2-priv-reportes = Reportes de lo que escribe la IA
+ajustes2-ayuda-priv-reportes = { $n ->
+    [one] 1 guardado en reportes-ia.jsonl (en la carpeta de datos).
+   *[other] { $n } guardados en reportes-ia.jsonl (en la carpeta de datos).
+}
+privacidad-asistente-que = Lo que preguntas al asistente, lo reciente del chat y lo que le adjuntes
+privacidad-asistente-adonde = Anthropic (Claude) o DeepSeek
+privacidad-asistente-cuando = Solo si pegas tu propia clave y le preguntas. La clave se guarda cifrada en este PC.
+privacidad-jev-que = Los textos de cada función de Jev: frases de una reunión, renglones de una clase, tareas, lo que dictas o explicas
+privacidad-jev-adonde = TypeSafe (api.typesafe.ai)
+privacidad-jev-cuando = Solo con tu clave de TypeSafe y con esa función encendida. Nunca el audio.
+privacidad-web-que = Lo que el asistente busca y las páginas que lee para contestarte
+privacidad-web-adonde = DuckDuckGo o Brave Search, y la web que lea
+privacidad-web-cuando = Cuando el asistente busca en la web. Sin cookies ni tu clave de IA.
+privacidad-google-que = Los archivos que eliges de Drive y los eventos del calendario
+privacidad-google-adonde = Google (Drive, Calendar)
+privacidad-google-cuando = Solo si conectas tu cuenta de Google en Ajustes › Asistente; se desconecta desde ahí.
+privacidad-voces-que = El texto que se lee en voz alta con una voz de Microsoft
+privacidad-voces-adonde = Microsoft (las voces de Edge)
+privacidad-voces-cuando = Solo si eliges una de esas voces en el lector; las de Windows van sin red.
+privacidad-enlace-que = El archivo que eliges compartir por enlace
+privacidad-enlace-adonde = litterbox.catbox.moe o temp.sh
+privacidad-enlace-cuando = Solo al pedir un enlace para compartir; se borra solo en horas o días.
+privacidad-modelos-que = Nada tuyo: solo se piden los archivos
+privacidad-modelos-adonde = huggingface.co, github.com y alphacephei.com (Whisper, Qwen3-ASR, Vosk, Indra)
+privacidad-modelos-cuando = Al bajar un modelo de voz o de leer texto, cuando tú lo pides.
+privacidad-sincro-que = Tus capturas, notas y chats sincronizados
+privacidad-sincro-adonde = Tus propios aparatos (el móvil), por tu red
+privacidad-sincro-cuando = Al sincronizar: directo en tu red, cifrado, sin pasar por servidores.
+
+## Reportar lo que escribe la IA (1-nov-2026, como el movil)
+reportar-ia = Reportar respuesta…
+reportar-ia-motivo-ofensivo = Ofensiva
+reportar-ia-motivo-peligroso = Peligrosa
+reportar-ia-motivo-falso = Falsa o engañosa
+reportar-ia-motivo-otro = Otro motivo
+reportar-ia-hecho = Reporte guardado en reportes-ia.jsonl; se abre tu correo para mandarlo
+reportar-ia-asunto = Reporte de una respuesta de la IA
+reportar-ia-campo-motivo = Motivo
+reportar-ia-campo-funcion = Función
+reportar-ia-campo-fecha = Fecha
+reportar-ia-campo-version = Versión
+reportar-ia-campo-contenido = Lo que escribió la IA
+reportar-ia-comentario = (Si quieres, cuenta aquí qué está mal.)
