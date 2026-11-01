@@ -2011,6 +2011,7 @@ dependencies = [
  "thiserror",
  "tracing",
  "windows",
+ "zip",
 ]
 
 [[package]]

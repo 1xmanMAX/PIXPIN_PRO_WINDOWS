@@ -31,9 +31,10 @@
 //!   no espera a nadie (la suscripcion ya es asi) y la transcripcion entera
 //!   de despues sigue siendo la de siempre.
 //! - [`Freno`]: **si una frase se pasa a texto o se salta**. Se salta lo
-//!   que no tiene voz, todo mientras el procesador va cargado (≥ 85 %) y,
-//!   si la ultima tardo mas del 80 % de lo que dura, la siguiente (para
-//!   que el reconocedor no viva pegado al procesador).
+//!   que no tiene voz, todo mientras el procesador va cargado (≥ 85 %) o
+//!   la bateria va justa (desenchufado y por debajo del 20 %, como el
+//!   movil: 1-nov-2026) y, si la ultima tardo mas del 80 % de lo que dura,
+//!   la siguiente (para que el reconocedor no viva pegado al procesador).
 
 use std::collections::VecDeque;
 use std::time::Duration;
@@ -447,6 +448,9 @@ pub enum Paso {
     SaltarSilencio,
     /// El procesador va cargado.
     SaltarCpu,
+    /// La bateria va justa (desenchufado, poca carga): la grabacion va
+    /// primero.
+    SaltarBateria,
     /// La anterior tardo demasiado: esta se salta para respirar.
     SaltarRetraso,
 }
@@ -460,11 +464,19 @@ pub struct Freno {
 impl Freno {
     /// `cpu`: lo ocupado del procesador ahora (0-1), si se sabe.
     pub fn decidir(&mut self, frase: &Frase, cpu: Option<f32>) -> Paso {
+        self.decidir_en(frase, cpu, false)
+    }
+
+    /// Lo mismo, sabiendo si la bateria va justa.
+    pub fn decidir_en(&mut self, frase: &Frase, cpu: Option<f32>, bateria_baja: bool) -> Paso {
         if !tiene_voz(&frase.muestras) {
             return Paso::SaltarSilencio;
         }
         if cpu.is_some_and(|c| c >= CPU_MAXIMA) {
             return Paso::SaltarCpu;
+        }
+        if bateria_baja {
+            return Paso::SaltarBateria;
         }
         if std::mem::take(&mut self.descansar) {
             return Paso::SaltarRetraso;
@@ -674,6 +686,10 @@ mod pruebas {
         assert_eq!(f.decidir(&callado, Some(0.1)), Paso::SaltarSilencio);
         assert_eq!(f.decidir(&voz, Some(0.9)), Paso::SaltarCpu);
         assert_eq!(f.decidir(&voz, None), Paso::Pasar);
+        // Con la bateria justa no se pasa (lo callado se salta igual).
+        assert_eq!(f.decidir_en(&voz, Some(0.1), true), Paso::SaltarBateria);
+        assert_eq!(f.decidir_en(&callado, None, true), Paso::SaltarSilencio);
+        assert_eq!(f.decidir_en(&voz, Some(0.1), false), Paso::Pasar);
         // Tardo 2,6 s en 3: se descansa una, y solo una.
         f.tardo(Duration::from_secs(3), Duration::from_millis(2_600));
         assert_eq!(f.decidir(&voz, Some(0.2)), Paso::SaltarRetraso);
