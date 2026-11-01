@@ -791,6 +791,13 @@ impl VentanaOverlay {
         }
     }
 
+    /// Si esta minimizada en la barra de tareas. La ventana de Tareas lo
+    /// mira para saber que se salio de ella (`tareas_quietas`).
+    pub fn minimizada(&self) -> bool {
+        // SAFETY: IsIconic solo consulta el estado de la ventana propia.
+        unsafe { IsIconic(self.hwnd) }.as_bool()
+    }
+
     /// Deja que se suelten ficheros encima (WM_DROPFILES).
     ///
     /// Apagado por omision: un overlay de captura que aceptara ficheros
