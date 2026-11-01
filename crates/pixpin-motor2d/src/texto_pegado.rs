@@ -138,14 +138,27 @@ pub fn ajustar(texto: &str, ancho: f32, mide: &dyn Fn(&str) -> f32) -> String {
         let sangria = parrafo.len() - parrafo.trim_start_matches(' ').len();
         let mut linea = String::from(&parrafo[..sangria]);
         let mut vacia = true;
-        for palabra in parrafo[sangria..].split(' ').filter(|p| !p.is_empty()) {
+        // Una frase en chino o japones no tiene espacios: se parte entre
+        // sus caracteres (`cortes`), que tambien son «palabras».
+        let palabras = parrafo[sangria..]
+            .split(' ')
+            .filter(|p| !p.is_empty())
+            .flat_map(|p| {
+                crate::cortes::trozos(p)
+                    .into_iter()
+                    .enumerate()
+                    .map(|(j, t)| (j == 0, t))
+            });
+        for (con_espacio, palabra) in palabras {
             if vacia {
                 linea.push_str(palabra);
                 vacia = false;
                 continue;
             }
             let largo = linea.len();
-            linea.push(' ');
+            if con_espacio {
+                linea.push(' ');
+            }
             linea.push_str(palabra);
             if mide(&linea) > ancho {
                 linea.truncate(largo);
