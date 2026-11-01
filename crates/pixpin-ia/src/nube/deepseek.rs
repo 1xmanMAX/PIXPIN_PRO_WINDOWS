@@ -35,6 +35,9 @@ use crate::motor::{Mensaje, Peticion, Rol};
 use super::{Proveedor, instrucciones};
 
 pub const URL: &str = "https://api.deepseek.com/chat/completions";
+/// La lista de modelos (`GET /models`, no gasta tokens): la comprobacion
+/// del puntito del estado de las IA (`nube::comprobar`).
+pub const URL_MODELOS: &str = "https://api.deepseek.com/models";
 pub const MODELO: &str = "deepseek-flash";
 /// **El jefe con DeepSeek** (23-oct, `orquesta.rs`): DeepSeek-V4-Pro, mas
 /// fuerte para planear y supervisar. Segun su pagina de modelos (mirada el

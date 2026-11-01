@@ -292,7 +292,7 @@ fn intervalo_de(campos: &HashMap<Dato, String>, t: &Catalogo) -> Result<Option<I
         Some(s) => Some(pixpin_ia::figuras::mes_de(s).ok_or_else(|| {
             let mut a = fluent_bundle::FluentArgs::new();
             a.set("texto", s);
-            t.t_args("figuras-ventana-mes", &a)
+            t.t_args("figuras-ventana-mes-mal", &a)
         })?),
     };
     let semanas = match (n(Dato::SemanasDesde)?, n(Dato::SemanasHasta)?) {

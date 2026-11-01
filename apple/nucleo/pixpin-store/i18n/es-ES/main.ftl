@@ -3128,3 +3128,23 @@ clase-acta-propuestas = Propuestas sin aceptar
 clase-acta-aceptar = Aceptar
 clase-acta-aceptada = Apuntada en Tareas
 clase-acta-anadidas = { $n } preguntas apuntadas en el Inbox de Tareas
+
+# El estado de las IA: los puntitos de junto al boton de sincronizar del chat
+# (1-nov-2026). «Claude · funciona · hace 3 min».
+ia-estado-funciona = funciona
+ia-estado-sin-clave = sin clave
+ia-estado-desconocido = aún sin comprobar
+ia-estado-clave-mala = la clave no es válida ({ $codigo })
+ia-estado-sin-saldo = la cuenta no tiene saldo
+ia-estado-limite = demasiadas peticiones o cuota agotada
+ia-estado-red = sin conexión
+ia-estado-servidor = el servicio falla ({ $codigo })
+ia-estado-otro = no contesta bien ({ $codigo })
+ia-estado-comprobando = comprobando…
+ia-estado-hace-nada = ahora mismo
+ia-estado-hace-min = hace { $n } min
+ia-estado-hace-horas = hace { $n } h
+ia-estado-pista = Clic: comprobar ahora o ir a las claves
+ia-estado-comprobar = Comprobar ahora
+ia-estado-claves = Claves en Ajustes → Asistente
+ia-estado-sin-ajustes = Los ajustes se abren desde el icono de PixPin en la bandeja

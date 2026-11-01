@@ -245,6 +245,9 @@ pub fn guardar_y_probar(p: Proveedor, escrito: &str, despertar: Arc<dyn Fn() + S
         f.guardada = Some(claves::enmascarar(&clave));
         f.prueba = Some(None);
     });
+    // El puntito del chat: clave nueva, aun sin saber si vale (la prueba de
+    // aqui abajo lo dira).
+    crate::estado_ia::clave_cambiada_nube(p);
     avisar(despertar.as_ref());
     let lanzado = std::thread::Builder::new()
         .name("asistente-probar-clave".into())
@@ -274,6 +277,7 @@ pub fn borrar(p: Proveedor) {
         f.guardada = None;
         f.prueba = r.err().map(|e| Some(Err(e)));
     });
+    crate::estado_ia::clave_cambiada_nube(p);
     NOVEDADES.fetch_add(1, Ordering::SeqCst);
 }
 

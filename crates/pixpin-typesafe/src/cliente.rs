@@ -27,6 +27,23 @@ pub const BASE: &str = "https://api.typesafe.ai";
 /// Lo que se espera por una peticion.
 pub const TIEMPO: Duration = Duration::from_secs(2);
 
+/// **Quien quiere saber como acaba cada peticion** (1-nov-2026): la app,
+/// para el puntito del estado de Jev junto al boton de sincronizar.
+/// `Some(codigo)` si TypeSafe contesto (2xx incluido); `None` si no se llego
+/// a hablar con el. Lo que sale del cache no cuenta (no hubo peticion).
+static AL_CONTESTAR: std::sync::OnceLock<fn(Option<u16>)> = std::sync::OnceLock::new();
+
+/// Apunta a quien avisar de cada desenlace. Solo cuenta la primera vez.
+pub fn al_contestar(f: fn(Option<u16>)) {
+    let _ = AL_CONTESTAR.set(f);
+}
+
+fn avisar(codigo: Option<u16>) {
+    if let Some(f) = AL_CONTESTAR.get() {
+        f(codigo);
+    }
+}
+
 /// Cuantas respuestas guarda el cache del proceso.
 const CABEN: usize = 2048;
 
@@ -164,7 +181,10 @@ impl Cliente {
             let c = self
                 .transporte
                 .enviar("POST", &url, &cabeceras, &cuerpo, queda)
-                .map_err(Error::Red)?;
+                .map_err(|e| {
+                    avisar(None);
+                    Error::Red(e)
+                })?;
             if matches!(c.codigo, 429 | 529) && intento == 0 && empezo.elapsed() < self.tiempo / 2 {
                 intento += 1;
                 std::thread::sleep(Duration::from_millis(250));
@@ -172,6 +192,7 @@ impl Cliente {
             }
             break c;
         };
+        avisar(Some(contestado.codigo));
         let texto = String::from_utf8_lossy(&contestado.cuerpo);
         tracing::debug!(
             target: "jev",
@@ -207,7 +228,11 @@ impl Cliente {
         let c = self
             .transporte
             .enviar("GET", &url, &self.cabeceras(false), &[], self.tiempo * 2)
-            .map_err(Error::Red)?;
+            .map_err(|e| {
+                avisar(None);
+                Error::Red(e)
+            })?;
+        avisar(Some(c.codigo));
         let texto = String::from_utf8_lossy(&c.cuerpo);
         if !(200..300).contains(&c.codigo) {
             return Err(Error::Http {
@@ -364,6 +389,32 @@ mod pruebas {
         let m = c.modelos().unwrap();
         assert_eq!(m[0].name, "jev-latest");
         assert_eq!(t.pedidos.lock().unwrap()[0].metodo, "GET");
+    }
+
+    /// Lo que vio el que escucha (lo comparten todas las pruebas del
+    /// proceso: solo se mira que este lo de esta).
+    static OIDOS: Mutex<Vec<Option<u16>>> = Mutex::new(Vec::new());
+
+    fn oir(c: Option<u16>) {
+        OIDOS.lock().unwrap().push(c);
+    }
+
+    #[test]
+    fn cada_peticion_avisa_de_como_acabo() {
+        al_contestar(oir);
+        let t = Arc::new(Grabado::nuevo(vec![
+            Ok(Contestado {
+                codigo: 403,
+                cuerpo: br#"{"detail":"Forbidden"}"#.to_vec(),
+            }),
+            Err("sin red".into()),
+        ]));
+        let c = Cliente::con_transporte("k", t).con_cache_propio();
+        assert!(c.modelos().is_err());
+        assert!(c.preguntar(&peticion("aviso")).is_err());
+        let oidos = OIDOS.lock().unwrap();
+        assert!(oidos.contains(&Some(403)), "{oidos:?}");
+        assert!(oidos.contains(&None), "{oidos:?}");
     }
 
     #[test]

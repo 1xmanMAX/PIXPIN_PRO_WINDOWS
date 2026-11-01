@@ -42,8 +42,8 @@ pub mod instrucciones;
 mod pruebas;
 
 use std::collections::HashMap;
-use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
 use serde_json::Value;
@@ -119,6 +119,75 @@ impl Proveedor {
             Proveedor::DeepSeek => deepseek::cabeceras(clave),
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Como acaba cada peticion (el puntito del estado de las IA)
+
+/// **Quien quiere saber como acaba cada peticion** (1-nov-2026): la app,
+/// para los puntitos del estado de Claude y DeepSeek junto al boton de
+/// sincronizar (`pixpin_ui::estado_ia`). `Some(codigo)` si el servidor
+/// contesto (2xx incluido); `None` si no se llego a hablar con el.
+static AL_CONTESTAR: OnceLock<fn(Proveedor, Option<u32>)> = OnceLock::new();
+
+/// Apunta a quien avisar de cada desenlace. Solo cuenta la primera vez.
+pub fn al_contestar(f: fn(Proveedor, Option<u32>)) {
+    let _ = AL_CONTESTAR.set(f);
+}
+
+fn avisar(p: Proveedor, codigo: Option<u32>) {
+    if let Some(f) = AL_CONTESTAR.get() {
+        f(p, codigo);
+    }
+}
+
+/// El desenlace de lo que dijo la capa HTTP, para [`avisar`].
+fn desenlace<T>(r: &Result<T, http::Fallo>) -> Option<u32> {
+    match r {
+        Ok(_) => Some(200),
+        Err(http::Fallo::Http { codigo, cuerpo, .. }) => Some(codigo_del_estado(*codigo, cuerpo)),
+        Err(http::Fallo::Red(_)) => None,
+    }
+}
+
+/// El codigo que cuenta para el estado: Claude dice «sin saldo» con un 400
+/// («credit balance is too low»), que para el puntito es un 402.
+pub fn codigo_del_estado(codigo: u32, cuerpo: &str) -> u32 {
+    let bajo = cuerpo.to_lowercase();
+    if bajo.contains("credit balance") || bajo.contains("insufficient balance") {
+        402
+    } else {
+        codigo
+    }
+}
+
+/// La lista de modelos de cada API: un `GET` que no gasta tokens.
+pub fn url_de_modelos(p: Proveedor) -> &'static str {
+    match p {
+        Proveedor::Claude => claude::URL_MODELOS,
+        Proveedor::DeepSeek => deepseek::URL_MODELOS,
+    }
+}
+
+/// **Comprueba la clave sin gastar** (la lista de modelos) y avisa del
+/// desenlace como una peticion mas. Devuelve lo mismo que avisa. Bloquea:
+/// desde un hilo de fondo.
+pub fn comprobar(p: Proveedor, clave: &str) -> Option<u32> {
+    comprobar_en(p, clave, url_de_modelos(p))
+}
+
+pub fn comprobar_en(p: Proveedor, clave: &str, url: &str) -> Option<u32> {
+    let r = http::pedir("GET", url, &p.cabeceras(clave.trim()), &[], 256 * 1024);
+    if let Err(http::Fallo::Red(d)) = &r {
+        tracing::debug!(%d, "estado de las IA: sin conexion con {}", p.nombre());
+    }
+    let codigo = match &r {
+        // `pedir` da los 2xx como `Ok` con su codigo.
+        Ok(c) => Some(c.codigo),
+        otro => desenlace(otro),
+    };
+    avisar(p, codigo);
+    codigo
 }
 
 /// Lo que se suma al tope de la respuesta para que el modelo pueda pensar.
@@ -540,6 +609,8 @@ impl MotorNube {
     /// Lo que dijo la capa HTTP, ya como intento.
     fn resultado_http(&self, r: Result<bool, http::Fallo>) -> Result<bool, Intento> {
         let n = self.proveedor.nombre();
+        // El puntito del estado de las IA: lo que contesto el servidor.
+        avisar(self.proveedor, desenlace(&r));
         match r {
             Ok(cortado) => Ok(cortado),
             Err(http::Fallo::Red(d)) => Err(Intento::Reintentar {
@@ -708,14 +779,16 @@ pub fn probar_en(p: Proveedor, clave: &str, url: &str) -> Result<String, String>
         cuerpo: &cuerpo,
     };
     let mut respuesta = Vec::new();
-    match http::enviar(&pedido, &mut |b| {
+    let r = http::enviar(&pedido, &mut |b| {
         respuesta.extend_from_slice(b);
         if respuesta.len() > 64 * 1024 {
             Seguir::Parar
         } else {
             Seguir::Si
         }
-    }) {
+    });
+    avisar(p, desenlace(&r));
+    match r {
         Ok(_) => {
             let v: Value = serde_json::from_slice(&respuesta)
                 .map_err(|_| format!("{} contesto algo que no se entiende", p.nombre()))?;

@@ -3518,7 +3518,7 @@ auto-origen = Automation
 ia-nube-falta-la-clave = The { $proveedor } key is missing: paste it in Settings → Assistant (get one at { $pagina }).
 # Los campos de una figura que se alarga (ventana_editor/figuras/ventana.rs)
 figuras-ventana-no-es-numero = “{ $texto }” is not a number
-figuras-ventana-mes = “{ $texto }”: write the month as 2026-11
+figuras-ventana-mes-mal = “{ $texto }”: write the month as 2026-11
 # Los nombres de las teclas que se pintan en las chapitas
 tecla-intro = Enter
 tecla-supr = Del
@@ -3528,3 +3528,22 @@ ia-hecho = Done.
 croquis-titulo = Sketch { $id }
 # El aviso de donde se abren los ajustes (ventana_chat/asistente.rs; ya estaba en apple/nucleo)
 chat-ajustes-bandeja = Settings open from the PixPin icon in the tray
+# AI status: the little dots next to the chat's sync button (1-nov-2026).
+# «Claude · working · 3 min ago».
+ia-estado-funciona = working
+ia-estado-sin-clave = no key
+ia-estado-desconocido = not checked yet
+ia-estado-clave-mala = the key is not valid ({ $codigo })
+ia-estado-sin-saldo = the account has no credit
+ia-estado-limite = too many requests or quota used up
+ia-estado-red = no connection
+ia-estado-servidor = the service is failing ({ $codigo })
+ia-estado-otro = not answering properly ({ $codigo })
+ia-estado-comprobando = checking…
+ia-estado-hace-nada = just now
+ia-estado-hace-min = { $n } min ago
+ia-estado-hace-horas = { $n } h ago
+ia-estado-pista = Click: check now or go to the keys
+ia-estado-comprobar = Check now
+ia-estado-claves = Keys in Settings → Assistant
+ia-estado-sin-ajustes = Settings open from the PixPin icon in the tray
