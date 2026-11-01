@@ -3457,3 +3457,6 @@ reportar-ia-campo-fecha = Date
 reportar-ia-campo-version = Version
 reportar-ia-campo-contenido = What the AI wrote
 reportar-ia-comentario = (If you like, tell us here what is wrong.)
+
+## Review aloud: if Jev fails, why (1-Nov-2026, like the phone)
+repaso-jev-fallo-red = No connection.

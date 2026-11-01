@@ -3251,3 +3251,6 @@ reportar-ia-campo-fecha = Fecha
 reportar-ia-campo-version = Versión
 reportar-ia-campo-contenido = Lo que escribió la IA
 reportar-ia-comentario = (Si quieres, cuenta aquí qué está mal.)
+
+## Repasar en voz alta: si Jev falla, por que (1-nov-2026, como el movil)
+repaso-jev-fallo-red = Sin conexión.
