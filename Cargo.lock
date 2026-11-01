@@ -1957,6 +1957,7 @@ name = "pixpin-store"
 version = "0.1.0"
 dependencies = [
  "fluent-bundle",
+ "fluent-syntax",
  "pixpin-frase",
  "pixpin-motor2d",
  "pixpin-sistema",
