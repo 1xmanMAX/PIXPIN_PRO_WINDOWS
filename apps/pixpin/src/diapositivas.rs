@@ -772,7 +772,7 @@ fn presentar(
     let (monitor, del_orador) = repartir(monitores.monitores()).context("sin monitores")?;
     // Notas solo hay en lo que maqueta PixPin: por PowerPoint, una pantalla.
     let del_orador = del_orador.filter(|_| nativa.is_some());
-    let area = monitor.area;
+    let mut area = monitor.area;
     let e = monitor.escala_por_cien as f32 / 100.0;
     let (ancho, alto) = (area.ancho as f32, area.alto as f32);
     let nombre = pixpin_docs::sin_extension(&pixpin_docs::nombre(ruta));
@@ -857,6 +857,10 @@ fn presentar(
     let orador_hwnd = orador.as_ref().map(|o| o.ventana.handle());
     while vivo {
         pixpin_shell::overlay::bombear_pendientes();
+        // Donde esta la ventana AHORA: si otro la movio (AltSnap, Win+flecha),
+        // los clics se reparten desde ahi y no desde donde se abrio
+        // (docs/ventanas.md).
+        ventana.seguir_sitio(&mut area);
         while let Ok(l) = rx.try_recv() {
             hay_que_pintar = true;
             match l {

@@ -475,6 +475,10 @@ fn hoja(recursos: &Recursos, pedido: &Pedido, r: &Rotulos) -> Result<()> {
     let mut vivo = true;
     while vivo {
         pixpin_shell::overlay::bombear_pendientes();
+        // Donde esta la ventana AHORA: si otro la movio (AltSnap, Win+flecha),
+        // los clics se reparten desde ahi y no desde donde se abrio
+        // (docs/ventanas.md).
+        ventana.seguir_sitio(&mut marco);
         let mut accion = None;
         let s = sitios(marco.ancho as f32, marco.alto as f32, e);
         for (hwnd, ev) in pixpin_shell::overlay::tomar_eventos_pendientes() {

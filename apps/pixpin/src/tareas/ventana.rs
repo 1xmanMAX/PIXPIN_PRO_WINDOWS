@@ -1170,6 +1170,10 @@ fn bucle(
     let mut pintar = true;
     while vivo {
         pixpin_shell::overlay::bombear_pendientes();
+        // Donde esta la ventana AHORA: si otro la movio (AltSnap, Win+flecha),
+        // los clics se reparten desde ahi y no desde donde se abrio
+        // (docs/ventanas.md).
+        ventana.seguir_sitio(&mut marco);
         if let Some(k) = PEDIDA.lock().unwrap_or_else(|e| e.into_inner()).take() {
             e.apuntar_en = e
                 .listas

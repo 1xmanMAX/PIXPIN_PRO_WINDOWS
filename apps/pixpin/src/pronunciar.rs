@@ -276,7 +276,7 @@ fn abrir(
         .context("sin monitor")?
         .to_owned();
     let escala = monitor.escala_por_cien as f32 / 100.0;
-    let marco = centrado(monitor.area_trabajo, 1000, 780, monitor.escala_por_cien);
+    let mut marco = centrado(monitor.area_trabajo, 1000, 780, monitor.escala_por_cien);
     let ventana = VentanaOverlay::nueva_normal(marco, &textos.t("pronunciar-titulo"))
         .context("no se pudo abrir Pronunciar")?;
     let motor = recursos.motor();
@@ -317,6 +317,10 @@ fn abrir(
     let mut pintar = true;
     while vivo {
         pixpin_shell::overlay::bombear_pendientes();
+        // Donde esta la ventana AHORA: si otro la movio (AltSnap, Win+flecha),
+        // los clics se reparten desde ahi y no desde donde se abrio
+        // (docs/ventanas.md).
+        ventana.seguir_sitio(&mut marco);
         let ahora = pixpin_shell::entorno::ahora_utc_ms() as u64;
         for (hwnd, ev) in pixpin_shell::overlay::tomar_eventos_pendientes() {
             if hwnd != ventana.handle() {
@@ -402,6 +406,8 @@ fn abrir(
                 });
                 let _ = superficie.presentar();
             }
+            // Se arrastra por arriba (su barra), sin sus botones.
+            crate::ventanita::arrastre_por_arriba(&ventana, marco.ancho, 52.0 * escala, &e.botones);
             pintar = false;
         }
         // Grabando, el reloj corre: diez veces por segundo. Quieto, se

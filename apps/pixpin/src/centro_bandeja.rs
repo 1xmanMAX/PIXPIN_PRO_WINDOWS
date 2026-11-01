@@ -1062,6 +1062,9 @@ fn vivir() -> Result<()> {
 
         let mut pintar = false;
         let mut hacer = Hacer::Nada;
+        // Donde esta el panel AHORA: si otro lo movio, los clics se
+        // reparten desde ahi (docs/ventanas.md).
+        ventana.seguir_sitio(&mut p.marco);
         for (h, ev) in eventos {
             if h != ventana.handle() {
                 continue;

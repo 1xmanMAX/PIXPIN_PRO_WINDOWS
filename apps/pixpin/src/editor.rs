@@ -102,7 +102,7 @@ pub fn abrir(
     );
     let fisico_ancho = (ancho as f32 * escala_pantalla) as u32;
     let fisico_alto = (alto as f32 * escala_pantalla) as u32;
-    let marco = Rect {
+    let mut marco = Rect {
         x: monitor.area.x + (monitor.area.ancho as i32 - fisico_ancho as i32) / 2,
         y: monitor.area.y + (monitor.area.alto as i32 - fisico_alto as i32) / 2,
         ancho: fisico_ancho,
@@ -143,6 +143,10 @@ pub fn abrir(
 
     let salida = loop {
         pixpin_shell::overlay::bombear_pendientes();
+        // Donde esta la ventana AHORA: si otro la movio (AltSnap, Win+flecha),
+        // los clics se reparten desde ahi y no desde donde se abrio
+        // (docs/ventanas.md).
+        ventana.seguir_sitio(&mut marco);
         let ahora = Instant::now();
         reproductor.avanzar(ahora.duration_since(ultimo));
         ultimo = ahora;

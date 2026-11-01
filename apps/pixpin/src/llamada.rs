@@ -445,7 +445,7 @@ fn sonar(
         .context("sin monitor")?
         .to_owned();
     let escala = monitor.escala_por_cien as f32 / 100.0;
-    let marco = marco_de_la_llamada(
+    let mut marco = marco_de_la_llamada(
         monitor.area_trabajo,
         monitor.escala_por_cien,
         llamada.es_de_horario(),
@@ -490,6 +490,10 @@ fn sonar(
     let mut vivo = true;
     while vivo {
         pixpin_shell::overlay::bombear_pendientes();
+        // Donde esta la ventana AHORA: si otro la movio (AltSnap, Win+flecha),
+        // los clics se reparten desde ahi y no desde donde se abrio
+        // (docs/ventanas.md).
+        ventana.seguir_sitio(&mut marco);
         let ahora = pixpin_shell::entorno::ahora_utc_ms() as u64;
         let mut pulsado = None;
         for (hwnd, ev) in pixpin_shell::overlay::tomar_eventos_pendientes() {

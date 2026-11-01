@@ -83,6 +83,15 @@ impl<A: Copy> Botones<A> {
         self.v.push((caja, que));
     }
 
+    /// Las zonas apuntadas, en pixeles enteros del cliente, cubiertas
+    /// hacia fuera: lo que no puede ser zona de arrastre.
+    pub fn rectas(&self) -> Vec<Rect> {
+        self.v
+            .iter()
+            .map(|(r, _)| pixpin_geom::marco_vivo::cubrir(r.x, r.y, r.ancho, r.alto))
+            .collect()
+    }
+
     /// La ultima zona apuntada bajo el raton (las de encima se apuntan
     /// despues).
     pub fn bajo_el_raton(&self) -> Option<A> {
@@ -92,6 +101,21 @@ impl<A: Copy> Botones<A> {
             .find(|(r, _)| dentro(*r, self.raton))
             .map(|(_, a)| *a)
     }
+}
+
+/// **Se arrastra por arriba, como por una barra de titulo**: la franja de
+/// `alto` pixeles (fisicos) de lo alto de la ventana, menos los `botones`
+/// de este fotograma, contesta `HTCAPTION`. Para las ventanitas sin barra
+/// de Windows que no se mueven por su cuenta; se llama tras pintar, que es
+/// cuando los botones estan al dia (docs/ventanas.md).
+pub fn arrastre_por_arriba<A: Copy>(
+    ventana: &pixpin_shell::overlay::VentanaOverlay,
+    ancho: u32,
+    alto: f32,
+    botones: &Botones<A>,
+) {
+    let franja = pixpin_geom::marco_vivo::cubrir(0.0, 0.0, ancho as f32, alto);
+    ventana.poner_arrastre(vec![franja], botones.rectas());
 }
 
 /// Un marco de `ancho` x `alto` (logicos) centrado en `area`, sin salirse.

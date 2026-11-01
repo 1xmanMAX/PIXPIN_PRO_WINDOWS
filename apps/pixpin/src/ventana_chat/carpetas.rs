@@ -786,6 +786,10 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, v: &mut Vista, clave: &str) -> 
     let mut mirado = std::time::Instant::now();
     while vivo {
         pixpin_shell::overlay::bombear_pendientes();
+        // Donde esta la ventana AHORA: si otro la movio (AltSnap, Win+flecha),
+        // los clics se reparten desde ahi y no desde donde se abrio
+        // (docs/ventanas.md).
+        ventana.seguir_sitio(&mut marco);
         for (hw, ev) in pixpin_shell::overlay::tomar_eventos_pendientes() {
             if hw != ventana.handle() {
                 continue;

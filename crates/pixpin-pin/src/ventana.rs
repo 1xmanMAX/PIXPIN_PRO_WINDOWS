@@ -4491,6 +4491,48 @@ extern "system" fn procedimiento_pin(
     }
 
     match mensaje {
+        // **Movido por otro** (AltSnap, Win+flecha): el contenido va con la
+        // ventana. Sin esto el pin seguia creyendose donde estaba: los
+        // clics caian desplazados y al arrastrarlo volvia de un salto al
+        // sitio viejo. Sus propios movimientos ponen antes el estado y la
+        // ventana despues, asi que ahi la ventana ya esta donde se espera.
+        WM_WINDOWPOSCHANGED => {
+            if let Some(i) = interno_de(hwnd)
+                && !i.estado.en_gesto()
+                && i.zoom.is_none()
+                && !i.arrastrando_marco
+            {
+                let mut r = RECT::default();
+                // SAFETY: GetWindowRect sobre la ventana del propio WndProc.
+                let real = unsafe { GetWindowRect(hwnd, &mut r) }.ok().map(|_| Rect {
+                    x: r.left,
+                    y: r.top,
+                    ancho: (r.right - r.left).max(0) as u32,
+                    alto: (r.bottom - r.top).max(0) as u32,
+                });
+                let esperada = ventana_visible(i.estado.rect(), i.escala_por_cien);
+                if let Some(nuevo) = real.and_then(|real| {
+                    pixpin_geom::marco_vivo::contenido_seguido(i.estado.rect(), esperada, real)
+                }) {
+                    // La base del ultimo pintado va el mismo trecho: la
+                    // superficie es la misma, solo cambio de sitio.
+                    let antes = i.estado.rect();
+                    let (dx, dy) = (nuevo.x - antes.x, nuevo.y - antes.y);
+                    let mover = |r: Rect| Rect {
+                        x: r.x + dx,
+                        y: r.y + dy,
+                        ..r
+                    };
+                    i.base_pintado.set(mover(i.base_pintado.get()));
+                    i.base_ventana.set(mover(i.base_ventana.get()));
+                    i.estado.poner_rect(nuevo);
+                    recolocar_barra(i);
+                    (i.al_cambiar)(CambioPin::Movido(colocacion_de(i, nuevo)));
+                }
+            }
+            // SAFETY: lo de siempre para el mensaje: WM_MOVE y WM_SIZE.
+            unsafe { DefWindowProcW(hwnd, mensaje, wparam, lparam) }
+        }
         WM_LBUTTONDOWN => {
             // `Ctrl` + arrastrar saca el contenido del pin hacia OTRA
             // aplicacion (arrastrar y soltar saliente). Va lo PRIMERO, por

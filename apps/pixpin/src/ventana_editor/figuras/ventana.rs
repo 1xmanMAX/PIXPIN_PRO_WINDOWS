@@ -660,6 +660,10 @@ pub(in crate::ventana_editor) fn elegir(
         let alto_rejilla = h - crate::cabecera::ALTO * s;
         while vivo && e.pedido.is_none() {
             pixpin_shell::overlay::bombear_pendientes();
+            // Donde esta la ventana AHORA: si otro la movio (AltSnap, Win+flecha),
+            // los clics se reparten desde ahi y no desde donde se abrio
+            // (docs/ventanas.md).
+            ventana.seguir_sitio(&mut marco);
             for (hw, ev) in pixpin_shell::overlay::tomar_eventos_pendientes() {
                 // Las del lienzo, mientras tanto, no: esta ventana es un
                 // dialogo.

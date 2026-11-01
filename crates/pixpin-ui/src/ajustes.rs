@@ -303,6 +303,33 @@ pub fn boton_restablecer_seccion(ancho: f32, rotulo: &str) -> Recta {
     }
 }
 
+/// **Por donde se arrastra la ventana** (como por la barra de titulo de
+/// cualquier otra): la franja del titulo «Ajustes», encima del buscador, y
+/// la cabecera de la seccion, sin su boton «Restablecer». Devuelve las
+/// zonas y los botones que hay dentro; nada de eso es un golpe de
+/// [`golpe_en`], asi que no se le quita ningun clic a nadie.
+pub fn zonas_de_arrastre(
+    ancho: f32,
+    restablecer_seccion: Option<Recta>,
+) -> (Vec<Recta>, Vec<Recta>) {
+    let zonas = vec![
+        Recta {
+            x: 0.0,
+            y: 0.0,
+            ancho: NAV_ANCHO,
+            alto: BUSCADOR_Y,
+        },
+        // Los 14 de la derecha son de la barra de desplazamiento.
+        Recta {
+            x: NAV_ANCHO,
+            y: 0.0,
+            ancho: (ancho - NAV_ANCHO - 14.0).max(0.0),
+            alto: CABECERA_ALTO,
+        },
+    ];
+    (zonas, restablecer_seccion.into_iter().collect())
+}
+
 /// Lo que mide la lista entera.
 pub fn alto_total(filas: &[Fila]) -> f32 {
     filas.iter().map(Fila::alto).sum()
@@ -670,6 +697,42 @@ mod pruebas {
             true,
             Some(boton_restablecer_seccion(ANCHO, "Restablecer Captura")),
         )
+    }
+
+    #[test]
+    fn la_cabecera_vacia_arrastra_y_no_le_quita_el_clic_a_nada() {
+        let mut e = Estado::default();
+        let boton = boton_restablecer_seccion(ANCHO, "Restablecer Captura");
+        for buscando in [false, true] {
+            if buscando {
+                e.busqueda = "gif".into();
+            }
+            let (zonas, botones) = zonas_de_arrastre(ANCHO, Some(boton));
+            assert_eq!(botones, vec![boton]);
+            for z in &zonas {
+                let mut y = z.y;
+                while y < z.y + z.alto {
+                    let mut x = z.x;
+                    while x < z.x + z.ancho {
+                        let en_boton = botones.iter().any(|b| b.contiene(x, y));
+                        let p = Punto {
+                            x: x as i32,
+                            y: y as i32,
+                        };
+                        if !en_boton {
+                            assert_eq!(golpe(p, &filas(), &e), None, "({x}, {y})");
+                        }
+                        x += 4.0;
+                    }
+                    y += 4.0;
+                }
+            }
+        }
+        // El boton de la cabecera sigue siendo boton.
+        assert_eq!(
+            golpe(punto_en(boton), &filas(), &Estado::default()),
+            Some(Golpe::RestablecerSeccion)
+        );
     }
 
     #[test]
