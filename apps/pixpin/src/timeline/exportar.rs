@@ -255,7 +255,7 @@ mod pruebas {
             pie: "Exportado con PixPin Max".into(),
             nota_de_voz: "Nota de voz".into(),
             desfase: 0,
-            ingles: false,
+            lengua: pixpin_timeline::Lengua::Es,
             pestanas: ["Línea".into(), "Momentos".into(), "Estado".into()],
             sobre_todo: "Sobre todo".into(),
         };

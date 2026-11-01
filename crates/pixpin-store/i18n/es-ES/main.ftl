@@ -3339,3 +3339,19 @@ ia-estado-pista = Clic: comprobar ahora o ir a las claves
 ia-estado-comprobar = Comprobar ahora
 ia-estado-claves = Claves en Ajustes → Asistente
 ia-estado-sin-ajustes = Los ajustes se abren desde el icono de PixPin en la bandeja
+
+## El mes dentro de una fecha («5 de octubre»), aparte del mes suelto (chat-mes-*):
+## en ruso y otros idiomas con casos va en genitivo («5 октября»). Si un idioma
+## no las trae, se usa su chat-mes-*.
+chat-mes-dia-1 = enero
+chat-mes-dia-2 = febrero
+chat-mes-dia-3 = marzo
+chat-mes-dia-4 = abril
+chat-mes-dia-5 = mayo
+chat-mes-dia-6 = junio
+chat-mes-dia-7 = julio
+chat-mes-dia-8 = agosto
+chat-mes-dia-9 = septiembre
+chat-mes-dia-10 = octubre
+chat-mes-dia-11 = noviembre
+chat-mes-dia-12 = diciembre

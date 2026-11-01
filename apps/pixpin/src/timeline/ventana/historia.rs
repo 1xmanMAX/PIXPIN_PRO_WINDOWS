@@ -434,7 +434,7 @@ pub(super) fn pintar(e: &mut Estado, p: &Pintor, w: f32, h: f32, s: f32, textos:
             Accion::IrAFoto(n),
         );
     }
-    let fecha = estilo::fecha_larga(c.cuando, e.desfase, e.ingles);
+    let fecha = estilo::fecha_larga(c.cuando, e.desfase, e.lengua);
     let (fw, fh) = p.medir_texto(&fecha, 15.0 * s);
     let fy = d.cerrar.y + (d.cerrar.alto - fh) / 2.0;
     pintar_trozos(
@@ -578,7 +578,7 @@ pub(super) fn tarjeta(
     h: f32,
     textos: &Catalogo,
     desfase: i64,
-    ingles: bool,
+    lengua: pixpin_timeline::Lengua,
 ) {
     let s = w / 432.0;
     let todo = RectF {
@@ -588,7 +588,7 @@ pub(super) fn tarjeta(
         alto: h,
     };
     fondo(p, c, bm, todo);
-    let fecha = estilo::fecha_larga(c.cuando, desfase, ingles);
+    let fecha = estilo::fecha_larga(c.cuando, desfase, lengua);
     pintar_trozos(
         p,
         &fecha,

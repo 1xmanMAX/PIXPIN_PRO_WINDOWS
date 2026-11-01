@@ -17,3 +17,7 @@ toml = "1.1.4"
 toml_edit = { version = "0.23", features = ["serde"] }
 tracing = "0.1.44"
 unic-langid = "0.9.6"
+
+[dev-dependencies]
+# Las variables de cada texto, para comprobar los catalogos traducidos.
+fluent-syntax = "0.12.0"

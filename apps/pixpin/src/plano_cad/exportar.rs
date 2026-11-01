@@ -224,7 +224,7 @@ pub fn html(p: &Plano, idioma: pixpin_store::Idioma) -> Result<String> {
         .map(|c| imagenes(&p.ruta, &c.imagenes, m.origen))
         .unwrap_or_default();
     let u = m.caja_util();
-    let textos = match idioma {
+    let textos = match idioma.base() {
         pixpin_store::Idioma::Ingles => Some(pixpin_cad::web::TextosWeb {
             todo: "Fit all".into(),
             tema: "Light / dark".into(),

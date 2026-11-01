@@ -531,7 +531,7 @@ pub fn correr(cx: Contexto, repuesto: Option<Repuesto>) -> anyhow::Result<Salida
     let de_proyecto = !matches!(*cx.actual.borrow(), Destino::Fichero { .. });
     let abrir = json!({
         "tipo": "abrir",
-        "idioma": if cx.idioma == pixpin_store::Idioma::Ingles { "en" } else { "es" },
+        "idioma": cx.idioma.base().codigo(),
         "texto": cx.texto,
         "nombre": nombre,
         "vista": {"cuerpo": vista.cuerpo, "titulos": vista.titulos, "px": vista.px, "soloEsta": solo_esta},

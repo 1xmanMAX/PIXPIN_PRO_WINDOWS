@@ -691,12 +691,15 @@ const ANCHOS_SEGOE_UI_LATIN1: [u16; 96] = [
 
 /// Lo que mide un caracter en Segoe UI, en milesimas de em. Lo que no esta
 /// en las tablas toma el ancho de una letra corriente: una «n», que es lo mas
-/// parecido a la media.
+/// parecido a la media. Los ideogramas, kana y hangul ocupan un em entero
+/// (las letras CJK son cuadradas): a 566 un renglon en chino se saldria.
 pub fn ancho_de_caracter(c: char) -> u16 {
     let n = c as u32;
     match n {
         32..=126 => ANCHOS_SEGOE_UI[(n - 32) as usize],
         160..=255 => ANCHOS_SEGOE_UI_LATIN1[(n - 160) as usize],
+        0x1100..=0x11FF | 0xAC00..=0xD7AF => 1000,
+        _ if crate::cortes::sin_espacios(c) => 1000,
         _ => 566,
     }
 }
@@ -741,16 +744,22 @@ pub fn partir_texto_con(
         let parrafo = parrafo.trim_end_matches('\r');
         let mut linea = String::new();
         for palabra in parrafo.split(' ') {
-            let candidata = if linea.is_empty() {
-                palabra.to_string()
-            } else {
-                format!("{linea} {palabra}")
-            };
-            if !linea.is_empty() && mide(&candidata) > tope {
-                salida.push(std::mem::take(&mut linea));
-                linea = palabra.to_string();
-            } else {
-                linea = candidata;
+            // Una palabra latina es un trozo; una frase en chino o japones,
+            // uno por caracter (`cortes`): sin espacios tambien se parte.
+            for (j, trozo) in crate::cortes::trozos(palabra).into_iter().enumerate() {
+                let candidata = if linea.is_empty() {
+                    trozo.to_string()
+                } else if j == 0 {
+                    format!("{linea} {trozo}")
+                } else {
+                    format!("{linea}{trozo}")
+                };
+                if !linea.is_empty() && mide(&candidata) > tope {
+                    salida.push(std::mem::take(&mut linea));
+                    linea = trozo.to_string();
+                } else {
+                    linea = candidata;
+                }
             }
         }
         salida.push(linea);
@@ -1089,6 +1098,11 @@ mod pruebas {
         assert!(v.iter().all(|l| !l.starts_with(' ')));
         // Caso negativo: una palabra que no cabe sola no se corta.
         assert_eq!(partir_texto("supercalifragilistico", 20.0, 10.0).len(), 1);
+        // Sin espacios (chino, japones) tambien se parte, entre caracteres.
+        let v = partir_texto("今日はとても良い天気です。", 20.0, 60.0);
+        assert!(v.len() > 1, "{v:?}");
+        assert_eq!(v.concat(), "今日はとても良い天気です。");
+        assert!(v.iter().all(|l| !l.starts_with('。')), "{v:?}");
     }
 
     #[test]

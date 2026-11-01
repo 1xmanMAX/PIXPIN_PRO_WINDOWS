@@ -264,7 +264,7 @@ pub fn extras_de(c: &Croquis) -> pixpin_cad::ventana3d::Extras {
 
 fn textos(idioma: Idioma) -> pixpin_cad::ventana3d::TextosUi3d {
     use pixpin_cad::ventana3d::TextosUi3d;
-    match idioma {
+    match idioma.base() {
         Idioma::Ingles => TextosUi3d {
             abriendo: "Opening the sketch…".into(),
             vacio: "The sketch is empty".into(),

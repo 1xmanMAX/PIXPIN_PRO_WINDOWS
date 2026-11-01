@@ -896,17 +896,15 @@ fn filas_de_seccion(s: Seccion, a: &Ajustes, cx: &Contexto) -> Vec<(Clave, Fila)
                 Clave::Idioma,
                 tt("ajustes-idioma"),
                 tt("ajustes2-ayuda-idioma"),
-                opcion(
-                    vec![
-                        tt("ajustes-idioma-sistema"),
-                        "Español".into(),
-                        "English".into(),
-                    ],
-                    match a.idioma {
-                        PreferenciaIdioma::Sistema => 0,
-                        PreferenciaIdioma::Espanol => 1,
-                        PreferenciaIdioma::Ingles => 2,
-                    },
+                // Catorce idiomas no caben en botones seguidos: «−» y «+»
+                // los recorren, cada uno con su nombre en su lengua («日本語»,
+                // «العربية»): quien no entiende el actual encuentra el suyo.
+                numero(
+                    indice_de_idioma(a.idioma),
+                    0,
+                    PreferenciaIdioma::opciones().count() as u32 - 1,
+                    1,
+                    nombre_de_preferencia(a.idioma, cx.t),
                 ),
             ),
             grupo(t, "ajustes2-g-ventanas"),
@@ -2135,13 +2133,6 @@ fn aplicar_opcion(a: &mut Ajustes, clave: Clave, cual: usize) {
             }
         }
         Clave::SitioHerramientas => SITIO_HERRAMIENTAS.with(|c| c.set(cual.min(SITIOS.len()))),
-        Clave::Idioma => {
-            a.idioma = match cual {
-                1 => PreferenciaIdioma::Espanol,
-                2 => PreferenciaIdioma::Ingles,
-                _ => PreferenciaIdioma::Sistema,
-            }
-        }
         Clave::Color => {
             a.formato_color = match cual {
                 1 => FormatoColor::Rgb,
@@ -2235,8 +2226,29 @@ fn aplicar_opcion(a: &mut Ajustes, clave: Clave, cual: usize) {
     }
 }
 
+/// La posicion de una preferencia de idioma en el selector (0, «el de
+/// Windows»; despues `Idioma::TODOS`).
+fn indice_de_idioma(p: PreferenciaIdioma) -> u32 {
+    PreferenciaIdioma::opciones()
+        .position(|o| o == p)
+        .unwrap_or(0) as u32
+}
+
+/// Lo que se lee en el selector de idioma: el nombre en su lengua.
+fn nombre_de_preferencia(p: PreferenciaIdioma, t: &Catalogo) -> String {
+    match p.idioma() {
+        Some(i) => i.nombre_propio().to_string(),
+        None => t.t("ajustes-idioma-sistema"),
+    }
+}
+
 fn aplicar_numero(a: &mut Ajustes, clave: Clave, n: u32) {
     match clave {
+        Clave::Idioma => {
+            a.idioma = PreferenciaIdioma::opciones()
+                .nth(n as usize)
+                .unwrap_or(PreferenciaIdioma::Sistema)
+        }
         Clave::RetardoCaptura => a.retardo_captura_s = n,
         Clave::LimiteScroll => a.limite_scroll_px = n,
         Clave::GifRitmo => a.gif.por_segundo = n,

@@ -37,11 +37,11 @@ use pixpin_voz::{Disponibilidad, ErrorVoz, Transcripcion};
 /// hay un ajuste propio de «idioma de voz», asi que se usa el de la
 /// interfaz: quien tiene PixPin en castellano dicta en castellano. El dia
 /// que haya ajuste, esta funcion es el unico sitio que cambia.
+///
+/// Es la parte de idioma (`es`, `ja`, `ar`…): Whisper conoce los catorce,
+/// y Vosk y SAPI dicen «sin modelo» de los que no tienen.
 pub fn idioma_de_voz(idioma: Idioma) -> &'static str {
-    match idioma {
-        Idioma::Espanol => "es",
-        Idioma::Ingles => "en",
-    }
+    idioma.codigo()
 }
 
 /// Si el reconocedor que ya trae Windows (SAPI, sin red) sabe este idioma.
@@ -825,6 +825,8 @@ mod pruebas {
     fn el_idioma_de_la_interfaz_decide_el_del_reconocedor() {
         assert_eq!(idioma_de_voz(Idioma::Espanol), "es");
         assert_eq!(idioma_de_voz(Idioma::Ingles), "en");
+        assert_eq!(idioma_de_voz(Idioma::ChinoSimplificado), "zh");
+        assert_eq!(idioma_de_voz(Idioma::Portugues), "pt");
     }
 
     #[test]

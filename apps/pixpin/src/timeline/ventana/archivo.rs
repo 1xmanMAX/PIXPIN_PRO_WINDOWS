@@ -120,7 +120,7 @@ pub(super) fn pintar(e: &mut Estado, p: &Pintor, area: RectF, s: f32, textos: &C
                     if y > area.y + area.alto || y + 34.0 * s < area.y {
                         continue;
                     }
-                    let nombre = dias::solo_el_mes(mes.mes, e.ingles);
+                    let nombre = dias::solo_el_mes(mes.mes, e.lengua);
                     p.texto(nombre, m, y + 6.0 * s, 14.0 * s, GRIS);
                 }
                 dis::PiezaArchivo::Dia {
@@ -150,7 +150,7 @@ pub(super) fn pintar(e: &mut Estado, p: &Pintor, area: RectF, s: f32, textos: &C
                         color,
                     );
                     p.texto(
-                        pixpin_timeline::dias::dia_corto(*dia, e.ingles),
+                        pixpin_timeline::dias::dia_corto(*dia, e.lengua),
                         numero.x + 1.0 * s,
                         numero.y + 34.0 * s,
                         13.0 * s,

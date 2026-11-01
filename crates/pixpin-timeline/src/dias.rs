@@ -5,6 +5,7 @@
 //! a UTC, `pixpin_shell::entorno::desfase_local_ms`): un momento de las 23:30
 //! de Lima es de ese dia aunque en UTC ya sea el siguiente.
 
+use crate::lengua::{Lengua, Tabla};
 use std::collections::BTreeMap;
 
 use crate::Momento;
@@ -183,99 +184,49 @@ pub fn hora(utc_ms: i64, desfase: i64) -> String {
     format!("{:02}:{:02}", min / 60, min % 60)
 }
 
-const MESES_ES: [&str; 12] = [
-    "enero",
-    "febrero",
-    "marzo",
-    "abril",
-    "mayo",
-    "junio",
-    "julio",
-    "agosto",
-    "septiembre",
-    "octubre",
-    "noviembre",
-    "diciembre",
-];
-const MESES_EN: [&str; 12] = [
-    "January",
-    "February",
-    "March",
-    "April",
-    "May",
-    "June",
-    "July",
-    "August",
-    "September",
-    "October",
-    "November",
-    "December",
-];
-const SEMANA_ES: [&str; 7] = [
-    "lunes",
-    "martes",
-    "miércoles",
-    "jueves",
-    "viernes",
-    "sábado",
-    "domingo",
-];
-const SEMANA_EN: [&str; 7] = [
-    "Monday",
-    "Tuesday",
-    "Wednesday",
-    "Thursday",
-    "Friday",
-    "Saturday",
-    "Sunday",
-];
-
-/// «octubre de 2026» / «October 2026».
-pub fn nombre_del_mes(m: Mes, ingles: bool) -> String {
+/// «octubre de 2026» / «October 2026» / «2026年10月».
+pub fn nombre_del_mes(m: Mes, lengua: impl Into<Lengua>) -> String {
+    let t = lengua.into().tabla();
     let i = usize::from(m.mes.clamp(1, 12) - 1);
-    if ingles {
-        format!("{} {}", MESES_EN[i], m.anio)
-    } else {
-        format!("{} de {}", MESES_ES[i], m.anio)
-    }
+    Tabla::rellenar(t.mes_y_anio, "", 0, t.meses[i], "", m.anio)
 }
 
-/// «Lunes 5 de octubre de 2026» / «Monday, October 5, 2026».
-pub fn nombre_del_dia(d: Dia, ingles: bool) -> String {
+/// «Lunes 5 de octubre de 2026» / «Monday, October 5, 2026» /
+/// «2026年10月5日月曜日».
+pub fn nombre_del_dia(d: Dia, lengua: impl Into<Lengua>) -> String {
+    let t = lengua.into().tabla();
     let s = usize::from(d.dia_de_la_semana());
     let i = usize::from(d.mes.clamp(1, 12) - 1);
-    if ingles {
-        format!("{}, {} {}, {}", SEMANA_EN[s], MESES_EN[i], d.dia, d.anio)
-    } else {
-        let mut n = SEMANA_ES[s].chars();
-        let primera: String = n
-            .next()
-            .map(|c| c.to_uppercase().collect())
-            .unwrap_or_default();
-        format!(
-            "{primera}{} {} de {} de {}",
-            n.as_str(),
-            d.dia,
-            MESES_ES[i],
-            d.anio
-        )
+    let texto = Tabla::rellenar(
+        t.dia_entero,
+        t.semana[s],
+        d.dia,
+        t.meses_en_fecha[i],
+        "",
+        d.anio,
+    );
+    if !t.mayuscula {
+        return texto;
     }
+    let mut n = texto.chars();
+    let primera: String = n
+        .next()
+        .map(|c| c.to_uppercase().collect())
+        .unwrap_or_default();
+    format!("{primera}{}", n.as_str())
 }
 
 /// Solo el nombre del mes: «octubre» / «October» (el rotulo pequeno de la
 /// pestana «Momentos», bajo el ano).
-pub fn solo_el_mes(mes: u8, ingles: bool) -> &'static str {
+pub fn solo_el_mes(mes: u8, lengua: impl Into<Lengua>) -> &'static str {
     let i = usize::from(mes.clamp(1, 12) - 1);
-    if ingles { MESES_EN[i] } else { MESES_ES[i] }
+    lengua.into().tabla().meses[i]
 }
 
 /// «lun» / «Mon»: el dia de la semana en corto (bajo el numero del dia en
 /// «Momentos»).
-pub fn dia_corto(d: Dia, ingles: bool) -> &'static str {
-    const ES: [&str; 7] = ["lun", "mar", "mié", "jue", "vie", "sáb", "dom"];
-    const EN: [&str; 7] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-    let s = usize::from(d.dia_de_la_semana());
-    if ingles { EN[s] } else { ES[s] }
+pub fn dia_corto(d: Dia, lengua: impl Into<Lengua>) -> &'static str {
+    lengua.into().tabla().semana_corta[usize::from(d.dia_de_la_semana())]
 }
 
 /// «2026.10.5 17:11»: la fecha del detalle de un momento, como la escribe
@@ -286,17 +237,51 @@ pub fn fecha_con_hora(utc_ms: i64, desfase: i64) -> String {
 }
 
 /// Las iniciales de la semana, de lunes a domingo.
-pub fn iniciales(ingles: bool) -> [&'static str; 7] {
-    if ingles {
-        ["M", "T", "W", "T", "F", "S", "S"]
-    } else {
-        ["L", "M", "X", "J", "V", "S", "D"]
-    }
+pub fn iniciales(lengua: impl Into<Lengua>) -> [&'static str; 7] {
+    lengua.into().tabla().iniciales
 }
 
 #[cfg(test)]
 mod pruebas {
     use super::*;
+
+    /// Las fechas en los otros idiomas (1-nov-2026): cada uno a su manera,
+    /// y las de español e ingles sin cambiar.
+    #[test]
+    fn el_5_de_octubre_en_cada_idioma() {
+        let d = Dia {
+            anio: 2026,
+            mes: 10,
+            dia: 5,
+        };
+        for (lengua, dia, mes) in [
+            (Lengua::Es, "Lunes 5 de octubre de 2026", "octubre de 2026"),
+            (Lengua::En, "Monday, October 5, 2026", "October 2026"),
+            (Lengua::Zh, "2026年10月5日星期一", "2026年10月"),
+            (Lengua::Ja, "2026年10月5日月曜日", "2026年10月"),
+            (Lengua::Ko, "2026년 10월 5일 월요일", "2026년 10월"),
+            (
+                Lengua::Ru,
+                "Понедельник, 5 октября 2026 г.",
+                "октябрь 2026 г.",
+            ),
+            (Lengua::De, "Montag, 5. Oktober 2026", "Oktober 2026"),
+            (Lengua::Fr, "Lundi 5 octobre 2026", "octobre 2026"),
+            (
+                Lengua::Pt,
+                "Segunda-feira, 5 de outubro de 2026",
+                "outubro de 2026",
+            ),
+            (Lengua::Ar, "الاثنين، 5 أكتوبر 2026", "أكتوبر 2026"),
+            (Lengua::Tr, "5 Ekim 2026 Pazartesi", "Ekim 2026"),
+        ] {
+            assert_eq!(nombre_del_dia(d, lengua), dia, "{lengua:?}");
+            assert_eq!(nombre_del_mes(Mes::de(d), lengua), mes, "{lengua:?}");
+        }
+        assert_eq!(dia_corto(d, Lengua::Ja), "月");
+        assert_eq!(iniciales(Lengua::De), ["M", "D", "M", "D", "F", "S", "S"]);
+        assert_eq!(solo_el_mes(10, Lengua::It), "ottobre");
+    }
 
     fn m(id: &str, cuando: i64) -> Momento {
         Momento::nuevo(id.into(), cuando, id.into(), String::new())

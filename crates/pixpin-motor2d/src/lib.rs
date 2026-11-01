@@ -30,6 +30,7 @@ pub mod camara;
 pub mod cara_exacta;
 pub mod codo;
 pub mod contraste;
+pub mod cortes;
 pub mod cuadricula;
 pub mod curva;
 pub mod ecuacion;
