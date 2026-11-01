@@ -84,6 +84,12 @@ pub const BUSCADOR_RADIO: u32 = 18;
 pub const BUSCADOR_MARGEN: u32 = 7;
 pub const BUSCADOR_TEXTO_X: u32 = 12;
 pub const BUSCADOR_TAM: f32 = 13.0;
+/// Los puntitos del estado de las IA (`estado_ia`), en columna justo a la
+/// izquierda del boton de sincronizar: la zona que ocupan (y que se pulsa),
+/// el lado de cada puntito y el hueco entre ellos.
+pub const LUCES_ANCHO: u32 = 11;
+pub const LUCES_LADO: u32 = 5;
+pub const LUCES_HUECO: u32 = 3;
 
 /// Los botones de al lado de la caja de escribir (adjuntar, enviar).
 pub const BOTON_ANCHO: u32 = 44;
@@ -516,10 +522,12 @@ impl Disposicion {
         // Tareas, la galeria y el timeline tenian aqui sus botones redondos
         // hasta el 25-oct-2026: ahora viven en la pestana Funciones
         // (`funciones`), y la cabecera es solo de los chats.
+        // Y los puntitos del estado de las IA, pegados al boton: van y vienen
+        // con el.
         let ocupado: u32 = [self.boton_sincro(escala_por_cien)]
             .iter()
             .filter(|b| b.ancho > 0)
-            .map(|b| b.ancho + e(BUSCADOR_MARGEN))
+            .map(|b| b.ancho + e(BUSCADOR_MARGEN) + e(LUCES_ANCHO))
             .sum();
         Rect {
             x: c.x + e(BUSCADOR_MARGEN) as i32,
@@ -549,6 +557,47 @@ impl Disposicion {
             ancho: lado,
             alto: lado,
         }
+    }
+
+    /// **Los puntitos del estado de las IA** (1-nov-2026): una columna
+    /// estrecha justo a la izquierda del boton de sincronizar, del alto del
+    /// boton. Sin boton (lista plegada o estrecha), tampoco.
+    pub fn luces_ia(&self, escala_por_cien: u32) -> Rect {
+        let e = |v: u32| v * escala_por_cien / 100;
+        let b = self.boton_sincro(escala_por_cien);
+        if b.ancho == 0 {
+            return vacio();
+        }
+        let ancho = e(LUCES_ANCHO);
+        Rect {
+            x: b.x - ancho as i32,
+            y: b.y,
+            ancho,
+            alto: b.alto,
+        }
+    }
+
+    /// Donde va cada puntito dentro de [`Disposicion::luces_ia`], de arriba
+    /// abajo: `cuantos` cuadrados de [`LUCES_LADO`] separados por
+    /// [`LUCES_HUECO`], centrados en la columna.
+    pub fn puntitos_ia(&self, cuantos: usize, escala_por_cien: u32) -> Vec<Rect> {
+        let zona = self.luces_ia(escala_por_cien);
+        if zona.ancho == 0 || cuantos == 0 {
+            return Vec::new();
+        }
+        let e = |v: u32| (v * escala_por_cien / 100).max(1);
+        let (lado, hueco) = (e(LUCES_LADO), e(LUCES_HUECO));
+        let alto = cuantos as u32 * lado + (cuantos as u32 - 1) * hueco;
+        let x = zona.x + (zona.ancho as i32 - lado as i32) / 2;
+        let y0 = zona.y + (zona.alto as i32 - alto as i32) / 2;
+        (0..cuantos as i32)
+            .map(|i| Rect {
+                x,
+                y: y0 + i * (lado + hueco) as i32,
+                ancho: lado,
+                alto: lado,
+            })
+            .collect()
     }
 
     /// El boton redondo de proyecto nuevo, flotando en la esquina de abajo a
@@ -1093,9 +1142,31 @@ mod pruebas_ventana {
     }
 
     #[test]
+    fn los_puntitos_de_las_ia_van_entre_el_buscador_y_el_boton() {
+        let d = Disposicion::calcular(1000, 700, 100, 320, Vista::Ambas);
+        let (b, l, s) = (d.buscador(100), d.luces_ia(100), d.boton_sincro(100));
+        assert_eq!(l.ancho, LUCES_ANCHO);
+        assert!(b.derecha() < l.x, "el buscador no pisa los puntitos");
+        assert_eq!(l.derecha(), s.x, "pegados al boton");
+        let p = d.puntitos_ia(3, 100);
+        assert_eq!(p.len(), 3);
+        for r in &p {
+            assert_eq!((r.ancho, r.alto), (LUCES_LADO, LUCES_LADO));
+            assert!(r.x >= l.x && r.derecha() <= l.derecha());
+            assert!(r.y >= l.y && r.y + r.alto as i32 <= l.y + l.alto as i32);
+        }
+        assert_eq!(p[1].y - p[0].y, (LUCES_LADO + LUCES_HUECO) as i32);
+        // Al 200 % todo crece igual.
+        let d2 = Disposicion::calcular(2000, 1400, 200, 640, Vista::Ambas);
+        assert_eq!(d2.puntitos_ia(3, 200)[0].ancho, 2 * LUCES_LADO);
+    }
+
+    #[test]
     fn con_la_lista_plegada_no_hay_boton_y_el_buscador_no_le_guarda_sitio() {
         let d = Disposicion::calcular(1200, 800, 100, LISTA_PLEGADA, Vista::Ambas);
         assert_eq!(d.boton_sincro(100).ancho, 0);
+        assert_eq!(d.luces_ia(100).ancho, 0);
+        assert!(d.puntitos_ia(3, 100).is_empty());
         // Un punto cualquiera no cae en un boton que no esta.
         assert!(!d.boton_sincro(100).contiene(Punto { x: 0, y: 0 }));
     }

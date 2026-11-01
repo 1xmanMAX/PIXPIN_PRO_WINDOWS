@@ -96,6 +96,8 @@ mod diapositivas;
 mod dibujo;
 mod dispositivo_perdido;
 mod editor;
+/// Lo que se sabe de Claude, DeepSeek y Jev: los puntitos del chat.
+mod estado_ia;
 mod fondo_lienzo;
 mod foto_anotada;
 mod fusionar_paginas;
@@ -462,6 +464,10 @@ fn arrancar(
     // El indice de los documentos para el asistente (`buscar_en_mis_cosas`):
     // en su hilo de fondo, y solo si el asistente se usa.
     asistente::documentos::arrancar(ubicacion.clone());
+    // Si las API de Claude, DeepSeek y Jev funcionan (los puntitos de junto
+    // al boton de sincronizar del chat): escucha cada peticion y comprueba
+    // sin gastar, en su hilo, a los 10 s y cada media hora.
+    estado_ia::arrancar();
     // Como se siente el lapiz (`[tinta]`). Va por aqui y no como parametro de
     // `ventana_editor::abrir` porque el editor se abre desde cinco sitios
     // distintos (la bandeja, el «abrir con», el chat, las lecciones) y ninguno

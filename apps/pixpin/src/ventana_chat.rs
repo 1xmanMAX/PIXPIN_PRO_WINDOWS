@@ -155,6 +155,9 @@ pub(crate) fn abrir_figuras(idioma: pixpin_store::Idioma) {
 /// Dictar al chat (29-oct-2026, Jev): «anota en el chat de la obra que…»
 /// al dictar en la caja propone anotarlo en ese chat.
 mod dictado_a_chat;
+/// Los puntitos del estado de Claude, DeepSeek y Jev junto a sincronizar
+/// (1-nov-2026).
+mod estado_ia;
 /// La ventana de estudiar una clase grabada: el video o la captura del
 /// minuto, el texto y las capturas, que se siguen (25-oct-2026).
 mod estudiar_clase;
@@ -1038,6 +1041,10 @@ pub fn abrir(
     let reloj = std::time::Instant::now();
     let mut giro = pixpin_ui::giro::Giro::default();
     let mut fallo_pintado = false;
+    // Los puntitos del estado de las IA (`estado_ia`): lo ultimo pintado y si
+    // el raton esta encima (sale su globo).
+    let mut ia_pintado = crate::estado_ia::novedades();
+    let mut sobre_ia = false;
     // Buscar dentro de todos los chats desde el buscador de la lista
     // (`buscar_en_chats`): su hilo nace con la primera busqueda.
     let mut en_chats = buscar_en_chats::BuscarEnChats::nuevo(
@@ -1162,6 +1169,15 @@ pub fn abrir(
                         fondo = n;
                         guardar_fondo(ubicacion, n);
                     }
+                    Some(Accion::ClavesIa) => {
+                        if !estado_ia::abrir_las_claves() {
+                            aviso = Some((
+                                textos.t("ia-estado-sin-ajustes"),
+                                std::time::Instant::now(),
+                            ));
+                        }
+                    }
+                    Some(Accion::ComprobarIa) => crate::estado_ia::comprobar_ahora(),
                     // Proyecto nuevo: se crea, se pone el primero y se abre
                     // con el nombre ya listo para escribirlo. Nace sin
                     // nombre a proposito: teclear es mas rapido que borrar
@@ -2380,6 +2396,15 @@ pub fn abrir(
                         menu = Some(MenuAbierto::nuevo(l, menu_de_chat_nuevo(textos)));
                         buscando = false;
                         hay_que_pintar = true;
+                    } else if disposicion.luces_ia(escala).contiene(l) {
+                        // Los puntitos del estado de las IA: cada servicio,
+                        // «Comprobar ahora» y las claves en Ajustes.
+                        menu = Some(MenuAbierto::nuevo(
+                            l,
+                            estado_ia::menu(textos, &estado_ia::Luces::de_ahora()),
+                        ));
+                        buscando = false;
+                        hay_que_pintar = true;
                     } else if disposicion.boton_sincro(escala).contiene(l) {
                         // La pantalla de Sincronizar del movil: tus aparatos,
                         // y desde ella Recibir y Enviar.
@@ -2728,6 +2753,8 @@ pub fn abrir(
                         }
                         None => {
                             sobre = disposicion.boton_barra_en(l, escala);
+                            sobre_ia =
+                                disposicion.luces_ia(escala).contiene(l) && !funciones.contiene(l);
                             fila_sobre = disposicion.fila_en(l, scroll, orden.len(), escala);
                             mensaje_sobre =
                                 en_chats.elemento_en(&disposicion, l, scroll, orden.len(), escala);
@@ -4561,6 +4588,10 @@ pub fn abrir(
             fallo_pintado = !fallo_pintado;
             hay_que_pintar = true;
         }
+        if crate::estado_ia::novedades() != ia_pintado {
+            ia_pintado = crate::estado_ia::novedades();
+            hay_que_pintar = true;
+        }
         // Lo escrito en el buscador de la lista, tambien dentro de todos los
         // chats: tras la espera se le pide al hilo, y lo que conteste se pinta.
         if en_chats.latido(&busqueda, buscando, disposicion.filas.ancho, escala, ms) {
@@ -4689,8 +4720,10 @@ pub fn abrir(
                 // M1: el cielo del tema Cosmos se hornea fuera del fotograma.
                 let (cw, ch) = crate::tema_cosmos::tamano_de(&disposicion);
                 crate::tema_cosmos::preparar(&motor, cw, ch);
+                let luces = estado_ia::Luces::de_ahora();
                 let resultado = motor.dibujar(&destino, |p: &Pintor| {
                     pintar(p, &disposicion, tema, papel, escala, textos, sobre, &lista);
+                    estado_ia::pintar(p, &disposicion, tema, escala, &luces);
                     interruptor.pintar(funciones.parte(), p, &disposicion, tema, escala, textos);
                     let mut alto_caja = 0;
                     if let Some(a) = abierto_ref {
@@ -4800,6 +4833,10 @@ pub fn abrir(
                     }
                     if let Some(t) = aviso_ref {
                         pintar_aviso(p, &disposicion, escala, alto_caja, t);
+                    }
+                    // El globo de los puntitos de las IA, encima de todo.
+                    if sobre_ia && menu_ref.is_none() {
+                        estado_ia::pintar_globo(p, &disposicion, tema, escala, textos, &luces);
                     }
                 });
                 if resultado.is_err() {
@@ -17248,6 +17285,10 @@ enum Accion {
     /// El «+» de la lista (25-oct-2026): un chat nuevo, normal (`false`) o
     /// compartido con otras personas (`true`).
     NuevoChat(bool),
+    /// Los puntitos del estado de las IA (1-nov-2026): ir a las claves en
+    /// Ajustes → Asistente, o comprobarlas ya.
+    ClavesIa,
+    ComprobarIa,
     AdjArchivo,
     AdjImagen,
     /// «Musica» de la hoja del «+» (27-oct-2026): elegir canciones, que
@@ -19674,6 +19715,8 @@ fn ejecutar(accion: Accion, a: &mut Abierto, cx: &Contexto) -> Efecto {
         | Accion::AdjDelMovil
         | Accion::Fondos
         | Accion::NuevoChat(_)
+        | Accion::ClavesIa
+        | Accion::ComprobarIa
         | Accion::Fondo(_) => Efecto::Nada,
     }
 }

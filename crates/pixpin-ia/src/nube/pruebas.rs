@@ -784,6 +784,51 @@ fn probar_la_clave() {
 }
 
 #[test]
+fn comprobar_la_clave_con_la_lista_de_modelos() {
+    let s = servidor(
+        "/v1/models",
+        vec![
+            crudo(200, r#"{"data":[{"id":"claude-haiku-5-5"}]}"#),
+            crudo(
+                401,
+                r#"{"type":"error","error":{"type":"authentication_error","message":"invalid x-api-key"}}"#,
+            ),
+            crudo(
+                400,
+                r#"{"type":"error","error":{"message":"Your credit balance is too low"}}"#,
+            ),
+        ],
+    );
+    assert_eq!(
+        comprobar_en(Proveedor::Claude, "sk-ant-buena-0123456789", &s.url),
+        Some(200)
+    );
+    assert_eq!(
+        comprobar_en(Proveedor::Claude, "sk-ant-mala-0123456789", &s.url),
+        Some(401)
+    );
+    // Sin saldo cuenta como 402.
+    assert_eq!(
+        comprobar_en(Proveedor::Claude, "sk-ant-pobre-0123456789", &s.url),
+        Some(402)
+    );
+    let rec = s.recibidas.lock().unwrap();
+    assert!(rec[0].cabeceras.starts_with("get "), "{}", rec[0].cabeceras);
+    assert!(rec[0].cabeceras.contains("x-api-key: sk-ant-buena"));
+    assert!(rec[0].cabeceras.contains("anthropic-version:"));
+    // Sin red, `None`.
+    let l = TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://127.0.0.1:{}/models", l.local_addr().unwrap().port());
+    drop(l);
+    assert_eq!(comprobar_en(Proveedor::DeepSeek, "sk-x", &url), None);
+    assert_eq!(
+        url_de_modelos(Proveedor::DeepSeek),
+        "https://api.deepseek.com/models"
+    );
+    assert!(url_de_modelos(Proveedor::Claude).starts_with("https://api.anthropic.com/v1/models"));
+}
+
+#[test]
 fn sin_red_avisa_y_no_se_queda_colgado() {
     // Un puerto donde no escucha nadie.
     let l = TcpListener::bind("127.0.0.1:0").unwrap();

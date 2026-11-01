@@ -190,6 +190,9 @@ pub fn guardar_y_probar(escrito: &str, despertar: Arc<dyn Fn() + Send + Sync>) {
         f.clave = Some(clave.clone());
         f.prueba = Some(None);
     });
+    // El puntito de Jev del chat: clave nueva, aun sin saber si vale (la
+    // prueba de aqui abajo lo dira).
+    crate::estado_ia::clave_cambiada(pixpin_ui::estado_ia::Servicio::Jev);
     avisar(despertar.as_ref());
     let lanzado = std::thread::Builder::new()
         .name("jev-probar-clave".into())
@@ -221,6 +224,7 @@ pub fn borrar() {
         f.clave = None;
         f.prueba = r.err().map(|e| Some(Err(e)));
     });
+    crate::estado_ia::clave_cambiada(pixpin_ui::estado_ia::Servicio::Jev);
     NOVEDADES.fetch_add(1, Ordering::SeqCst);
 }
 

@@ -22,6 +22,8 @@ pub mod conversacion;
 pub mod donde_se_dejo;
 /// Acercar y mover una imagen en su caja, como en un lienzo.
 pub mod encuadre;
+/// Los puntitos del estado de Claude, DeepSeek y Jev junto a sincronizar.
+pub mod estado_ia;
 pub mod evento_anotador;
 /// La foto del chat: los fondos, los emojis y el recorte de una imagen.
 pub mod foto_del_chat;
