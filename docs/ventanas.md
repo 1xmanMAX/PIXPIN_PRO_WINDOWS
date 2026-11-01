@@ -38,7 +38,7 @@ Una ventana nueva que se salte `seguir_sitio` vuelve a tener el fallo.
 
 ## Arrastrar por la cabecera
 
-Las ventanas de PixPin no tienen barra de Windows. Las que se mueven por su
+Las ventanas de PinDesk no tienen barra de Windows. Las que se mueven por su
 cuenta (la caja de soltar, las flotantes, la galeria, tareas…) lo hacen al
 arrastrar su cabecera. Las demas le dicen a Windows por donde se arrastran
 con `VentanaOverlay::poner_arrastre(zonas, botones)`, en pixeles del

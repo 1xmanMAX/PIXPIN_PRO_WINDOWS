@@ -658,7 +658,7 @@ etiquetas ≈ 0,00003 $; una ráfaga de cuatro fotos ≈ 0,00017 $.
   solo con deshacer; «sugerir», dos botones en el aviso de la captura.
 - **Etiquetas**: al crear una nota o al terminar el OCR de una captura,
   `etiquetas::elegir` con las etiquetas que ya existen (nunca crea una).
-- **Mejor foto**: en la cámara de PixPin y en lo que llega del móvil cuando
+- **Mejor foto**: en la cámara de PinDesk y en lo que llega del móvil cuando
   hay varias fotos en pocos segundos; `mejor_foto::elegir`, las demás a
   una carpeta «descartadas» (nunca se borran solas).
 - **Pizarra**: botón «recortar lo escrito» en la foto; `pizarra::recortar`

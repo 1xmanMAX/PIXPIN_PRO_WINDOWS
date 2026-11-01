@@ -1,6 +1,6 @@
 # El móvil como cámara de la reunión del PC (27-oct-2026)
 
-Guía para el agente de **PixPin Android** (y referencia para `apple/`).
+Guía para el agente de **PinDesk Android** (y referencia para `apple/`).
 Lo pidió el usuario: «ya que estamos en Windows, agregar una función
 especial para conectar con Android, para que el MÓVIL tome las fotos y se
 envíen directamente y se adjunten aquí» (a la reunión que se está grabando
@@ -73,13 +73,13 @@ El **anuncio** (`Anuncio` en Rust):
     `{"t":"camara_remota","reloj":t0}` y el PC contesta el anuncio con
     `reloj: t1` (su hora). El móvil apunta `t2` al recibirlo.
     **Preguntar cada 3-5 s** mientras la pantalla de cámara esté abierta (o
-    PixPin a la vista con «Cámara para la reunión…»); es el camino que
+    PinDesk a la vista con «Cámara para la reunión…»); es el camino que
     siempre funciona.
   - **El PC avisa** (dirige; el móvil responde) al empezar, pausar, seguir,
     acabar o apagar la cámara, a los móviles del grupo que contestan en su
     última dirección: manda el anuncio con `reloj: t0` y el móvil contesta
     `{"t":"camara_remota","reloj":t1}` con su hora. Si el móvil no escucha
-    (PixPin cerrado), no pasa nada: lo verá al preguntar.
+    (PinDesk cerrado), no pasa nada: lo verá al preguntar.
 
 ### 2.2 El desfase de los relojes (como NTP)
 
@@ -207,7 +207,7 @@ Un clip dura `min(duracionMs, final − ms)` (nunca pasa del final).
 
 ## 7. La pantalla del móvil (flujo)
 
-1. **Aviso**: con PixPin a la vista, si el anuncio dice `activa`, el móvil
+1. **Aviso**: con PinDesk a la vista, si el anuncio dice `activa`, el móvil
    enseña la entrada a la cámara. Desde Android v0.152.0 (29-oct-2026) es
    **un botón redondo de la foto junto al «+» de la lista de chats**, del
    mismo tamaño, que sale solo mientras un PC del grupo graba y se va al
@@ -247,7 +247,7 @@ Un clip dura `min(duracionMs, final − ms)` (nunca pasa del final).
   el anuncio (no cambia si el usuario toca la hora); `System.currentTimeMillis()`
   para `tomada_en` y `t0/t2`.
 - **Preguntar**: cada 3-5 s con la pantalla de cámara abierta; cada 15-30 s
-  con PixPin a la vista (para la tira del §7.1). Responder al aviso del PC
+  con PinDesk a la vista (para la tira del §7.1). Responder al aviso del PC
   en el `Respondedor` (`Presencia.kt`): `camara_remota` → `{"t":"camara_remota","reloj":<ahora>}`
   y refrescar el reloj con lo anunciado.
 - **Tipos desconocidos**: contestar siempre `{"error":"No sé qué es «…»"}` y
@@ -326,7 +326,7 @@ y todo lo relacionado, que localice cualquier aparato de la red rápido y
 simple. Todo tiene que ser rápido y fiable mientras se graba: perder algo
 sería perder una reunión».
 
-**Por qué tardaba**: los aparatos se encuentran por mDNS (`_pixpin._tcp`),
+**Por qué tardaba**: los aparatos se encuentran por mDNS (`_pindesk._tcp`),
 que muchas Wi-Fi reparten con uno o dos minutos de retraso, y por la sonda
 TCP a la **última dirección conocida** (cada 60 s en el PC sin nadie
 mirando), que no sirve si el DHCP le dio otra al móvil. El aviso del PC al
@@ -401,8 +401,8 @@ es la de PBKDF2 de siempre, `Identidad.kt`). Lo más largo son 182 bytes.
 | --- | --- |
 | Grabando | **cada 1 s** |
 | Al empezar, pausar, seguir o acabar | **al momento** |
-| Sin grabar (PixPin abierto o su servicio vivo) | cada **15 s** |
-| Al abrir PixPin, al volver la red | una con **pregunta**, al momento |
+| Sin grabar (PinDesk abierto o su servicio vivo) | cada **15 s** |
+| Al abrir PinDesk, al volver la red | una con **pregunta**, al momento |
 | Contestar a una pregunta | al momento, directa a quien preguntó (como mucho una por segundo a cada IP) |
 | «Sigue grabando» | hasta **4 s** después de la última baliza con grabando |
 
@@ -434,7 +434,7 @@ sonda), el PC lo dice una vez (bandeja y «Actividad»):
   (`baliza-movil-otra-red`);
 - es de la misma red → «puede que esta Wi-Fi aísle a los aparatos (las de
   invitados, hotel o empresa lo hacen) o que un cortafuegos bloquee
-  PixPin…», con el punto de acceso del móvil como salida
+  PinDesk…», con el punto de acceso del móvil como salida
   (`baliza-movil-aislado`).
 
 ### 11.5 Qué hace quien oye una baliza del grupo
@@ -499,13 +499,13 @@ Para que una foto empiece a subir **en menos de 1 s** desde el disparo:
 
 - [ ] **Oír** en UDP 47475 (`DatagramSocket` atado a `0.0.0.0:47475` con
       `reuseAddress`, y `MulticastSocket.joinGroup(239.255.74.74)` en la
-      interfaz Wi-Fi) mientras PixPin esté a la vista **o** viva su servicio
+      interfaz Wi-Fi) mientras PinDesk esté a la vista **o** viva su servicio
       de grabación o de subida. Con un **`WifiManager.MulticastLock`**
       (`setReferenceCounted(false)`) mientras se oye —sin él, muchos
       teléfonos tiran la difusión y la multidifusión con la pantalla
       apagada— y soltarlo al dejar de oír (gasta batería).
 - [ ] Leer y comprobar la baliza como §11.2 y actuar como §11.5.
-- [ ] **Mandar la suya**: una con pregunta al abrir PixPin y al volver la
+- [ ] **Mandar la suya**: una con pregunta al abrir PinDesk y al volver la
       red; cada 15 s mientras esté a la vista; **cada 1 s y al momento al
       empezar/pausar/seguir/acabar** cuando el móvil grabe (grabando, en
       pausa, `ms_actual`, id de su grabación): así el PC lo oye igual.
@@ -587,7 +587,7 @@ Android, al grabar él, escribe lo mismo en su nota.
 
 ### 12.2 Cada foto lleva su hora: `resto.tomadaEn`
 
-Cualquier foto hecha con PixPin (con o sin conexión, para una grabación o
+Cualquier foto hecha con PinDesk (con o sin conexión, para una grabación o
 no) lleva en su mensaje:
 
 | Campo | Qué es |

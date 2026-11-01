@@ -1,4 +1,4 @@
-# Mapa de traducción de Excalidraw a PixPin
+# Mapa de traducción de Excalidraw a PinDesk
 
 Cada fila es un fichero del original que tiene porte en Rust. `novedades-excalidraw.mjs`
 lee la columna **Origen** y la **Revisión** para decir qué ha cambiado desde el último porte.

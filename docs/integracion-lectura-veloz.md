@@ -6,8 +6,8 @@ sentidos:
 
 | Sentido | Enlace | Cuándo |
 |---|---|---|
-| PinDesk → Lectura Veloz | `lecturaveloz://pixpin/abrir?v=1&…` | «⚡ Lectura veloz» en el menú del mensaje del chat y en el ⋮ de la nota |
-| Lectura Veloz → PinDesk | `pixpinmax://lectura-veloz?v=1&…` | De fondo, mientras se lee en Lectura Veloz |
+| PinDesk → Lectura Veloz | `lecturaveloz://pindesk/abrir?v=1&…` (antes `lecturaveloz://pixpin/abrir`: **Lectura Veloz tiene que aceptar los dos**) | «⚡ Lectura veloz» en el menú del mensaje del chat y en el ⋮ de la nota |
+| Lectura Veloz → PinDesk | `pindesk://lectura-veloz?v=1&…` | De fondo, mientras se lee en Lectura Veloz |
 
 Lo puro (armar y mirar los enlaces, qué cambia en lo leído) está en
 `crates/pixpin-docs/src/lectura_veloz.rs`; lo que toca el disco y las ventanas, en
@@ -36,7 +36,7 @@ con el lector abierto (§2). Al pulsarlo:
 3. Se abre con `ShellExecuteW` (`pixpin_shell::abrir`):
 
 ```
-lecturaveloz://pixpin/abrir?v=1&doc=<id>&ruta=<ruta>&nombre=<nombre>&tipo=<pdf|texto>
+lecturaveloz://pindesk/abrir?v=1&doc=<id>&ruta=<ruta>&nombre=<nombre>&tipo=<pdf|texto>
     &pagina=<n>&frac=<0..1>&fraccion=<0..1>&paginas=<n>&t=<ms>
 ```
 
@@ -63,10 +63,10 @@ lecturaveloz://pixpin/abrir?v=1&doc=<id>&ruta=<ruta>&nombre=<nombre>&tipo=<pdf|t
 ## 2. De Lectura Veloz a PinDesk (progreso de fondo)
 
 ```
-pixpinmax://lectura-veloz?v=1&doc=<id>&ruta=<ruta>&tipo=<pdf|texto>&pagina=<n>&frac=<0..1>&fraccion=<0..1>&t=<ms>
+pindesk://lectura-veloz?v=1&doc=<id>&ruta=<ruta>&tipo=<pdf|texto>&pagina=<n>&frac=<0..1>&fraccion=<0..1>&t=<ms>
 ```
 
-(`pixpin://` vale igual si ese esquema es de PinDesk; `pixpinmax://` lo es siempre.)
+(Los de antes de PinDesk, `pixpinmax://lectura-veloz?…` y `pixpin://lectura-veloz?…`, valen igual: docs/formato-pindesk.md.)
 También por consola: `pindesk lectura-veloz --ruta <doc> --tipo pdf --pagina 4 --frac 0.25`
 (la ruta puede ir suelta; sin `--doc`, el de la ruta).
 
@@ -126,11 +126,11 @@ como estaba.
 
 - `lectura_veloz` está en la **lista blanca** de los enlaces (`orden::SEGURAS`): no pregunta.
   Lleva una `ruta`, pero es la excepción a «las rutas preguntan» porque solo escribe lo leído
-  de ese documento. Una ruta de red sigue prohibida también en `pixpin://pedido?json=…`.
+  de ese documento. Una ruta de red sigue prohibida también en `pindesk://pedido?json=…`.
 - Todo lo de arriba se mira dos veces: en la copia de paso y en la app al recibir el pedido.
 - Lo peor que puede hacer un enlace malicioso: mover el 🟢 de un documento del usuario (y
   crear su `.pixpin-lectura` al lado si no lo tenía).
-- `t` no se usa para decidir nada en PixPin: **gana lo último que llega**. Si Lectura Veloz
+- `t` no se usa para decidir nada en PinDesk: **gana lo último que llega**. Si Lectura Veloz
   quiere «gana lo más nuevo», compara su `t` con el `t` que le manda PinDesk al abrir.
 
 ## 3. Cómo probarlo
@@ -139,10 +139,10 @@ Desde `cmd` (en PowerShell, comillas simples alrededor del enlace):
 
 ```bat
 :: PDF: el verde a la mitad de la quinta página
-start "" "pixpinmax://lectura-veloz?v=1&doc=prueba&ruta=C%3A%5CUsers%5CMax%5CDocuments%5CTesis.pdf&tipo=pdf&pagina=4&frac=0.5&fraccion=0.3&t=0"
+start "" "pindesk://lectura-veloz?v=1&doc=prueba&ruta=C%3A%5CUsers%5CMax%5CDocuments%5CTesis.pdf&tipo=pdf&pagina=4&frac=0.5&fraccion=0.3&t=0"
 
 :: EPUB: el verde al 42 %
-start "" "pixpinmax://lectura-veloz?v=1&doc=prueba&ruta=C%3A%5CLibros%5Ccuento.epub&tipo=texto&fraccion=0.42&t=0"
+start "" "pindesk://lectura-veloz?v=1&doc=prueba&ruta=C%3A%5CLibros%5Ccuento.epub&tipo=texto&fraccion=0.42&t=0"
 
 :: Lo mismo por consola, viendo el código de salida
 pindesk lectura-veloz "C:\Libros\cuento.epub" --tipo texto --fraccion 0.42

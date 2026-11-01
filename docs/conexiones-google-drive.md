@@ -11,7 +11,7 @@ Con Google Drive conectado, el asistente de PinDesk (con Claude o DeepSeek) pued
 
 PinDesk no puede borrar ni cambiar lo que ya tienes en Drive: solo pide leer (`drive.readonly`) y tocar lo que él mismo sube (`drive.file`).
 
-Google no deja que una app de escritorio se conecte a Drive con un permiso compartido entre todos sus usuarios. Por eso, **una sola vez**, creas tu propio «ID de cliente» en Google Cloud (es gratis y tarda unos 10 minutos) y lo pegas en PixPin.
+Google no deja que una app de escritorio se conecte a Drive con un permiso compartido entre todos sus usuarios. Por eso, **una sola vez**, creas tu propio «ID de cliente» en Google Cloud (es gratis y tarda unos 10 minutos) y lo pegas en PinDesk.
 
 ---
 
@@ -94,7 +94,7 @@ Solo para **ver**: PinDesk pide `calendar.readonly` y no puede crear, cambiar ni
 
 ## Seguridad
 
-- El ID de cliente, su secreto y los tokens se guardan **cifrados con DPAPI** de Windows (solo tu cuenta de Windows en este PC puede descifrarlos) en `%LOCALAPPDATA%\PixPinMax\claves\conexion-google_drive.cifrado`. Nunca van al fichero de ajustes, ni a la carpeta que se sincroniza, ni a los registros.
+- El ID de cliente, su secreto y los tokens se guardan **cifrados con DPAPI** de Windows (solo tu cuenta de Windows en este PC puede descifrarlos) en `%LOCALAPPDATA%\PinDesk\claves\conexion-google_drive.cifrado`. Nunca van al fichero de ajustes, ni a la carpeta que se sincroniza, ni a los registros.
 - La vuelta del navegador llega a `127.0.0.1` (solo este PC) y se comprueba con PKCE (S256) y un `state` aleatorio: otra app no puede colarse a medias.
 - Lo que el asistente lee de tu Drive se le manda al modelo de la nube que hayas elegido (Claude o DeepSeek), igual que un archivo que adjuntas al chat.
 

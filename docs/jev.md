@@ -1,4 +1,4 @@
-# Jev de TypeSafe en PixPin (28-oct-2026)
+# Jev de TypeSafe en PinDesk (28-oct-2026)
 
 ## Que es Jev
 
@@ -8,14 +8,14 @@ tipadas** sobre un estado que se le da —texto, JSON con campos con nombre e
 imagenes— con **probabilidades calibradas**, en 70-500 ms. Hay cuatro tipos
 de pregunta:
 
-| Tipo | Que contesta | Ejemplo en PixPin |
+| Tipo | Que contesta | Ejemplo en PinDesk |
 |---|---|---|
 | **Noul** | la probabilidad de que algo sea verdad (0-1) | «¿este renglon encarga una tarea?» |
 | **Choice** | una opcion de varias, con la probabilidad de cada una | (el cliente la sabe; ninguna funcion la usa todavia) |
 | **Score** | un nivel de una escala descrita nivel a nivel, con la probabilidad de cada nivel | «¿que pasa si esta tarea se hace tarde?» (0-3) |
 | **Box** | donde esta algo en una imagen (sus cuatro bordes en fracciones) | (el cliente la sabe; ninguna funcion la usa todavia) |
 
-La regla de PixPin, la de la guia de TypeSafe: **los juicios de Jev, las
+La regla de PinDesk, la de la guia de TypeSafe: **los juicios de Jev, las
 decisiones en codigo**. Jev dice «este renglon encarga una tarea: 0.94»;
 que se marca, que tarjeta va a Anki, que prioridad tiene una tarea o que
 modelo contesta al asistente lo decide una **tabla escrita en codigo**, con
@@ -29,7 +29,7 @@ funcion hace lo de siempre y lo apunta en el registro.
 
 ## Donde esta
 
-- `crates/pixpin-typesafe` (capa 1, sin crates de PixPin; portable):
+- `crates/pixpin-typesafe` (capa 1, sin crates de PinDesk; portable):
   - `api.rs`: la peticion y la respuesta segun el OpenAPI
     (`https://api.typesafe.ai/openapi.json`, version 0.2.0).
   - `cliente.rs`: el POST con 2 s de tiempo, el registro del cuerpo exacto
@@ -623,7 +623,7 @@ HTTPS:
   las preguntas aun abiertas.
 
 La clave va cifrada con DPAPI en
-`%LOCALAPPDATA%\PixPinMax\claves\typesafe.clave`: nunca en el TOML de
+`%LOCALAPPDATA%\PinDesk\claves\typesafe.clave`: nunca en el TOML de
 ajustes, nunca en la carpeta de datos que se sincroniza o se exporta. Lo
 que se escribe en los datos (`importantes`) son minutos, tipos y
 probabilidades, sin texto. TypeSafe dice que Jev no se entrena con lo que
@@ -633,7 +633,7 @@ se le manda (pagina de modelos, «Data handling»).
 
 Jev se paga por token de entrada: **0.042 $ por millon** (42 $ por mil
 millones; los de salida, gratis), precio de Jev 1.14 el 28-oct-2026. Lo
-que cuesta en PixPin, mas o menos:
+que cuesta en PinDesk, mas o menos:
 
 - una clase de una hora (~150 renglones, ~350 tokens cada peticion con sus
   ocho preguntas): ~50 000 tokens ≈ **0.002 $**;

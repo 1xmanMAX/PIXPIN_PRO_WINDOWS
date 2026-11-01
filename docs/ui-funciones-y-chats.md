@@ -1,6 +1,6 @@
 # La ventana principal: Funciones y Chats
 
-Como es la ventana principal de PixPin Max (la del chat) desde el
+Como es la ventana principal de PinDesk (la del chat) desde el
 25-oct-2026, para que **Android y Mac** la repliquen igual que Windows. Cada
 parte de la pantalla tiene su seccion; cada seccion la escribe quien la hizo y
 no toca las demas (añadir una seccion nueva al final, con su propio titulo
@@ -132,7 +132,7 @@ escrito, como en Telegram. N es cuantos hay en total.
 - La lista se desplaza entera, chats y seccion, con la rueda.
 
 **Pestañas por tipo, abrir lo encontrado e ir al mensaje** (27-oct-2026, lo
-de PixPin Android 8815b492 y 80e76094).
+de PinDesk Android 8815b492 y 80e76094).
 
 - **Pestañas** encima de la seccion, mientras se busca (el buscador con el
   teclado, algo escrito o una pestaña puesta): Todo, Fotos, Vídeos, Archivos,
@@ -331,7 +331,7 @@ pantalla de la letra de los dos aparatos y viaja como cualquier nota.
   aviso dice cuántas líneas se oyeron («12 de 30»); con menos de un tercio,
   que va a ojo. Si la letra se edita mientras, no se guarda. El idioma con
   el que se oye es el de la letra si se nota (`idioma_de_la_letra`: una
-  canción en inglés se oye en inglés con PixPin en castellano) y si no, el
+  canción en inglés se oye en inglés con PinDesk en castellano) y si no, el
   de Ajustes con su segundo idioma.
 
 ### Cómo se alinea la letra con lo oído (`pixpin_voz::alinear_letra`)
@@ -457,7 +457,7 @@ una canción siguen con su letra (el karaoke del PC, ver «Música con letra»).
 
 *29-oct-2026, como el móvil (201d327, `CompartirCarpeta.kt`).* El usuario
 (checklist 51): «compartir un cuaderno con todos los formatos (PDF, HTML,
-PixPin, fotos…), con la misma hoja de compartir de siempre».
+PinDesk, fotos…), con la misma hoja de compartir de siempre».
 
 Un cuaderno (una carpeta de páginas del chat) entra en la hoja de compartir
 de toda la app con sus páginas, cada una con su título («Día 1», «Día 2»),
@@ -470,7 +470,7 @@ todas marcadas al abrir (`apps/pixpin/src/compartir/carpeta.rs`,
 - **Word, Markdown y Texto**, si alguna página lleva texto (una nota, la
   transcripción de una nota de voz), cada página bajo su título.
 - **Original**: los ficheros de sus páginas tal cual.
-- **PixPin (.pixpin)**: el chat entero, con la carpeta dentro, que se abre
+- **PinDesk (.pindesk)**: el chat entero, con la carpeta dentro, que se abre
   en otro PC y en el móvil con su carpeta. Y por Wi‑Fi, el botón de siempre.
 
 Se llega desde tres sitios, y los tres dan la misma hoja:

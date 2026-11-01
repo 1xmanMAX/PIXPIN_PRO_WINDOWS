@@ -3,7 +3,7 @@
 > «Todo tiene que ser rápido y fiable al grabar: si se perdiera algo sería malo, se perdería una
 > reunión.» — el usuario, 28-oct-2026
 
-Este documento dice **qué garantiza PixPin Max cuando graba una clase o una reunión** («Grabar
+Este documento dice **qué garantiza PinDesk cuando graba una clase o una reunión** («Grabar
 clase», en sus tres modos: pantalla y sonido, audio y capturas, presencial) y cómo lo consigue.
 Lo mismo debe valer en Android (ver el final).
 
@@ -12,11 +12,11 @@ Lo mismo debe valer en Android (ver el final).
 1. **Nada de lo grabado se borra sin que el usuario elija «Descartar»** (o tire la grabación
    con ✕ dos veces mientras graba). Ni al cerrar la barra, ni al soltar la grabadora por un
    fallo, ni cuando algo no se pudo cerrar o guardar.
-2. **Si PixPin muere, se va la luz o Windows se reinicia** a mitad de una grabación, al volver a
-   abrir PixPin sale:
+2. **Si PinDesk muere, se va la luz o Windows se reinicia** a mitad de una grabación, al volver a
+   abrir PinDesk sale:
 
    > **Grabación cortada** — Se cortó una grabación (Clase 28-10 10h05, 47 min) en «Física».
-   > Sí: Recuperar · No: Descartar · Cancelar: preguntar al volver a abrir PixPin
+   > Sí: Recuperar · No: Descartar · Cancelar: preguntar al volver a abrir PinDesk
 
    «Recuperar» mete en el chat la nota de voz, el vídeo, las capturas, las fotos de la cámara,
    los clips y lo que llegó del móvil, **cada cosa en su minuto**, dentro de su carpeta, como si
@@ -24,7 +24,7 @@ Lo mismo debe valer en Android (ver el final).
    preguntar («No» por defecto) antes de borrar.
 3. **Lo que se pierde en un corte de luz es, como mucho, lo de los últimos 5 segundos** de
    sonido y lo que se estuviera escribiendo en ese instante (una captura a medias, el último
-   fragmento del vídeo). Un cierre de golpe de PixPin (el proceso muere, pero Windows sigue) no
+   fragmento del vídeo). Un cierre de golpe de PinDesk (el proceso muere, pero Windows sigue) no
    pierde nada de lo que ya llegó al sistema.
 4. **El sonido es lo último que se deja de grabar.** Si el disco se llena, primero se cierra el
    vídeo (con lo grabado, que vale) y la nota sigue; si el vídeo o la cámara fallan, la nota

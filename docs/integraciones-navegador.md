@@ -23,12 +23,12 @@ falla sale también como notificación del navegador.
 
 ## Instalar
 
-1. **El puente.** `herramientas\instalar.ps1` compila `pixpin-puente.exe`, lo copia junto a
+1. **El puente.** `herramientas\instalar.ps1` compila `pindesk-puente.exe`, lo copia junto a
    `pindesk.exe` (`%LOCALAPPDATA%\Programs\PinDesk\`) y lo registra para este usuario con
    `herramientas\registrar-navegador.ps1`:
-   - escribe `pixpin-puente.json` (el manifiesto del host) junto al exe, y
-   - pone su ruta en `HKCU\Software\Google\Chrome\NativeMessagingHosts\com.pixpinmax.puente` y en
-     `HKCU\Software\Microsoft\Edge\NativeMessagingHosts\com.pixpinmax.puente`.
+   - escribe `pindesk-puente.json` (el manifiesto del host) junto al exe, y
+   - pone su ruta en `HKCU\Software\Google\Chrome\NativeMessagingHosts\com.pindesk.puente` y en
+     `HKCU\Software\Microsoft\Edge\NativeMessagingHosts\com.pindesk.puente`.
 
    Para ver lo que haría sin tocar nada:
    `powershell -ExecutionPolicy Bypass -File herramientas\registrar-navegador.ps1 -SoloMostrar`.
@@ -47,10 +47,10 @@ falla sale también como notificación del navegador.
 ## Cómo funciona
 
 ```
-menú / Alt+Mayús+P ─► fondo.js ─► chrome.runtime.sendNativeMessage("com.pixpinmax.puente", {…})
+menú / Alt+Mayús+P ─► fondo.js ─► chrome.runtime.sendNativeMessage("com.pindesk.puente", {…})
                                      │  (4 bytes de largo + JSON por la entrada estándar)
                                      ▼
-                              pixpin-puente.exe ─► WM_COPYDATA (pedido v1) ─► PinDesk
+                              pindesk-puente.exe ─► WM_COPYDATA (pedido v1) ─► PinDesk
                                      │  contesta {"ok":true,"aviso":"…"} y se cierra
 ```
 
@@ -93,7 +93,7 @@ menú / Alt+Mayús+P ─► fondo.js ─► chrome.runtime.sendNativeMessage("co
   mentira; el exe de verdad por tuberías en modo en seco, midiendo).
 - App: `cargo test -p pixpin --bins -- pedidos::`.
 - JS: `node --test extensiones/navegador/pruebas/nucleo.test.mjs` (menú = tabla del puente,
-  mensajes, trozos de la captura, base64, manifiesto y su id; y, si `pixpin-puente.exe` está
+  mensajes, trozos de la captura, base64, manifiesto y su id; y, si `pindesk-puente.exe` está
   compilado, cada acción por la tubería al exe real en modo en seco).
 - El modo en seco: con la variable `PIXPIN_PUENTE_EN_SECO=<carpeta>`, el puente usa esa carpeta
   como raíz, **no busca PinDesk** y devuelve el pedido en la respuesta. Solo para pruebas.

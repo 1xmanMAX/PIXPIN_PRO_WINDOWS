@@ -26,7 +26,7 @@ la máquina de referencia es un Core i3 de 3.ª generación con 4 GB.
 
 > [!NOTE]
 > Hasta noviembre de 2026 se llamaba **PixPin Max**. El nombre **PixPin** pertenece a DepthPixel,
-> así que la app pasó a llamarse **PinDesk**; tus datos, tus proyectos `.pixpin` y la
+> así que la app pasó a llamarse **PinDesk**; tus datos, tus proyectos `.pindesk` y la
 > sincronización con el móvil siguen igual (ver [docs/nombre-pindesk.md](docs/nombre-pindesk.md)).
 > Es una implementación personal e independiente, igual que su versión Android.
 
@@ -52,7 +52,7 @@ Dicho fácil, para cualquier persona:
 
 ## Índice
 
-- [¿Qué puedo hacer?](#qué-puedo-hacer-con-pixpin-max)
+- [¿Qué puedo hacer?](#qué-puedo-hacer-con-pindesk)
 - [Un vistazo](#un-vistazo)
 - [Qué hace](#qué-hace)
   - [Capturar](#capturar)
@@ -206,7 +206,7 @@ miniatura.
   queda como descripción de la foto y se puede editar después.
 - **Cambiar el nombre** de cualquier archivo o audio (`F2`).
 - **PDF**: entra como un solo mensaje. Sus páginas son hojas del proyecto que se anotan como
-  lienzos, con lectura seguida, marcadores, búsqueda y fusión. `pixpin-aligerar.exe` lo comprime
+  lienzos, con lectura seguida, marcadores, búsqueda y fusión. `pindesk-aligerar.exe` lo comprime
   en segundo plano.
 - **Documentos**: Word, EPUB, HTML, Markdown y texto se leen dentro, con zoom, marcadores y
   tinta. PowerPoint se presenta a pantalla completa y Excel entra como tablas que calculan.
@@ -219,7 +219,7 @@ miniatura.
 
 ### El asistente
 
-Un chat más, «Asistente», con una IA que hace cosas dentro de PixPin. **Solo si tú la activas**
+Un chat más, «Asistente», con una IA que hace cosas dentro de PinDesk. **Solo si tú la activas**
 en Ajustes → Asistente, con tu propia clave: Claude (Haiku) o DeepSeek. Contesta solo con la nube
 (el modelo local se quitó el 27-oct-2026, como en Android); quien lo tenía bajado ve una vez en el
 chat cuánto ocupa y un botón para liberar el espacio. El modelo se cambia desde la pastilla de
@@ -554,7 +554,7 @@ como el de un `.docx`. La siguiente vez abre directamente en el visor propio:
 | 📮 Visio y correos `.msg` | Con la vista previa que Office instala en Windows; Office se cierra al cerrar el pin. |
 
 - **Vista rápida**: en el Explorador o el escritorio, elige archivos y pulsa **Espacio**: se
-  abren en PixPin. Otro Espacio los cierra. Se apaga en Ajustes → Apps.
+  abren en PinDesk. Otro Espacio los cierra. Se apaga en Ajustes → Apps.
 
 ### Compartir y arrastrar
 
@@ -565,10 +565,10 @@ pinea desde ahí.
 
 <img src="docs/img/v2/salida.png" width="420" alt="Ventanita para arrastrar lo exportado">
 
-- **`.pixpin` con todo dentro**: el chat entero (o el fichero suelto) con su tinta, marcos
+- **`.pindesk` con todo dentro**: el chat entero (o el fichero suelto) con su tinta, marcos
   numerados, marcadores con su zoom y lo anotado en planos y modelos 3D. Al abrirlo en otro PinDesk
   o en el móvil, todo vuelve a su sitio; «Crear como nuevo» no lo suelta.
-- **Lo editable de un lienzo es el `.pixpin`**: el `.excalidraw` suelto ya no se ofrece. Los
+- **Lo editable de un lienzo es el `.pindesk`**: el `.excalidraw` suelto ya no se ofrece. Los
   `.excalidraw` que tengas se siguen abriendo.
 - Una foto **con anotaciones** sale siempre **fusionada**: al arrastrar o copiar un pin dibujado,
   al arrastrar una foto anotada del chat (también si se dibujó en el móvil) y al compartirla.
@@ -596,19 +596,19 @@ p c                             → capturar una zona
 sequenceDiagram
     participant U as Tú
     participant F as Flow Launcher
-    participant L as pixpin-lanzador.exe
+    participant L as pindesk-lanzador.exe
     participant P as PinDesk
     U->>F: p t revisar fisura + Ctrl V
     F->>L: JSON-RPC (query)
     L-->>F: resultados (lee el índice en caché)
     U->>F: Intro
     F->>L: JSON-RPC (acción)
-    L->>P: WM_COPYDATA {"pixpin":1,"accion":"anadir_tarea",...}
+    L->>P: WM_COPYDATA {"pindesk":1,"accion":"anadir_tarea",...}
     P-->>U: la tarea aparece en el Inbox, con su imagen
 ```
 
 El protocolo está documentado en [`docs/protocolo-pedidos.md`](docs/protocolo-pedidos.md):
-cualquier programa puede pedirle cosas a PixPin.
+cualquier programa puede pedirle cosas a PinDesk.
 
 ### Sincronizar con el móvil
 
@@ -682,10 +682,10 @@ son letras que **solo valen dentro de la ventana abierta**, y cada botón muestr
 1. Descarga el ZIP de la última versión en [Releases](https://github.com/1xmanMAX/PIXPIN_PRO_WINDOWS/releases).
 2. Descomprímelo y ejecuta `Instalar.cmd` (lo deja en `%LOCALAPPDATA%\Programs\PinDesk` y lo
    abre) o `pindesk.exe` directamente. Se queda en la bandeja y arranca con Windows. Si tenías
-   PixPin Max, `Instalar.cmd` la sustituye y conserva tus datos.
+   PixPin Max (el nombre de antes), `Instalar.cmd` la sustituye y conserva tus datos.
 3. Opcional: en **Ajustes → Apps predeterminadas** elige PinDesk para fotos, vídeos y audios.
 
-**Modo portable**: si junto a `pindesk.exe` hay un `pixpinmax.toml` (el nombre de antes, a propósito), todo se guarda en esa
+**Modo portable**: si junto a `pindesk.exe` hay un `pindesk.toml` (o el `pixpinmax.toml` de antes de PinDesk), todo se guarda en esa
 carpeta y nada en el registro, así que se puede llevar en un USB.
 
 ## Cómo está hecho

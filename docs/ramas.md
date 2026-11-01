@@ -1,6 +1,6 @@
 # Las dos ramas principales (1-nov-2026)
 
-PixPin Max se mantiene en **dos ramas principales**, para que las
+PinDesk se mantiene en **dos ramas principales**, para que las
 restricciones de la Microsoft Store no toquen el codigo general:
 
 | Rama | Que lleva | Como se entrega |

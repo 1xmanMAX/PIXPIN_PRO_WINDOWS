@@ -1,4 +1,4 @@
-# Manual de las hojas de cálculo para PixPin Android
+# Manual de las hojas de cálculo para PinDesk Android
 
 Para quien mantenga la hoja de cálculo de Android (`1xmanMAX/PIXPIN_PRO_ANDROID`) frente a la del
 PC (`1xmanMAX/PIXPIN_PRO_WINDOWS`, 15-oct-2026). Dice **en qué formato se guarda una hoja

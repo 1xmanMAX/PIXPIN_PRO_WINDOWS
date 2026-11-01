@@ -115,7 +115,7 @@ idénticas tras normalizar. Carga de los modelos: ~7 s.
 No se pudo medir en el aparato. Estimación:
 
 - **Memoria**: en modo cuidadoso (4 GB) sin preempaquetar, pico de
-  ~1,47 GB del proceso (medido en Linux con la misma biblioteca). Cabe con Windows 10/11 y PixPin al lado si
+  ~1,47 GB del proceso (medido en Linux con la misma biblioteca). Cabe con Windows 10/11 y PinDesk al lado si
   no hay otra cosa pesada; `turno_pesado` ya impide que coincida con otra
   transcripción o con aligerar un PDF. Por eso **se ofrece desde ~3,5 GB**
   de memoria física, no se exige 8 GB.

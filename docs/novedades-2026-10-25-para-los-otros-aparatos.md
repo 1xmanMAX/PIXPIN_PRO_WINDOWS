@@ -1,7 +1,7 @@
 # Novedades del 25-oct-2026: lo que tienen que hacer los otros aparatos
 
-Lo que entro en `main` el 25-oct-2026 en PixPin Max (Windows) y lo que
-necesitan PixPin Android y la version de Mac, iPad e iPhone (`apple/`) para
+Lo que entro en `main` el 25-oct-2026 en PinDesk (Windows) y lo que
+necesitan PinDesk Android y la version de Mac, iPad e iPhone (`apple/`) para
 leerlo y escribirlo igual. Todo viaja por la sincronizacion de siempre: no hay
 mensajes nuevos en el protocolo, solo ficheros y campos de `resto`.
 
@@ -101,7 +101,7 @@ resolucion que tenga, guardada tal cual en JPEG; y **«Video»**: un clip corto
 con la camara (1080p30 como mucho, HEVC si la grafica lo codifica, si no
 H.264, ~5 Mbps a ritmo variable, AAC 96 kbps). Con varias camaras se elige
 en Preparar (la de atras primero: mira a la sala) y se recuerda. La barra
-vive en su propio hilo: cerrar el chat o dejar PixPin en la bandeja no corta
+vive en su propio hilo: cerrar el chat o dejar PinDesk en la bandeja no corta
 nada; el icono de la bandeja dice «Grabando…» y «Salir» pregunta antes
 («Si» termina y guarda; «No» sigue grabando). Las capturas de pantalla de
 los otros modos van en PNG a los pixeles de la pantalla, sin escalar; en el

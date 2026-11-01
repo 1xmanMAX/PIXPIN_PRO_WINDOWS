@@ -1,11 +1,11 @@
-# PinDesk para Claude: el servidor MCP (`pixpin-mcp.exe`)
+# PinDesk para Claude: el servidor MCP (`pindesk-mcp.exe`)
 
 Con esto, **Claude Desktop** y **Claude Code** (y cualquier cliente MCP) pueden usar PinDesk
 Max: apuntar y consultar tareas, escribir en un chat, crear notas, listas y lienzos, buscar
 en tus documentos y chats, leer un PDF o un Office, hacer OCR, ver tu pantalla, anotar un
-plano, mandar al móvil… con **las mismas herramientas que ya tiene el asistente** de PixPin.
+plano, mandar al móvil… con **las mismas herramientas que ya tiene el asistente** de PinDesk.
 
-`pixpin-mcp.exe` es un programa aparte y pequeño: solo existe mientras el cliente lo tiene
+`pindesk-mcp.exe` es un programa aparte y pequeño: solo existe mientras el cliente lo tiene
 abierto. No cuesta nada a PinDesk cuando no se usa.
 
 ## Instalar
@@ -13,7 +13,7 @@ abierto. No cuesta nada a PinDesk cuando no se usa.
 `herramientas\instalar.ps1` lo deja junto a `pindesk.exe`:
 
 ```
-%LOCALAPPDATA%\Programs\PinDesk\pixpin-mcp.exe
+%LOCALAPPDATA%\Programs\PinDesk\pindesk-mcp.exe
 ```
 
 (Si no estaba compilado en la misma carpeta de compilación, lo compila ahí mismo.)
@@ -21,38 +21,43 @@ abierto. No cuesta nada a PinDesk cuando no se usa.
 ### Claude Desktop
 
 Ajustes → Desarrollador → **Editar configuración** abre `claude_desktop_config.json`
-(`%APPDATA%\Claude\claude_desktop_config.json`). Añade `pixpin` dentro de `mcpServers`
-(si ya hay otros, solo la entrada `"pixpin": {...}`), cambiando `TU_USUARIO`:
+(`%APPDATA%\Claude\claude_desktop_config.json`). Añade `pindesk` dentro de `mcpServers`
+(si ya hay otros, solo la entrada `"pindesk": {...}`), cambiando `TU_USUARIO`:
 
 ```json
 {
   "mcpServers": {
-    "pixpin": {
-      "command": "C:\\Users\\TU_USUARIO\\AppData\\Local\\Programs\\PixPinMax\\pixpin-mcp.exe"
+    "pindesk": {
+      "command": "C:\\Users\\TU_USUARIO\\AppData\\Local\\Programs\\PinDesk\\pindesk-mcp.exe"
     }
   }
 }
 ```
 
-Reinicia Claude Desktop: en el botón de herramientas aparece «pixpin».
+Reinicia Claude Desktop: en el botón de herramientas aparece «pindesk».
+
+**Si ya lo tenías como `pixpin-mcp.exe`** (antes de PinDesk): cambia en la configuración
+`pixpin-mcp.exe` por `pindesk-mcp.exe` (y, si quieres, la clave `"pixpin"` por `"pindesk"`).
+Mientras la configuración nombre el viejo, el instalador deja `pixpin-mcp.exe` como copia del
+nuevo para que no deje de funcionar.
 
 ### Claude Code
 
 ```powershell
-claude mcp add pixpin -- "$env:LOCALAPPDATA\Programs\PinDesk\pixpin-mcp.exe"
+claude mcp add pindesk -- "$env:LOCALAPPDATA\Programs\PinDesk\pindesk-mcp.exe"
 ```
 
 Por defecto queda para el proyecto en el que estás; con `--scope user`, para todos:
 
 ```powershell
-claude mcp add --scope user pixpin -- "$env:LOCALAPPDATA\Programs\PinDesk\pixpin-mcp.exe"
+claude mcp add --scope user pindesk -- "$env:LOCALAPPDATA\Programs\PinDesk\pindesk-mcp.exe"
 ```
 
 `/mcp` dentro de Claude Code dice si está conectado y qué herramientas ve.
 
 ### Modo portable
 
-Si PinDesk va en modo portable (un `pixpinmax.toml` junto al exe), copia `pixpin-mcp.exe` a esa
+Si PinDesk va en modo portable (un `pindesk.toml` junto al exe), copia `pindesk-mcp.exe` a esa
 misma carpeta: lee los datos de ahí, como la app. `PIXPIN_RAIZ` (variable de entorno) fuerza
 otra carpeta de datos.
 
@@ -87,7 +92,7 @@ Una fila nueva en esa tabla sale sola en MCP.
 No están `consultar_tareas` como pedido (se contesta leyendo, arriba) ni `hoja_a_lienzo` (dibuja
 en el lienzo abierto del chat del asistente).
 
-Si PinDesk no está abierta, `pixpin-mcp.exe` arranca la que tiene al lado y espera hasta 8 s.
+Si PinDesk no está abierta, `pindesk-mcp.exe` arranca la que tiene al lado y espera hasta 8 s.
 
 ## Seguridad
 
@@ -103,7 +108,7 @@ Si PinDesk no está abierta, `pixpin-mcp.exe` arranca la que tiene al lado y esp
   pierde nada y cada cosa sale con su aviso.
 - En la lista de herramientas, las que preguntan van con `destructiveHint: true` y las de leer
   con `readOnlyHint: true`, para que el cliente también pida confirmación a su manera.
-- Las de leer **nunca escriben** en la carpeta de datos (`%APPDATA%\PixPinMax`).
+- Las de leer **nunca escriben** en la carpeta de datos (`%APPDATA%\PinDesk`).
 - `ver_pantalla` ve lo que hay en pantalla en ese momento: el cliente pregunta antes de usarla
   (Claude Desktop y Claude Code piden permiso por herramienta).
 
@@ -114,7 +119,7 @@ Si PinDesk no está abierta, `pixpin-mcp.exe` arranca la que tiene al lado y esp
   es un error `-32602`; un fallo de la herramienta es un resultado con `isError: true`.
 - Las de la app van por el **pedido `herramienta`** (`docs/protocolo-pedidos.md`):
   `WM_COPYDATA` a la ventana de PinDesk con el nombre de la fila, sus argumentos y un fichero de
-  respuesta en `%TEMP%\pixpin-mcp\`. La app la hace como el asistente
+  respuesta en `%TEMP%\pindesk-mcp\` (o el `%TEMP%\pixpin-mcp\` de un servidor de antes). La app la hace como el asistente
   (`apps/pixpin/src/asistente/externa.rs`) y escribe ahí `{"ok": …, "texto": "…"}`.
 - Código: `apps/pixpin-mcp` (`protocolo.rs`, `herramientas.rs`, `escribir.rs`, `leer.rs`,
   `documento.rs`, `pantalla.rs`). Prueba de punta a punta por stdio:

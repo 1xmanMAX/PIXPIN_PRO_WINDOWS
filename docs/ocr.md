@@ -4,7 +4,7 @@ PinDesk lee el texto de las imágenes en muchos sitios: la captura de texto,
 «Calca esto», los pines (seleccionar texto con el ratón), la galería de
 capturas (buscar por lo que pone), los PDF escaneados y las herramientas del
 asistente (`tabla_de_imagen`, hoja a lienzo, anotar…), además de
-`pixpin-mcp.exe`. **Todos pasan por `pixpin_ocr::reconocer`**, que lee con el
+`pindesk-mcp.exe`. **Todos pasan por `pixpin_ocr::reconocer`**, que lee con el
 motor que el usuario elige en **Ajustes › Captura › Reconocer texto (OCR)**:
 
 | Motor | Qué es | Coste |

@@ -14,10 +14,10 @@ está a medias.
 ## Reglas que no cambian
 
 1. **Telegram Desktop es GPL-3.0.** De ahí salen medidas, colores y
-   comportamientos; nunca código ni recursos. PixPin Max es MIT y `deny.toml`
+   comportamientos; nunca código ni recursos. PinDesk es MIT y `deny.toml`
    rechaza copyleft: copiar su código obligaría a publicar todo el motor bajo
    GPL.
-2. **PixPin Android es del usuario y es la referencia.** Ahí sí se lee y se
+2. **PinDesk Android es del usuario y es la referencia.** Ahí sí se lee y se
    cita el código. Cuando Android y Telegram discrepan (las fechas «Hoy» y
    «Ayer», por ejemplo), manda Android: esta app es su puerto.
 3. **Lo que no se entiende se conserva.** Todo modelo lleva su `resto` con
@@ -148,10 +148,10 @@ que lo demuestre sobre un fichero real del móvil.
 
 Lo que falta del crate `pixpin-sincro`, ya con el protocolo 4 portado:
 
-1. **Descubrimiento mDNS** `_pixpin._tcp.` y la sonda `PING`/`PONG`.
+1. **Descubrimiento mDNS** `_pindesk._tcp.` y la sonda `PING`/`PONG`.
 2. **El bucle del diálogo**, los dos papeles.
 3. **Diferencia y fusión** con sus parches.
-4. **El envío puntual**, incluido el sentido invertido (`_pixpinrecibe._tcp.`):
+4. **El envío puntual**, incluido el sentido invertido (`_pindeskrecibe._tcp.`):
    el ordenador enseña su código y el móvil le manda algo.
 
 **Tres cosas que NO se deducen a ojo**, porque romperían la compatibilidad en

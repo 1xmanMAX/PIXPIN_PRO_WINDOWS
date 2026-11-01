@@ -181,12 +181,12 @@
   },
   {
     "nombre": "ayuda-ajustes",
-    "pedido": "¿Donde estan los ajustes de PixPin?",
+    "pedido": "¿Donde estan los ajustes de PinDesk?",
     "con_imagen": false
   },
   {
     "nombre": "ayuda-como-capturar",
-    "pedido": "¿Como hago una captura de pantalla con PixPin?",
+    "pedido": "¿Como hago una captura de pantalla con PinDesk?",
     "con_imagen": false
   },
   {

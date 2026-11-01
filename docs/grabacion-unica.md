@@ -1,6 +1,6 @@
 # Una sola grabación en el PC (29-oct-2026)
 
-Lo que PixPin Android hizo el 29-oct-2026 (v0.152.0, `docs/grabacion-unica-android.md`
+Lo que PinDesk Android hizo el 29-oct-2026 (v0.152.0, `docs/grabacion-unica-android.md`
 del móvil), traído a «Grabar clase o reunión» del PC. Las palabras del usuario (en el móvil):
 
 > «solo debería haber una opción de grabar, no tres (presencial, pantalla, audio más vídeo);
@@ -63,7 +63,7 @@ del móvil), traído a «Grabar clase o reunión» del PC. Las palabras del usua
 - **Disco casi lleno**: se cierra el trozo que vaya y «Pantalla» ya no enciende otro (el audio
   sigue).
 
-## Toda grabación se pasa a texto, aunque PixPin se cierre (punto 47 del móvil)
+## Toda grabación se pasa a texto, aunque PinDesk se cierre (punto 47 del móvil)
 
 Android lo hizo el 28-oct con una cola en el disco (`ColaDeTexto`). En el PC
 (`grabar_clase/cola_de_texto.rs`): cada nota de una clase guardada se apunta en

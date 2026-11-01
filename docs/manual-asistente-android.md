@@ -1,4 +1,4 @@
-# Manual del asistente para PixPin Android
+# Manual del asistente para PinDesk Android
 
 Para quien vaya a portar a Android (`1xmanMAX/PIXPIN_PRO_ANDROID`) el asistente que ya tiene el
 PC (`1xmanMAX/PIXPIN_PRO_WINDOWS`, rama `main`, 14-oct-2026). No hace falta haber visto el
@@ -54,7 +54,7 @@ Revisado contra Android `main` en `5683c3b` (v0.124.0, 14-oct-2026).
 3. Las herramientas son **las mismas 45** en los dos aparatos, con el mismo JSON Schema y la misma
    validación. Lo que dibujan son **elementos de Excalidraw**, que el lienzo del móvil ya lee.
 4. Lo que hace en la app se apoya en el **protocolo de pedidos** (`docs/protocolo-pedidos.md`):
-   cada herramienta produce un pedido `{"pixpin":1,"accion":…}`.
+   cada herramienta produce un pedido `{"pindesk":1,"accion":…}`.
 5. Lo que piensa y su hoja de trabajo van en `pins/draw/anot-<uid>.asistente.json`, junto a su nota.
 6. Las automatizaciones, las recetas y la biblioteca de figuras viajan como ficheros que señala un
    mensaje ARCHIVO de **id fijo** del chat «Asistente» (`auto-automatizaciones`, `auto-figuras`).
@@ -128,7 +128,7 @@ Son los mismos ficheros, con la misma huella, en el PC y en el móvil (`modelos.
   llama.cpp compilado con el NDK por JNI.
 - La descarga se hace a un `.parte`, se comprueba la huella, se renombra y se deja una marca `<fichero>.ok`.
   Si la huella no coincide, se borra. Va **siempre fuera de la copia de seguridad**: en el PC a
-  `%LOCALAPPDATA%\PixPinMax\modelos`; en Android a `noBackupFilesDir`, y nunca a `filesDir/pins`
+  `%LOCALAPPDATA%\PinDesk\modelos`; en Android a `noBackupFilesDir`, y nunca a `filesDir/pins`
   ni a nada que sincronice.
 - Siempre **sin pensar** (`enable_thinking: false`), salvo en la vuelta de planear si el ajuste
   `pensar` está encendido. El 0.8B entra en bucles cuando piensa.
@@ -179,7 +179,7 @@ Otras reglas de la nube que hay que copiar:
   - 401: clave mala;
   - 402 o «credit balance»: sin saldo;
   - 403: sin permiso;
-  - 404: modelo retirado («Actualiza PixPin»);
+  - 404: modelo retirado («Actualiza PinDesk»);
   - 413: foto demasiado grande.
 - **`MotorConRespaldo`**: si la nube falla con un error de nube antes de enseñar nada y hay modelo
   local, la burbuja dice `⚠️ <Proveedor>: <aviso>\nSigo con el asistente local.` y contesta el local.
@@ -211,14 +211,14 @@ Estos ajustes **son de cada aparato y no viajan**. En Android: DataStore `pixpin
 ### 1.5 Claves de la API: cifradas y nunca sincronizadas
 
 - En el PC (`nube/claves.rs`): DPAPI de usuario, con una entropía propia (`PixPinMax/asistente/nube/v1`).
-  Cada clave va en su fichero `%LOCALAPPDATA%\PixPinMax\claves\<claude|deepseek>.clave`: nunca en
+  Cada clave va en su fichero `%LOCALAPPDATA%\PinDesk\claves\<claude|deepseek>.clave`: nunca en
   el TOML, nunca en la carpeta que sincroniza o se exporta, nunca en el registro de la app. Para
   enseñarla se usa `enmascarar` (`sk-ant-…AbCd`) y `parece_clave` (16-400 caracteres imprimibles).
 - **En Android**: una clave AES-GCM del **Android Keystore** (no exportable), y la clave de la API
   cifrada con ella en un fichero propio en `noBackupFilesDir` (o `EncryptedSharedPreferences`).
   Ojo: el manifiesto tiene `android:allowBackup="true"` sin reglas, así que hay que excluir ese
   fichero con `dataExtractionRules`/`fullBackupContent`. **Nunca** en DataStore en claro, ni en
-  `filesDir/pins`, ni en un `.pixpin`, ni en el registro de errores (`crashlog`).
+  `filesDir/pins`, ni en un `.pindesk`, ni en el registro de errores (`crashlog`).
 - El usuario pega la clave en cada aparato. No hay forma de pasarla de uno a otro, y eso es a propósito.
 
 ---
@@ -424,7 +424,7 @@ herramientas de siempre (apuntar en el horario, una nota, el lienzo), citando de
 | Proveedor | Quién hace la web | Herramientas |
 |---|---|---|
 | Claude | **La API de Anthropic** (herramientas de servidor, sin claves de más) | `web_search` (`web_search_20250305`, 5 usos por petición) y `web_fetch` (`web_fetch_20250910`, 3 usos), en `nube/claude.rs::herramientas_web`. Sus bloques vuelven intactos en la vuelta siguiente. |
-| DeepSeek | **PixPin** (`crates/pixpin-ia/src/web.rs`) | `buscar_en_la_web {consulta, maximo=8}` y `abrir_pagina {url, parte=1}`: filas de la tabla de acciones, solo de la nube. A Claude no se le mandan (`claude::cuerpo` las quita). |
+| DeepSeek | **PinDesk** (`crates/pixpin-ia/src/web.rs`) | `buscar_en_la_web {consulta, maximo=8}` y `abrir_pagina {url, parte=1}`: filas de la tabla de acciones, solo de la nube. A Claude no se le mandan (`claude::cuerpo` las quita). |
 
 `abrir_pagina` baja la página (`nube/http.rs::bajar_web`), la pasa a texto legible
 (`crates/pixpin-paginas`: títulos `#`, listas `- `, **tablas fila a fila `| a | b |`**, enlaces
@@ -494,7 +494,7 @@ Y una respuesta que citó documentos:
 {"id":"1792044100000","cuando":1792044100000,"clase":"NOTA","aparato":"IA","numero":50,"uid":"Z2C3WQFTHJ","proyecto":"pr-1791999000000",
  "texto":"La cuneta del km 12 queda pendiente de revisión de cotas [1].",
  "fuentesIa":[{"n":1,"titulo":"Informe cunetas.pdf · pág. 12","proyecto":"Obra",
-   "pedido":{"pixpin":1,"accion":"abrir","que":{"tipo":"fichero","ruta":"F:\\Obra\\Informe cunetas.pdf","pagina":12}}}]}
+   "pedido":{"pindesk":1,"accion":"abrir","que":{"tipo":"fichero","ruta":"F:\\Obra\\Informe cunetas.pdf","pagina":12}}}]}
 ```
 
 **⚠️ Bloqueante en Android.** `Mensaje` (`guardados/Mensajes.kt`) se lee con `ignoreUnknownKeys`
@@ -696,7 +696,7 @@ usa un `Mutex` en `automatizaciones::cambiar`), y releer cuando la sincronizaci�
 Pedido (protocolo):
 
 ```json
-{"pixpin":1,"accion":"tabla_nueva","proyecto":"pr-1","nombre":"Costos","filas":[["Calle","Costo"],["Jr. Antisuyo","1 250,50"]],"cabecera":true,"abrir":true}
+{"pindesk":1,"accion":"tabla_nueva","proyecto":"pr-1","nombre":"Costos","filas":[["Calle","Costo"],["Jr. Antisuyo","1 250,50"]],"cabecera":true,"abrir":true}
 ```
 
 Resultado: un mensaje `MINIAPP` con `miniapp: "tabla"` cuyo **`texto` es exactamente el JSON de
@@ -777,8 +777,8 @@ y `archivos`. Se junta celda a celda con `Fusion` (ya funciona).
 
 | Qué | Dónde vive (PC) | En Android |
 |---|---|---|
-| Claves de la API | `%LOCALAPPDATA%\PixPinMax\claves\*.clave` (DPAPI) | Keystore, fuera de la copia de seguridad |
-| Modelos y motor | `%LOCALAPPDATA%\PixPinMax\modelos\` | `noBackupFilesDir/modelos/` |
+| Claves de la API | `%LOCALAPPDATA%\PinDesk\claves\*.clave` (DPAPI) | Keystore, fuera de la copia de seguridad |
+| Modelos y motor | `%LOCALAPPDATA%\PinDesk\modelos\` | `noBackupFilesDir/modelos/` |
 | Índice de documentos | `<raiz>\cache\documentos\` (`fuentes.json` + `f/<huella>.json`) | `cacheDir/documentos/` |
 | Estado de las automatizaciones (última vez que corrió cada una) | `<raiz>\asistente\automatizaciones-estado.json` | local |
 | Ajustes `[asistente]` | TOML | DataStore |

@@ -2,7 +2,7 @@
 
 Manual para seguir desarrollando en otros dispositivos (otro PC, el móvil
 Android) y que lo hecho aquí se sincronice con ellos. Cubre lo añadido entre
-el 19 y el 20 de octubre de 2026 en PixPin Max (PC):
+el 19 y el 20 de octubre de 2026 en PinDesk (PC):
 
 - los **marcos numerados** para imprimir (como los del plano: I, arrastrar,
   Supr, Ctrl+P en grupo) en todos los visores;
@@ -14,9 +14,9 @@ el 19 y el 20 de octubre de 2026 en PixPin Max (PC):
 - la interfaz común (riel lateral, fichas de los marcos, globos con atajo,
   teclas), que no viaja como datos pero tiene que verse igual en todos.
 
-## 1. Cómo sincroniza PixPin (recordatorio)
+## 1. Cómo sincroniza PinDesk (recordatorio)
 
-- Solo **LAN**: mDNS `_pixpin._tcp.` en el puerto 47474, canal TCP cifrado
+- Solo **LAN**: mDNS `_pindesk._tcp.` en el puerto 47474, canal TCP cifrado
   AES-256-GCM con el código del grupo (que nunca viaja). Mensajes JSON al
   estilo kotlinx. `VERSION = 4` (estricta).
 - La unidad es **un chat** (el general y uno por proyecto). Viajan sus
@@ -264,7 +264,7 @@ vuelve a ver eso mismo.
   si abre esos formatos por su cuenta, que use el mismo `uid` y las mismas
   terminaciones que para el `.docx`.
 
-## 4 bis. El `.pixpin` exportado lleva todo
+## 4 bis. El `.pindesk` exportado lleva todo
 
 - De un chat: la carpeta entera, con `lienzos/anot-…` y
   `android/pins/draw/anot-…`. «Crear como nuevo» da un código nuevo a cada
@@ -273,7 +273,7 @@ vuelve a ver eso mismo.
   `uid`), lo que cuelga de su nombre (`archivos/<nombre>.pixpin-*`, que el
   visor pasa a `anot-<uid>…` al abrirlo) y lo de un plano o un modelo 3D ya
   como `anot-<uid>…`.
-- Lo editable de un lienzo es el `.pixpin` (el `.excalidraw` suelto ya no se
+- Lo editable de un lienzo es el `.pindesk` (el `.excalidraw` suelto ya no se
   ofrece al compartir); los `.excalidraw` se siguen abriendo e importando.
 
 ## 5. La interfaz igual en todos (para reproducirla en otro dispositivo)
