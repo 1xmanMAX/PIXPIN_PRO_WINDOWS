@@ -1635,6 +1635,7 @@ v2menus-adj-captura = Tangkapan layar
 v2menus-adj-pagina = Halaman proyek
 v2menus-adj-proyecto = Seluruh proyek
 v2menus-adj-movil = Ambil dari ponsel
+v2menus-adj-pegar-copiado = Tempel yang disalin
 v2menus-envio-enviar = Kirim
 v2menus-envio-anadir = Tambah
 v2menus-envio-fotos = { $cuantos ->

@@ -1694,6 +1694,7 @@ v2menus-adj-captura = لقطة شاشة
 v2menus-adj-pagina = صفحة من مشروع
 v2menus-adj-proyecto = المشروع كاملًا
 v2menus-adj-movil = جلب من الهاتف
+v2menus-adj-pegar-copiado = لصق ما نسخته
 v2menus-envio-enviar = إرسال
 v2menus-envio-anadir = إضافة
 v2menus-envio-fotos = { $cuantos ->

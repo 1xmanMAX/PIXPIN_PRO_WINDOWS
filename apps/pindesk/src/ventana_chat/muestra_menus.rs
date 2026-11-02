@@ -1,5 +1,6 @@
 //! **Muestras en PNG de los menus v2** (v2-menus): el menu de un mensaje
-//! con «Más» abierto, la hoja del «+» y el cuadro de enviar fotos con una
+//! con «Más» abierto, la hoja del «+» (de noche, de dia y la del asistente)
+//! y el cuadro de enviar fotos con una
 //! arrastrandose. Pintado con las mismas funciones que la ventana y la GPU
 //! de verdad, sin abrir ninguna ventana.
 //!
@@ -125,24 +126,34 @@ fn muestras_de_los_menus_v2() {
         },
         hoja,
     );
-    let mut hoja_buscando = hoja_adjuntar::Hoja::nueva(&textos);
-    hoja_buscando.busqueda = "cro".into();
-    let menu_hoja_buscando = MenuAbierto::de_hoja(
+    // De dia, con algo copiado y un chip elegido con las flechas.
+    let mut hoja_dia = hoja_adjuntar::Hoja::nueva(&textos).con_copiado(true);
+    hoja_dia.elegido = Some(9);
+    hoja_dia.sobre = Some(4);
+    let menu_hoja_dia = MenuAbierto::de_hoja(
         Punto {
             x: clip.derecha(),
             y: clip.y,
         },
-        hoja_buscando,
+        hoja_dia,
+    );
+    let menu_hoja_asistente = MenuAbierto::de_hoja(
+        Punto {
+            x: clip.derecha(),
+            y: clip.y,
+        },
+        hoja_adjuntar::Hoja::para_el_asistente(&textos).con_copiado(true),
     );
     let mut pend = Pendientes::de(fotos.clone()).unwrap();
     pend.pie = "Grieta en el muro norte, revisar el lunes".into();
-    let escenas: Vec<(&str, Option<&MenuAbierto>, Option<&Pendientes>)> = vec![
-        ("menu-mensaje", Some(&menu_msg), None),
-        ("hoja-mas", Some(&menu_hoja), None),
-        ("hoja-mas-buscando", Some(&menu_hoja_buscando), None),
-        ("enviar-fotos", None, Some(&pend)),
+    let escenas: Vec<(&str, &Tema, Option<&MenuAbierto>, Option<&Pendientes>)> = vec![
+        ("menu-mensaje", &OSCURO, Some(&menu_msg), None),
+        ("hoja-mas", &OSCURO, Some(&menu_hoja), None),
+        ("hoja-mas-dia", &CLARO, Some(&menu_hoja_dia), None),
+        ("hoja-mas-asistente", &CLARO, Some(&menu_hoja_asistente), None),
+        ("enviar-fotos", &OSCURO, None, Some(&pend)),
     ];
-    for (nombre, menu, pendientes) in escenas {
+    for (nombre, tema, menu, pendientes) in escenas {
         let destino = FueraDePantalla::nuevo(&motor, d3.d3d(), ancho, alto).expect("destino");
         // La foto arrastrada: se mide primero el cuadro para saber donde.
         let mut pend_local = pendientes.map(|p| Pendientes {
@@ -199,8 +210,8 @@ fn muestras_de_los_menus_v2() {
                     pintar(
                         p,
                         &d,
-                        &OSCURO,
-                        papel_de(0, false),
+                        tema,
+                        papel_de(0, tema.cabecera.r > 0.5),
                         escala,
                         &textos,
                         None,
@@ -208,7 +219,7 @@ fn muestras_de_los_menus_v2() {
                     );
                     a.zonas.borrow_mut().clear();
                     let c = Pinta {
-                        tema: &OSCURO,
+                        tema,
                         escala,
                         textos: &textos,
                         ahora,

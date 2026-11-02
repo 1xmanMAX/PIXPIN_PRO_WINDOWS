@@ -1,270 +1,213 @@
-//! **La hoja del «+» de la caja** (`Menus2.dc.html`, b): una cuadricula con
-//! lo de todos los dias —foto, archivo, lienzo, nota, lista de tareas,
-//! tabla, conversacion y captura, con las teclas 1–8— y debajo, en chips,
-//! lo que se usa menos. Arriba un buscador: se escribe y se filtra.
+//! **La hoja del «+» de la caja**, como la «Adjuntar» del iPhone (2-nov-2026,
+//! el usuario: «que sea mas como iOS: lista en dos columnas con sus iconos;
+//! quita la opcion de buscar porque son pocas opciones»):
+//!
+//! - arriba, «Cerrar» en una pastilla a la izquierda y el titulo en medio;
+//! - lo de todos los dias en una cuadricula de cuatro: el cuadrado de color
+//!   con su icono blanco y el nombre debajo (foto, archivo, lienzo, nota,
+//!   lista de tareas, tabla y captura, que en el PC hace de «Cámara»);
+//! - una raya, «Más» y lo demas en **dos columnas** de pastillas grises con
+//!   su icono y su nombre;
+//! - otra raya y, abajo, «Pegar lo copiado» con su boton azul claro (apagado
+//!   si no hay nada copiado).
+//!
+//! Sin buscador: son pocas y se ven todas. Teclado: las flechas recorren
+//! (arriba y abajo van a lo que queda debajo o encima), Intro hace lo
+//! elegido, los numeros del 1 al 7 las baldosas y Esc cierra.
 //!
 //! Cada entrada hace EXACTAMENTE lo que hacia la del menu del clip de antes
 //! (la misma `Accion`); la hoja solo cambia como se elige.
 
-use std::cell::RefCell;
-
 use pindesk_geom::{Punto, Rect};
 use pindesk_render::icono::Icono;
-use pindesk_render::{Pintor, RectF};
+use pindesk_render::{Color, Pintor, RectF};
 use pindesk_store::Catalogo;
 
 use super::{Accion, Pinta, Respuesta, con_alfa, encoger, hex, mi, rf};
 
 /// Medidas en pixeles logicos (al 100 %).
-pub(super) const ANCHO: u32 = 460;
-pub(super) const RELLENO: u32 = 14;
-pub(super) const RADIO: u32 = 18;
-pub(super) const BUSCADOR: u32 = 40;
-pub(super) const HUECO: u32 = 10;
+pub(super) const ANCHO: u32 = 480;
+pub(super) const RELLENO: u32 = 16;
+pub(super) const RADIO: u32 = 22;
+pub(super) const CABECERA: u32 = 34;
+pub(super) const HUECO: u32 = 12;
 pub(super) const COLUMNAS: u32 = 4;
-pub(super) const BALDOSA_ALTO: u32 = 96;
+pub(super) const BALDOSA_ALTO: u32 = 90;
 pub(super) const BALDOSA_HUECO: u32 = 4;
-pub(super) const ICONO_CAJA: u32 = 48;
+pub(super) const ICONO_CAJA: u32 = 56;
 pub(super) const CABECERA_MAS: u32 = 20;
-pub(super) const CHIP_ALTO: u32 = 32;
-pub(super) const CHIP_HUECO: u32 = 6;
-pub(super) const VACIO: u32 = 44;
+pub(super) const COLUMNAS_CHIP: u32 = 2;
+pub(super) const CHIP_ALTO: u32 = 36;
+pub(super) const CHIP_HUECO: u32 = 8;
+pub(super) const PIE: u32 = 36;
 /// Lo que se separa del boton que la abre.
 pub(super) const SOBRE_EL_BOTON: u32 = 8;
 const TAM: f32 = 13.0;
-const TAM_BUSCADOR: f32 = 14.0;
+
+/// Como se ensena una entrada.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum Forma {
+    /// El cuadrado de color de la cuadricula, con su tecla del 1 al 7.
+    Baldosa(u8),
+    /// Una pastilla de las dos columnas de «Más».
+    Chip,
+    /// El boton «Pegar» de abajo.
+    Pegar,
+}
 
 /// Una entrada de la hoja, ya traducida.
 pub(super) struct Opcion {
     pub rotulo: String,
-    /// El rotulo y sus sinonimos, en minusculas y sin tildes: donde busca
-    /// el buscador («pdf» encuentra Archivo).
-    buscable: String,
     pub accion: Accion,
-    /// El color de su cuadrado y su icono (solo las baldosas).
+    /// El color de su cuadrado (solo las baldosas).
     pub color: u32,
     pub icono: &'static Icono,
-    /// Del 1 al 8 en las baldosas; `None` en los chips.
-    pub numero: Option<u8>,
+    pub forma: Forma,
 }
 
-/// La hoja abierta: lo escrito en el buscador y lo resaltado.
+/// La hoja abierta y lo resaltado (por indice de `opciones`).
 pub(super) struct Hoja {
     pub opciones: Vec<Opcion>,
-    pub busqueda: crate::caja_texto::CajaLinea,
-    /// Indice en `visibles()` bajo el raton.
+    /// Bajo el raton.
     pub sobre: Option<usize>,
-    /// Indice en `visibles()` elegido con las flechas (lo que hace Intro).
+    /// Elegido con las flechas (lo que hace Intro).
     pub elegido: Option<usize>,
-    pista: String,
+    /// Si hay algo en el portapapeles: si no, «Pegar» va apagado.
+    pub hay_copiado: bool,
+    /// Con el raton encima de «Cerrar».
+    pub sobre_cerrar: bool,
+    titulo: String,
+    cerrar: String,
     titulo_mas: String,
-    nada: String,
-    /// Lo ancho de cada chip, medido al pintar (por indice de `opciones`).
-    anchos: RefCell<Vec<f32>>,
-}
-
-/// Minusculas y sin tildes, para buscar sin pensar en acentos.
-pub(super) fn normalizar(s: &str) -> String {
-    s.to_lowercase()
-        .chars()
-        .map(|c| match c {
-            'á' | 'à' | 'ä' | 'â' => 'a',
-            'é' | 'è' | 'ë' | 'ê' => 'e',
-            'í' | 'ì' | 'ï' | 'î' => 'i',
-            'ó' | 'ò' | 'ö' | 'ô' => 'o',
-            'ú' | 'ù' | 'ü' | 'û' => 'u',
-            otra => otra,
-        })
-        .collect()
+    pegar_copiado: String,
 }
 
 impl Hoja {
     pub(super) fn nueva(textos: &Catalogo) -> Hoja {
         use pindesk_proyecto::mini;
-        let baldosa = |n: u8,
-                       clave: &str,
-                       palabras: &str,
-                       accion: Accion,
-                       color: u32,
-                       icono: &'static Icono| {
-            let rotulo = textos.t(clave);
+        let baldosa = |n: u8, clave: &str, accion: Accion, color: u32, icono: &'static Icono| {
             Opcion {
-                buscable: normalizar(&format!("{rotulo} {palabras}")),
-                rotulo,
+                rotulo: textos.t(clave),
                 accion,
                 color,
                 icono,
-                numero: Some(n),
+                forma: Forma::Baldosa(n),
             }
         };
-        let chip = |clave: &str, palabras: &str, accion: Accion| {
-            let rotulo = textos.t(clave);
-            Opcion {
-                buscable: normalizar(&format!("{rotulo} {palabras}")),
-                rotulo,
-                accion,
-                color: 0,
-                icono: &mi::CHECKLIST,
-                numero: None,
-            }
+        let chip = |clave: &str, accion: Accion, icono: &'static Icono| Opcion {
+            rotulo: textos.t(clave),
+            accion,
+            color: 0,
+            icono,
+            forma: Forma::Chip,
         };
+        // Los colores del iPhone: azul, gris, naranja, verde, verde, indigo
+        // y rojo.
         let opciones = vec![
-            baldosa(
-                1,
-                "adjuntar-imagen",
-                "imagen foto video photo image",
-                Accion::AdjImagen,
-                0x0a6cd6,
-                &mi::IMAGE,
-            ),
+            baldosa(1, "adjuntar-imagen", Accion::AdjImagen, 0x0a84ff, &mi::IMAGE),
             baldosa(
                 2,
                 "adjuntar-archivo",
-                "pdf documento word excel fichero file",
                 Accion::AdjArchivo,
-                0x636366,
+                0x8e8e93,
                 &mi::DESCRIPTION,
             ),
-            baldosa(
-                3,
-                "v2menus-adj-lienzo",
-                "dibujo pizarra canvas draw",
-                Accion::AdjLienzo,
-                0xc77700,
-                &mi::DRAW,
-            ),
-            baldosa(
-                4,
-                "chat-adj-nota-md",
-                "nota markdown texto note",
-                Accion::AdjNotaMd,
-                0x248a3d,
-                &mi::LIST,
-            ),
+            baldosa(3, "v2menus-adj-lienzo", Accion::AdjLienzo, 0xff9500, &mi::DRAW),
+            baldosa(4, "chat-adj-nota-md", Accion::AdjNotaMd, 0x34c759, &mi::LIST),
             baldosa(
                 5,
                 "v2menus-adj-tareas",
-                "tareas lista todo checklist",
                 Accion::AdjMini(mini::TAREAS),
-                0x1e7a4a,
+                0x30b350,
                 &mi::CHECKLIST,
             ),
             baldosa(
                 6,
                 "v2menus-adj-tabla",
-                "tabla hoja calculo excel table",
                 Accion::AdjTabla,
-                0x4b49c8,
+                0x5856d6,
                 &mi::TABLE_CHART,
             ),
+            // La «Cámara» del movil: en el PC, la captura de una zona.
             baldosa(
                 7,
-                "v2menus-adj-conversacion",
-                "conversacion voz traducir conversation",
-                Accion::Conversacion,
-                0x9a3fc4,
-                &mi::RECORD_VOICE_OVER,
-            ),
-            baldosa(
-                8,
                 "v2menus-adj-captura",
-                "captura pantalla recorte screenshot",
                 Accion::AdjCaptura,
-                0xc93c35,
+                0xff3b30,
                 &mi::CROP,
             ),
+            // «Más», de dos en dos en el orden del iPhone.
+            chip("v2menus-adj-proyecto", Accion::AdjProyectos, &mi::FOLDER),
+            chip("v2menus-adj-pagina", Accion::AdjPagina, &mi::DESCRIPTION),
             // Una figura de la biblioteca (25-oct-2026): abre la ventana de
             // las figuras para elegirla viendola, con su boton «Adjuntar».
-            chip(
-                "asistente-adj-figura",
-                "figura plantilla biblioteca dibujo shape",
-                Accion::AdjFigura,
-            ),
-            chip(
-                "v2menus-adj-pagina",
-                "pagina proyecto page",
-                Accion::AdjPagina,
-            ),
-            chip(
-                "v2menus-adj-proyecto",
-                "proyecto entero project",
-                Accion::AdjProyectos,
-            ),
+            chip("asistente-adj-figura", Accion::AdjFigura, &mi::PALETTE),
             // Las carpetas de paginas (26-oct-2026): un cuaderno con nombre.
+            chip("carpeta-nueva", Accion::AdjCarpeta, &mi::MENU_BOOK),
             chip(
-                "carpeta-nueva",
-                "carpeta cuaderno diario libreta folder notebook",
-                Accion::AdjCarpeta,
+                "mini-contador",
+                Accion::AdjMini(mini::CONTADOR),
+                &mi::NUMBERS,
             ),
-            chip(
-                "chat-adj-telepronter",
-                "teleprompter leer",
-                Accion::Telepronter,
-            ),
-            chip(
-                "chat-adj-pronunciar",
-                "pronunciar ingles pronounce",
-                Accion::Pronunciar,
-            ),
-            // Musica con su letra (27-oct-2026): canciones para cantarlas.
-            chip(
-                "chat-adj-musica",
-                "musica cancion karaoke letra lrc mp3 music song lyrics",
-                Accion::AdjMusica,
-            ),
+            chip("mini-ruleta", Accion::AdjMini(mini::RULETA), &mi::REPLAY),
+            chip("mini-gastos", Accion::AdjMini(mini::GASTOS), &mi::EDIT_NOTE),
             chip(
                 "mini-cronometro",
-                "cronometro stopwatch mini-app",
                 Accion::AdjMini(mini::CRONOMETRO),
+                &mi::TIMER,
             ),
             chip(
                 "mini-temporizador",
-                "temporizador timer mini-app",
                 Accion::AdjMini(mini::TEMPORIZADOR),
+                &mi::SPEED,
             ),
+            chip("mini-alarma", Accion::AdjMini(mini::ALARMA), &mi::ALARM),
             chip(
-                "mini-contador",
-                "contador counter mini-app",
-                Accion::AdjMini(mini::CONTADOR),
+                "v2menus-adj-conversacion",
+                Accion::Conversacion,
+                &mi::FORUM,
             ),
+            chip("chat-adj-telepronter", Accion::Telepronter, &mi::SUBTITLES),
             chip(
-                "mini-ruleta",
-                "ruleta sorteo mini-app",
-                Accion::AdjMini(mini::RULETA),
+                "chat-adj-pronunciar",
+                Accion::Pronunciar,
+                &mi::RECORD_VOICE_OVER,
             ),
-            chip(
-                "mini-gastos",
-                "gastos dinero mini-app",
-                Accion::AdjMini(mini::GASTOS),
-            ),
-            chip(
-                "mini-alarma",
-                "alarma despertador mini-app",
-                Accion::AdjMini(mini::ALARMA),
-            ),
-            chip(
-                "v2menus-adj-movil",
-                "movil telefono wifi phone",
-                Accion::AdjDelMovil,
-            ),
+            // Musica con su letra (27-oct-2026): canciones para cantarlas.
+            chip("chat-adj-musica", Accion::AdjMusica, &mi::MUSIC_NOTE),
+            chip("v2menus-adj-movil", Accion::AdjDelMovil, &mi::WIFI),
+            Opcion {
+                rotulo: textos.t("lienzo-pegar-menu"),
+                accion: Accion::PegarLoCopiado,
+                color: 0,
+                icono: &mi::CONTENT_PASTE,
+                forma: Forma::Pegar,
+            },
         ];
         Hoja {
-            anchos: RefCell::new(vec![100.0; opciones.len()]),
             opciones,
-            busqueda: crate::caja_texto::CajaLinea::nueva(),
             sobre: None,
             elegido: None,
-            pista: textos.t("v2menus-adj-buscar"),
+            hay_copiado: false,
+            sobre_cerrar: false,
+            titulo: textos.t("chat-adjuntar"),
+            cerrar: textos.t("pin-cerrar"),
             titulo_mas: textos.t("v2menus-adj-mas"),
-            nada: textos.t("v2menus-adj-nada"),
+            pegar_copiado: textos.t("v2menus-adj-pegar-copiado"),
         }
+    }
+
+    /// Con lo que diga el portapapeles: sin nada copiado, «Pegar» va apagado.
+    pub(super) fn con_copiado(mut self, hay: bool) -> Hoja {
+        self.hay_copiado = hay;
+        self
     }
 
     /// **La hoja del chat del asistente** (25-oct-2026, el usuario:
     /// «especializalo para el asistente … que pueda adjuntar figuras para que
     /// las mejore, o decirle hazme una figura»): primero **Figura** (una de la
     /// biblioteca, a un lienzo del chat, para mejorarla) y lo que se le suele
-    /// dar a mirar; en chips, pedir una figura nueva y lo demas que sirve.
+    /// dar a mirar; en «Más», pedir una figura nueva y lo demas que sirve.
     pub(super) fn para_el_asistente(textos: &Catalogo) -> Hoja {
         let mut h = Hoja::nueva(textos);
         let mut de_siempre = std::mem::take(&mut h.opciones);
@@ -276,14 +219,10 @@ impl Hoja {
         };
         let mut opciones = vec![Opcion {
             rotulo: textos.t("asistente-adj-figura"),
-            buscable: normalizar(&format!(
-                "{} figura plantilla biblioteca mejorar shape",
-                textos.t("asistente-adj-figura")
-            )),
             accion: Accion::AdjFigura,
-            color: 0x8e44b8,
+            color: 0xaf52de,
             icono: &mi::PALETTE,
-            numero: None,
+            forma: Forma::Baldosa(1),
         }];
         for accion in [
             Accion::AdjImagen,
@@ -295,183 +234,176 @@ impl Hoja {
             opciones.extend(sacar(accion));
         }
         for (n, o) in opciones.iter_mut().enumerate() {
-            o.numero = Some(n as u8 + 1);
+            o.forma = Forma::Baldosa(n as u8 + 1);
         }
         opciones.push(Opcion {
             rotulo: textos.t("asistente-adj-pedir-figura"),
-            buscable: normalizar(&format!(
-                "{} nueva crear hazme dibuja",
-                textos.t("asistente-adj-pedir-figura")
-            )),
             accion: Accion::PedirFigura,
             color: 0,
-            icono: &mi::CHECKLIST,
-            numero: None,
+            icono: &mi::LIGHTBULB,
+            forma: Forma::Chip,
         });
         for accion in [
             Accion::AdjPagina,
             Accion::AdjProyectos,
             Accion::AdjTabla,
             Accion::AdjDelMovil,
+            Accion::PegarLoCopiado,
         ] {
             if let Some(mut o) = sacar(accion) {
-                o.numero = None;
+                if o.forma != Forma::Pegar {
+                    o.forma = Forma::Chip;
+                }
                 opciones.push(o);
             }
         }
-        h.anchos = RefCell::new(vec![100.0; opciones.len()]);
         h.opciones = opciones;
         h
     }
 
-    /// Las opciones que se ven con lo escrito, por indice de `opciones`, en
-    /// el orden de la hoja (primero las baldosas, luego los chips).
-    pub(super) fn visibles(&self) -> Vec<usize> {
-        let q = normalizar(self.busqueda.trim());
+    /// Lo que se puede elegir, en el orden de la hoja (baldosas, chips y
+    /// «Pegar» si hay algo copiado).
+    pub(super) fn elegibles(&self) -> Vec<usize> {
         self.opciones
             .iter()
             .enumerate()
-            .filter(|(_, o)| q.is_empty() || q.split_whitespace().all(|w| o.buscable.contains(w)))
+            .filter(|(_, o)| o.forma != Forma::Pegar || self.hay_copiado)
             .map(|(n, _)| n)
             .collect()
     }
 
     /// Donde va todo, calculado igual al pintar y al pulsar.
     pub(super) fn colocar(&self, ancla: Punto, marco: Rect, escala: u32) -> Puesta {
-        let anchos = self.anchos.borrow();
-        colocar(
-            &self.opciones,
-            &self.visibles(),
-            &anchos,
-            ancla,
-            marco,
-            escala,
-        )
+        colocar(&self.opciones, ancla, marco, escala)
     }
 
     pub(super) fn pulsar(&mut self, p: Punto, ancla: Punto, marco: Rect, escala: u32) -> Respuesta {
         let puesta = self.colocar(ancla, marco, escala);
+        if puesta.cerrar.contiene(p) {
+            return Respuesta::Fuera;
+        }
         match puesta.opcion_en(p) {
-            Some(n) => Respuesta::Hacer(self.opciones[n].accion.clone()),
-            None if puesta.caja.contiene(p) => Respuesta::Sigue,
-            None => Respuesta::Fuera,
+            Some(n) if self.elegibles().contains(&n) => {
+                Respuesta::Hacer(self.opciones[n].accion.clone())
+            }
+            _ if puesta.caja.contiene(p) => Respuesta::Sigue,
+            _ => Respuesta::Fuera,
         }
     }
 
     pub(super) fn mover(&mut self, p: Punto, ancla: Punto, marco: Rect, escala: u32) -> bool {
         let puesta = self.colocar(ancla, marco, escala);
-        let visibles = self.visibles();
-        let nuevo = puesta
-            .opcion_en(p)
-            .and_then(|n| visibles.iter().position(|v| *v == n));
-        let cambia = nuevo != self.sobre;
+        let elegibles = self.elegibles();
+        let nuevo = puesta.opcion_en(p).filter(|n| elegibles.contains(n));
+        let cerrar = puesta.cerrar.contiene(p);
+        let cambia = nuevo != self.sobre || cerrar != self.sobre_cerrar;
         self.sobre = nuevo;
+        self.sobre_cerrar = cerrar;
         cambia
     }
 
     pub(super) fn tecla(&mut self, vk: u32) -> Respuesta {
-        // El buscador es la caja de una linea comun: Ctrl+Retroceso, Supr,
-        // Inicio/Fin, Ctrl+A/C/X/V/Z... Las flechas sin Ctrl ni Mayusculas
-        // siguen moviendo lo elegido entre las baldosas.
-        let m = pindesk_shell::entrada::modificadores_pulsados();
-        let flecha_sola = matches!(
-            vk,
-            super::VK_DERECHA | super::VK_IZQUIERDA | super::VK_ABAJO | super::VK_ARRIBA
-        ) && !m.ctrl
-            && !m.shift;
-        if !flecha_sola && crate::caja_texto::CajaLinea::es_suya(vk, m.shift, m.ctrl) {
-            if super::tecla_en_caja(&mut self.busqueda, vk, m.shift, m.ctrl).cambio() {
-                self.elegido = None;
-            }
-            return Respuesta::Sigue;
-        }
-        let visibles = self.visibles();
-        let baldosas = visibles
-            .iter()
-            .filter(|n| self.opciones[**n].numero.is_some())
-            .count();
         match vk {
-            super::VK_ESCAPE if !self.busqueda.is_empty() => {
-                self.busqueda.vaciar();
-                self.elegido = None;
-                Respuesta::Sigue
-            }
             super::VK_ESCAPE => Respuesta::Fuera,
-            super::VK_ENTRAR => {
-                let i = self.elegido.unwrap_or(0);
-                match visibles.get(i) {
-                    Some(n) => Respuesta::Hacer(self.opciones[*n].accion.clone()),
-                    None => Respuesta::Sigue,
-                }
-            }
+            super::VK_ENTRAR => match self.elegido.filter(|n| self.elegibles().contains(n)) {
+                Some(n) => Respuesta::Hacer(self.opciones[n].accion.clone()),
+                None => Respuesta::Sigue,
+            },
             super::VK_DERECHA | super::VK_IZQUIERDA | super::VK_ABAJO | super::VK_ARRIBA => {
-                self.elegido = mover_eleccion(self.elegido, vk, visibles.len(), baldosas);
+                // Las cuentas de sitio no dependen de donde este la hoja:
+                // se coloca en un marco cualquiera y se mira lo de alrededor.
+                let marco = Rect {
+                    x: 0,
+                    y: 0,
+                    ancho: 4 * ANCHO,
+                    alto: 4_000,
+                };
+                let puesta = self.colocar(Punto { x: 0, y: 3_000 }, marco, 100);
+                let sitios: Vec<(usize, Rect)> = self
+                    .elegibles()
+                    .into_iter()
+                    .filter_map(|n| puesta.sitio_de(n).map(|r| (n, r)))
+                    .collect();
+                self.elegido = mover_eleccion(self.elegido, vk, &sitios);
                 Respuesta::Sigue
             }
             _ => Respuesta::Sigue,
         }
     }
 
-    /// Un numero del 1 al 8 elige su baldosa (si se ve); lo demas se
-    /// escribe en el buscador.
+    /// Un numero del 1 al 7 hace su baldosa; lo demas no se escribe en
+    /// ningun sitio (la hoja no tiene buscador).
     pub(super) fn caracter(&mut self, c: char) -> Respuesta {
-        // Los numeros son teclas, no texto: ninguna opcion se busca por uno.
-        if let Some(d) = c.to_digit(10) {
-            let visibles = self.visibles();
-            if let Some(n) = visibles
-                .iter()
-                .find(|n| self.opciones[**n].numero == Some(d as u8))
-            {
-                return Respuesta::Hacer(self.opciones[*n].accion.clone());
-            }
+        let Some(d) = c.to_digit(10) else {
             return Respuesta::Sigue;
+        };
+        match self
+            .opciones
+            .iter()
+            .find(|o| o.forma == Forma::Baldosa(d as u8))
+        {
+            Some(o) => Respuesta::Hacer(o.accion.clone()),
+            None => Respuesta::Sigue,
         }
-        if self.busqueda.caracter(c) {
-            self.elegido = None;
-        }
-        Respuesta::Sigue
     }
 }
 
-/// Mover lo elegido con las flechas: izquierda y derecha de uno en uno;
-/// arriba y abajo saltan una fila entre las baldosas.
+/// Mover lo elegido con las flechas entre `sitios` (indice de opcion y su
+/// caja, en el orden de la hoja): izquierda y derecha de uno en uno; arriba
+/// y abajo, a la fila de encima o de debajo, a lo que cae mas cerca en x.
 pub(super) fn mover_eleccion(
     actual: Option<usize>,
     vk: u32,
-    cuantas: usize,
-    baldosas: usize,
+    sitios: &[(usize, Rect)],
 ) -> Option<usize> {
-    if cuantas == 0 {
+    if sitios.is_empty() {
         return None;
     }
-    let Some(n) = actual else {
-        return Some(0);
+    let Some(k) = actual.and_then(|a| sitios.iter().position(|(n, _)| *n == a)) else {
+        return Some(sitios[0].0);
     };
-    let col = COLUMNAS as usize;
+    let centro = |r: &Rect| (r.x + r.ancho as i32 / 2, r.y + r.alto as i32 / 2);
+    let (cx, cy) = centro(&sitios[k].1);
     let nuevo = match vk {
-        super::VK_DERECHA => n + 1,
-        super::VK_IZQUIERDA => n.saturating_sub(1),
-        super::VK_ABAJO if n + col < baldosas => n + col,
-        super::VK_ABAJO if n < baldosas => baldosas,
-        super::VK_ABAJO => n + 1,
-        super::VK_ARRIBA if n >= baldosas && n > 0 && baldosas > 0 => (n - 1).min(baldosas - 1),
-        super::VK_ARRIBA => n.saturating_sub(col),
-        _ => n,
+        super::VK_DERECHA => (k + 1).min(sitios.len() - 1),
+        super::VK_IZQUIERDA => k.saturating_sub(1),
+        super::VK_ABAJO | super::VK_ARRIBA => {
+            let abajo = vk == super::VK_ABAJO;
+            sitios
+                .iter()
+                .enumerate()
+                .filter(|(_, (_, r))| {
+                    let y = centro(r).1;
+                    if abajo { y > cy } else { y < cy }
+                })
+                .min_by_key(|(_, (_, r))| {
+                    let (x, y) = centro(r);
+                    ((y - cy).abs(), (x - cx).abs())
+                })
+                .map(|(j, _)| j)
+                .unwrap_or(k)
+        }
+        _ => k,
     };
-    Some(nuevo.min(cuantas - 1))
+    Some(sitios[nuevo].0)
 }
 
 /// La hoja ya colocada.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct Puesta {
     pub caja: Rect,
-    pub buscador: Rect,
+    /// La pastilla «Cerrar» y la fila del titulo.
+    pub cerrar: Rect,
+    pub titulo: Rect,
     /// Indice de `opciones` y su sitio.
     pub baldosas: Vec<(usize, Rect)>,
+    /// Las rayas: debajo de las baldosas y encima del pie.
+    pub rayas: Vec<Rect>,
     pub cabecera_mas: Option<Rect>,
     pub chips: Vec<(usize, Rect)>,
-    /// La linea de «nada coincide», si no se ve ninguna.
-    pub vacio: Option<Rect>,
+    /// La fila de abajo («Pegar lo copiado») y su boton.
+    pub pie: Option<Rect>,
+    pub pegar: Option<(usize, Rect)>,
 }
 
 impl Puesta {
@@ -479,42 +411,50 @@ impl Puesta {
         self.baldosas
             .iter()
             .chain(self.chips.iter())
+            .chain(self.pegar.iter())
             .find(|(_, r)| r.contiene(p))
             .map(|(n, _)| *n)
+    }
+
+    pub(super) fn sitio_de(&self, n: usize) -> Option<Rect> {
+        self.baldosas
+            .iter()
+            .chain(self.chips.iter())
+            .chain(self.pegar.iter())
+            .find(|(k, _)| *k == n)
+            .map(|(_, r)| *r)
     }
 }
 
 /// Coloca la hoja: encima de `ancla` (el boton «+»), alineada con el y
-/// dentro de la ventana. Lo que no se ve con lo escrito no ocupa sitio.
-pub(super) fn colocar(
-    opciones: &[Opcion],
-    visibles: &[usize],
-    anchos_chips: &[f32],
-    ancla: Punto,
-    marco: Rect,
-    escala: u32,
-) -> Puesta {
+/// dentro de la ventana.
+pub(super) fn colocar(opciones: &[Opcion], ancla: Punto, marco: Rect, escala: u32) -> Puesta {
     let e = |v: u32| v * escala / 100;
     let ancho = e(ANCHO).min(marco.ancho.saturating_sub(e(16)));
     let dentro = ancho.saturating_sub(2 * e(RELLENO));
     // Primero todo con la caja en (0, 0); luego se mueve a su sitio.
     let x0 = e(RELLENO) as i32;
     let mut y = e(RELLENO) as i32;
-    let buscador = Rect {
+    let titulo = Rect {
         x: x0,
         y,
         ancho: dentro,
-        alto: e(BUSCADOR),
+        alto: e(CABECERA),
     };
-    y = buscador.abajo() + e(HUECO) as i32;
+    // «Cerrar» lo mide el pintor; aqui un ancho que le sobra a todos.
+    let cerrar = Rect {
+        x: x0,
+        y,
+        ancho: e(84).min(dentro / 3),
+        alto: e(CABECERA),
+    };
+    y = titulo.abajo() + e(HUECO) as i32;
     let col = COLUMNAS;
     let ancho_baldosa = dentro.saturating_sub((col - 1) * e(BALDOSA_HUECO)) / col;
-    let mut baldosas = Vec::new();
-    let de_baldosa: Vec<usize> = visibles
-        .iter()
-        .copied()
-        .filter(|n| opciones[*n].numero.is_some())
+    let de_baldosa: Vec<usize> = (0..opciones.len())
+        .filter(|n| matches!(opciones[*n].forma, Forma::Baldosa(_)))
         .collect();
+    let mut baldosas = Vec::new();
     for (k, n) in de_baldosa.iter().enumerate() {
         let (f, c) = (k as u32 / col, k as u32 % col);
         baldosas.push((
@@ -531,14 +471,21 @@ pub(super) fn colocar(
         let filas = (de_baldosa.len() as u32).div_ceil(col);
         y += (filas * e(BALDOSA_ALTO) + (filas - 1) * e(BALDOSA_HUECO)) as i32;
     }
-    let de_chip: Vec<usize> = visibles
-        .iter()
-        .copied()
-        .filter(|n| opciones[*n].numero.is_none())
+    let raya = |y: i32| Rect {
+        x: x0,
+        y,
+        ancho: dentro,
+        alto: e(1).max(1),
+    };
+    let mut rayas = Vec::new();
+    let de_chip: Vec<usize> = (0..opciones.len())
+        .filter(|n| opciones[*n].forma == Forma::Chip)
         .collect();
     let mut cabecera_mas = None;
     let mut chips = Vec::new();
     if !de_chip.is_empty() {
+        y += e(HUECO) as i32;
+        rayas.push(raya(y));
         y += e(HUECO) as i32;
         let cab = Rect {
             x: x0,
@@ -548,37 +495,46 @@ pub(super) fn colocar(
         };
         cabecera_mas = Some(cab);
         y = cab.abajo() + e(CHIP_HUECO) as i32;
-        let mut x = x0;
-        for n in de_chip {
-            let w =
-                (anchos_chips.get(n).copied().unwrap_or(100.0).ceil() as u32 + e(24)).min(dentro);
-            if x > x0 && x + w as i32 > x0 + dentro as i32 {
-                x = x0;
-                y += (e(CHIP_ALTO) + e(CHIP_HUECO)) as i32;
-            }
+        let cc = COLUMNAS_CHIP;
+        let ancho_chip = dentro.saturating_sub((cc - 1) * e(CHIP_HUECO)) / cc;
+        for (k, n) in de_chip.iter().enumerate() {
+            let (f, c) = (k as u32 / cc, k as u32 % cc);
             chips.push((
-                n,
+                *n,
                 Rect {
-                    x,
-                    y,
-                    ancho: w,
+                    x: x0 + (c * (ancho_chip + e(CHIP_HUECO))) as i32,
+                    y: y + (f * (e(CHIP_ALTO) + e(CHIP_HUECO))) as i32,
+                    ancho: ancho_chip,
                     alto: e(CHIP_ALTO),
                 },
             ));
-            x += (w + e(CHIP_HUECO)) as i32;
         }
-        y += e(CHIP_ALTO) as i32;
+        let filas = (de_chip.len() as u32).div_ceil(cc);
+        y += (filas * e(CHIP_ALTO) + (filas - 1) * e(CHIP_HUECO)) as i32;
     }
-    let mut vacio = None;
-    if visibles.is_empty() {
-        let r = Rect {
+    let mut pie = None;
+    let mut pegar = None;
+    if let Some(n) = (0..opciones.len()).find(|n| opciones[*n].forma == Forma::Pegar) {
+        y += e(HUECO) as i32;
+        rayas.push(raya(y));
+        y += e(HUECO) as i32;
+        let fila = Rect {
             x: x0,
             y,
             ancho: dentro,
-            alto: e(VACIO),
+            alto: e(PIE),
         };
-        vacio = Some(r);
-        y = r.abajo();
+        let boton = e(108).min(dentro / 2);
+        pegar = Some((
+            n,
+            Rect {
+                x: fila.derecha() - boton as i32,
+                ancho: boton,
+                ..fila
+            },
+        ));
+        pie = Some(fila);
+        y = fila.abajo();
     }
     let alto = (y + e(RELLENO) as i32).max(0) as u32;
     // A su sitio: la base encima del boton, el borde izquierdo con el suyo.
@@ -592,34 +548,30 @@ pub(super) fn colocar(
     };
     Puesta {
         caja: Rect { x, y, ancho, alto },
-        buscador: mover(buscador),
+        cerrar: mover(cerrar),
+        titulo: mover(titulo),
         baldosas: baldosas.into_iter().map(|(n, r)| (n, mover(r))).collect(),
+        rayas: rayas.into_iter().map(mover).collect(),
         cabecera_mas: cabecera_mas.map(mover),
         chips: chips.into_iter().map(|(n, r)| (n, mover(r))).collect(),
-        vacio: vacio.map(mover),
+        pie: pie.map(mover),
+        pegar: pegar.map(|(n, r)| (n, mover(r))),
     }
+}
+
+/// Si el tema es el de dia (la hoja va blanca).
+fn es_claro(c: Color) -> bool {
+    c.r + c.g + c.b > 1.5
 }
 
 /// Pinta la hoja abierta.
 pub(super) fn pintar(p: &Pintor, c: &Pinta, h: &Hoja, ancla: Punto, marco: Rect) {
     let (tema, escala) = (c.tema, c.escala);
     let e = escala as f32 / 100.0;
-    // Primero se miden los chips: de eso depende donde cae cada uno.
-    *h.anchos.borrow_mut() = h
-        .opciones
-        .iter()
-        .map(|o| p.medir_texto(&o.rotulo, TAM * e).0)
-        .collect();
     let puesta = h.colocar(ancla, marco, escala);
-    let visibles = h.visibles();
-    let resaltada = |n: usize| -> (bool, bool) {
-        let k = visibles.iter().position(|v| *v == n);
-        let sobre = k.is_some() && k == h.sobre;
-        // Sin nada elegido, Intro hace la primera: se marca tambien.
-        let elegida = k.is_some()
-            && (k == h.elegido || (h.elegido.is_none() && k == Some(0) && !h.busqueda.is_empty()));
-        (sobre, elegida)
-    };
+    let claro = es_claro(tema.cabecera);
+    // Lo resaltado: con el raton o con las flechas.
+    let estado = |n: usize| -> (bool, bool) { (h.sobre == Some(n), h.elegido == Some(n)) };
 
     let caja = rf(puesta.caja);
     let radio = RADIO as f32 * e;
@@ -629,73 +581,75 @@ pub(super) fn pintar(p: &Pintor, c: &Pinta, h: &Hoja, ancla: Punto, marco: Rect)
             ..encoger(caja, -2.0 * e)
         },
         radio + 2.0,
-        con_alfa(hex(0x000000), 0.25),
+        con_alfa(hex(0x000000), if claro { 0.16 } else { 0.30 }),
     );
     p.rellenar_redondeado(caja, radio, tema.pildora_borde);
     p.rellenar_redondeado(encoger(caja, 1.0), radio - 1.0, tema.cabecera);
 
-    // El buscador, con su anillo azul: es donde va lo que se teclea.
-    let b = rf(puesta.buscador);
-    p.rellenar_redondeado(encoger(b, -2.0 * e), 12.0 * e, super::AZUL_ELEGIDO);
-    p.rellenar_redondeado(b, 10.0 * e, tema.chat);
-    let lupa = 16.0 * e;
-    p.icono(
-        &mi::SEARCH,
-        RectF {
-            x: b.x + 12.0 * e,
-            y: b.y + (b.alto - lupa) / 2.0,
-            ancho: lupa,
-            alto: lupa,
-        },
-        tema.apagado,
+    // Lo gris de las pastillas: el de los botones de una hoja del iPhone.
+    let gris = if claro {
+        hex(0xf2f2f7)
+    } else {
+        con_alfa(tema.texto, 0.08)
+    };
+    let gris_sobre = if claro {
+        hex(0xe5e5ea)
+    } else {
+        con_alfa(tema.texto, 0.15)
+    };
+    let tam = TAM * e;
+
+    // La cabecera: «Cerrar» en su pastilla y el titulo en negrita en medio.
+    let (cw, ch) = p.medir_texto(&h.cerrar, tam);
+    let cerrar = RectF {
+        ancho: (cw + 28.0 * e).min(puesta.cerrar.ancho as f32),
+        ..rf(puesta.cerrar)
+    };
+    p.rellenar_redondeado(
+        cerrar,
+        cerrar.alto / 2.0,
+        if h.sobre_cerrar { gris_sobre } else { gris },
     );
-    let tam_b = TAM_BUSCADOR * e;
-    let esc = vec!["Esc".to_string()];
-    let ancho_esc = super::ancho_chapas(p, &esc, e);
-    // La caja de una linea comun: la rayita parpadea donde se escribe.
-    h.busqueda.pintar(
-        p,
-        b,
-        RectF {
-            x: b.x + 36.0 * e,
-            ancho: (b.ancho - 56.0 * e - ancho_esc).max(0.0),
-            ..b
-        },
-        tam_b,
-        &h.pista,
-        &super::colores_de_caja(tema, tema.texto, tema.apagado),
-        true,
-        std::time::Instant::now(),
+    p.texto_linea(
+        &h.cerrar,
+        cerrar.x + (cerrar.ancho - cw).max(0.0) / 2.0,
+        cerrar.y + (cerrar.alto - ch) / 2.0,
+        tam,
+        cerrar.ancho,
+        tema.texto,
     );
-    super::pintar_chapas(
+    let tam_t = 16.0 * e;
+    let t = rf(puesta.titulo);
+    let ancho_t = t.ancho - 2.0 * (cerrar.ancho + 8.0 * e);
+    let (tw, th) = crate::lecciones::ui::medir_negrita(p, &h.titulo, tam_t, ancho_t.max(1.0));
+    crate::lecciones::ui::negrita(
         p,
-        tema,
-        &esc,
-        b.x + b.ancho - 10.0 * e,
-        puesta.buscador,
-        e,
-        false,
+        &h.titulo,
+        t.x + (t.ancho - tw) / 2.0,
+        t.y + (t.alto - th) / 2.0,
+        tam_t,
+        ancho_t.max(1.0),
+        tema.texto,
     );
 
-    // Las baldosas: el cuadrado de color con su icono, el nombre debajo y
-    // el numero arriba a la derecha.
+    // Las baldosas: el cuadrado de color con su icono y el nombre debajo.
     for (n, r) in &puesta.baldosas {
         let o = &h.opciones[*n];
-        let (sobre, elegida) = resaltada(*n);
+        let (sobre, elegida) = estado(*n);
         if elegida {
-            p.rellenar_redondeado(rf(*r), 14.0 * e, con_alfa(super::AZUL_ELEGIDO, 0.35));
+            p.rellenar_redondeado(rf(*r), 14.0 * e, con_alfa(super::AZUL_ELEGIDO, 0.22));
         } else if sobre {
-            p.rellenar_redondeado(rf(*r), 14.0 * e, con_alfa(tema.texto, 0.08));
+            p.rellenar_redondeado(rf(*r), 14.0 * e, con_alfa(tema.texto, 0.06));
         }
         let lado = ICONO_CAJA as f32 * e;
         let cuadro = RectF {
             x: r.x as f32 + (r.ancho as f32 - lado) / 2.0,
-            y: r.y as f32 + 12.0 * e,
+            y: r.y as f32 + 6.0 * e,
             ancho: lado,
             alto: lado,
         };
         p.rellenar_redondeado(cuadro, 14.0 * e, hex(o.color));
-        let ic = 24.0 * e;
+        let ic = 28.0 * e;
         p.icono(
             o.icono,
             RectF {
@@ -706,90 +660,117 @@ pub(super) fn pintar(p: &Pintor, c: &Pinta, h: &Hoja, ancla: Punto, marco: Rect)
             },
             hex(0xffffff),
         );
-        let tam = TAM * e;
-        let (w, alto) = p.medir_texto(&o.rotulo, tam);
-        let w = w.min(r.ancho as f32 - 4.0 * e);
+        let tam_b = 12.0 * e;
+        let max = r.ancho as f32 - 4.0 * e;
+        let (w, _) = p.medir_texto(&o.rotulo, tam_b);
+        let w = w.min(max);
         p.texto_linea(
             &o.rotulo,
             r.x as f32 + (r.ancho as f32 - w) / 2.0,
-            cuadro.y + lado + 8.0 * e,
-            tam,
-            r.ancho as f32 - 4.0 * e,
+            cuadro.y + lado + 7.0 * e,
+            tam_b,
+            max,
             tema.texto,
         );
-        let _ = alto;
-        if let Some(num) = o.numero {
-            let chapa = vec![num.to_string()];
-            super::pintar_chapas(
-                p,
-                tema,
-                &chapa,
-                r.derecha() as f32 - 8.0 * e,
-                Rect {
-                    y: r.y + (6.0 * e) as i32,
-                    alto: (super::menu_v2::CHAPA_ALTO as f32 * e) as u32,
-                    ..*r
-                },
-                e,
-                false,
-            );
-        }
     }
 
-    // «MÁS» con su raya, y los chips.
+    for r in &puesta.rayas {
+        p.rellenar(rf(*r), con_alfa(tema.texto, if claro { 0.10 } else { 0.14 }));
+    }
+
+    // «Más» en gris y las dos columnas de pastillas.
     if let Some(cab) = puesta.cabecera_mas {
-        let tam = 12.0 * e;
-        let (w, alto) = p.medir_texto(&h.titulo_mas, tam);
+        let tam_m = 12.0 * e;
+        let (_, alto) = p.medir_texto(&h.titulo_mas, tam_m);
         p.texto_linea(
             &h.titulo_mas,
             cab.x as f32 + 4.0 * e,
             cab.y as f32 + (cab.alto as f32 - alto) / 2.0,
-            tam,
-            w + 2.0,
+            tam_m,
+            cab.ancho as f32,
             tema.apagado,
-        );
-        p.rellenar(
-            RectF {
-                x: cab.x as f32 + w + 14.0 * e,
-                y: cab.y as f32 + cab.alto as f32 / 2.0,
-                ancho: (cab.ancho as f32 - w - 18.0 * e).max(0.0),
-                alto: e.max(1.0),
-            },
-            tema.separador,
         );
     }
     for (n, r) in &puesta.chips {
         let o = &h.opciones[*n];
-        let (sobre, elegida) = resaltada(*n);
-        let fondo = if elegida {
-            super::AZUL_ELEGIDO
-        } else if sobre {
-            con_alfa(tema.texto, 0.16)
-        } else {
-            con_alfa(tema.texto, 0.08)
-        };
-        p.rellenar_redondeado(rf(*r), r.alto as f32 / 2.0, fondo);
-        let tam = TAM * e;
-        let (w, alto) = p.medir_texto(&o.rotulo, tam);
+        let (sobre, elegida) = estado(*n);
+        let caja = rf(*r);
+        let radio = caja.alto / 2.0;
+        if elegida {
+            p.rellenar_redondeado(encoger(caja, -2.0 * e), radio + 2.0 * e, super::AZUL_ELEGIDO);
+        }
+        p.rellenar_redondeado(caja, radio, if sobre { gris_sobre } else { gris });
+        let ic = 18.0 * e;
+        p.icono(
+            o.icono,
+            RectF {
+                x: caja.x + 14.0 * e,
+                y: caja.y + (caja.alto - ic) / 2.0,
+                ancho: ic,
+                alto: ic,
+            },
+            tema.texto,
+        );
+        let (_, alto) = p.medir_texto(&o.rotulo, tam);
+        let x = caja.x + 14.0 * e + ic + 10.0 * e;
         p.texto_linea(
             &o.rotulo,
-            r.x as f32 + (r.ancho as f32 - w) / 2.0,
-            r.y as f32 + (r.alto as f32 - alto) / 2.0,
+            x,
+            caja.y + (caja.alto - alto) / 2.0,
             tam,
-            r.ancho as f32,
-            if elegida { hex(0xffffff) } else { tema.texto },
+            (caja.x + caja.ancho - x - 10.0 * e).max(0.0),
+            tema.texto,
         );
     }
-    if let Some(r) = puesta.vacio {
-        let tam = TAM * e;
-        let (_, alto) = p.medir_texto(&h.nada, tam);
+
+    // Abajo: «Pegar lo copiado» y su boton azul claro.
+    if let (Some(fila), Some((n, r))) = (puesta.pie, puesta.pegar) {
+        let o = &h.opciones[n];
+        let (_, alto) = p.medir_texto(&h.pegar_copiado, tam);
         p.texto_linea(
-            &h.nada,
-            r.x as f32 + 4.0 * e,
-            r.y as f32 + (r.alto as f32 - alto) / 2.0,
+            &h.pegar_copiado,
+            fila.x as f32 + 4.0 * e,
+            fila.y as f32 + (fila.alto as f32 - alto) / 2.0,
             tam,
-            r.ancho as f32,
+            (r.x - fila.x) as f32 - 12.0 * e,
             tema.apagado,
+        );
+        let (sobre, elegida) = estado(n);
+        let azul = hex(0x0a84ff);
+        let boton = rf(r);
+        let radio = boton.alto / 2.0;
+        if elegida {
+            p.rellenar_redondeado(encoger(boton, -2.0 * e), radio + 2.0 * e, super::AZUL_ELEGIDO);
+        }
+        let (fondo, tinta) = if !h.hay_copiado {
+            (gris, con_alfa(tema.texto, 0.35))
+        } else if sobre {
+            (con_alfa(azul, if claro { 0.22 } else { 0.32 }), azul)
+        } else {
+            (con_alfa(azul, if claro { 0.14 } else { 0.22 }), azul)
+        };
+        p.rellenar_redondeado(boton, radio, fondo);
+        let ic = 17.0 * e;
+        let (tw, th) = p.medir_texto(&o.rotulo, tam);
+        let total = ic + 6.0 * e + tw;
+        let x = boton.x + (boton.ancho - total).max(0.0) / 2.0;
+        p.icono(
+            o.icono,
+            RectF {
+                x,
+                y: boton.y + (boton.alto - ic) / 2.0,
+                ancho: ic,
+                alto: ic,
+            },
+            tinta,
+        );
+        p.texto_linea(
+            &o.rotulo,
+            x + ic + 6.0 * e,
+            boton.y + (boton.alto - th) / 2.0,
+            tam,
+            boton.ancho - ic - 12.0 * e,
+            tinta,
         );
     }
 }
@@ -800,7 +781,7 @@ mod pruebas {
     use pindesk_store::Idioma;
 
     fn hoja() -> Hoja {
-        Hoja::nueva(&Catalogo::nuevo(Idioma::Espanol))
+        Hoja::nueva(&Catalogo::nuevo(Idioma::Espanol)).con_copiado(true)
     }
 
     fn marco() -> Rect {
@@ -808,29 +789,42 @@ mod pruebas {
             x: 0,
             y: 0,
             ancho: 1024,
-            alto: 800,
+            alto: 900,
         }
     }
 
+    const ANCLA: Punto = Punto { x: 300, y: 860 };
+
     #[test]
-    fn ocho_baldosas_numeradas_y_los_chips_debajo() {
+    fn siete_baldosas_de_cuatro_en_cuatro_y_los_chips_en_dos_columnas() {
         let h = hoja();
-        let numeros: Vec<u8> = h.opciones.iter().filter_map(|o| o.numero).collect();
-        assert_eq!(numeros, [1, 2, 3, 4, 5, 6, 7, 8]);
-        let p = h.colocar(Punto { x: 300, y: 740 }, marco(), 100);
-        assert_eq!(p.baldosas.len(), 8);
-        // Dos filas de cuatro.
+        let numeros: Vec<u8> = h
+            .opciones
+            .iter()
+            .filter_map(|o| match o.forma {
+                Forma::Baldosa(n) => Some(n),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(numeros, [1, 2, 3, 4, 5, 6, 7]);
+        let p = h.colocar(ANCLA, marco(), 100);
+        assert_eq!(p.baldosas.len(), 7);
+        // Dos filas: cuatro y tres.
         assert_eq!(p.baldosas[0].1.y, p.baldosas[3].1.y);
         assert!(p.baldosas[4].1.y > p.baldosas[0].1.y);
-        // Los chips por debajo de las baldosas y dentro de la caja.
-        let ultima = p.baldosas[7].1.abajo();
-        assert!(
-            p.chips
-                .iter()
-                .all(|(_, r)| r.y > ultima && r.abajo() <= p.caja.abajo())
-        );
+        // Los chips de dos en dos: misma fila, columnas distintas.
+        assert_eq!(p.chips[0].1.y, p.chips[1].1.y);
+        assert!(p.chips[1].1.x > p.chips[0].1.x);
+        assert!(p.chips[2].1.y > p.chips[0].1.y);
+        assert_eq!(p.chips[2].1.x, p.chips[0].1.x);
+        // Todo debajo de las baldosas y el pie lo ultimo, dentro de la caja.
+        let ultima = p.baldosas[6].1.abajo();
+        assert!(p.chips.iter().all(|(_, r)| r.y > ultima));
+        let pie = p.pie.expect("la fila de pegar");
+        assert!(p.chips.iter().all(|(_, r)| r.abajo() < pie.y));
+        assert!(pie.abajo() <= p.caja.abajo());
         // La hoja apoya su base encima del boton.
-        assert!(p.caja.abajo() <= 740);
+        assert!(p.caja.abajo() <= ANCLA.y);
         // Caso negativo: nada se sale de la ventana.
         assert!(p.caja.x >= 0 && p.caja.derecha() <= 1024 && p.caja.y >= 0);
     }
@@ -845,13 +839,17 @@ mod pruebas {
             Accion::AdjLienzo,
             Accion::AdjNotaMd,
             Accion::AdjTabla,
+            Accion::AdjCaptura,
             Accion::AdjPagina,
             Accion::AdjProyectos,
+            Accion::AdjFigura,
+            Accion::AdjMusica,
             Accion::Conversacion,
             Accion::Telepronter,
             Accion::Pronunciar,
             Accion::AdjDelMovil,
             Accion::AdjCarpeta,
+            Accion::PegarLoCopiado,
         ] {
             assert!(acciones.contains(&&a), "falta {a:?}");
         }
@@ -866,29 +864,16 @@ mod pruebas {
     }
 
     #[test]
-    fn el_buscador_filtra_sin_tildes_y_por_sinonimos() {
+    fn sin_buscador_las_letras_no_hacen_nada() {
         let mut h = hoja();
         for c in "cronometro".chars() {
-            h.caracter(c);
+            assert_eq!(h.caracter(c), Respuesta::Sigue);
         }
-        let v = h.visibles();
-        assert_eq!(v.len(), 1);
-        assert_eq!(
-            h.opciones[v[0]].accion,
-            Accion::AdjMini(pindesk_proyecto::mini::CRONOMETRO)
-        );
-        // «pdf» encuentra Archivo, e Intro lo hace.
-        h.busqueda = "PDF".into();
-        assert_eq!(
-            h.tecla(super::super::VK_ENTRAR),
-            Respuesta::Hacer(Accion::AdjArchivo)
-        );
-        // Caso negativo: lo que no esta no deja nada, e Intro no hace nada.
-        h.busqueda = "zzzz".into();
-        assert!(h.visibles().is_empty());
+        // Todas siguen a la vista.
+        assert_eq!(h.elegibles().len(), h.opciones.len());
+        // Sin nada elegido, Intro no hace nada; Esc cierra.
         assert_eq!(h.tecla(super::super::VK_ENTRAR), Respuesta::Sigue);
-        let p = h.colocar(Punto { x: 300, y: 740 }, marco(), 100);
-        assert!(p.vacio.is_some() && p.baldosas.is_empty() && p.chips.is_empty());
+        assert_eq!(h.tecla(super::super::VK_ESCAPE), Respuesta::Fuera);
     }
 
     #[test]
@@ -896,65 +881,139 @@ mod pruebas {
         let mut h = hoja();
         assert_eq!(h.caracter('1'), Respuesta::Hacer(Accion::AdjImagen));
         assert_eq!(h.caracter('6'), Respuesta::Hacer(Accion::AdjTabla));
-        assert_eq!(h.caracter('8'), Respuesta::Hacer(Accion::AdjCaptura));
-        // Casos negativos: el 9 y el 0 no son de nadie y no se escriben; y
-        // un numero cuya baldosa no se ve con lo buscado no hace nada.
-        assert_eq!(h.caracter('9'), Respuesta::Sigue);
-        assert!(h.busqueda.is_empty());
-        h.busqueda = "tabla".into();
-        assert_eq!(h.caracter('1'), Respuesta::Sigue);
+        assert_eq!(h.caracter('7'), Respuesta::Hacer(Accion::AdjCaptura));
+        // Casos negativos: el 8, el 9 y el 0 no son de nadie.
+        assert_eq!(h.caracter('8'), Respuesta::Sigue);
+        assert_eq!(h.caracter('0'), Respuesta::Sigue);
     }
 
     #[test]
-    fn esc_borra_lo_buscado_y_luego_cierra() {
+    fn un_clic_en_una_baldosa_la_hace_cerrar_cierra_y_fuera_tambien() {
         let mut h = hoja();
-        h.caracter('t');
-        assert_eq!(h.tecla(super::super::VK_ESCAPE), Respuesta::Sigue);
-        assert!(h.busqueda.is_empty());
-        assert_eq!(h.tecla(super::super::VK_ESCAPE), Respuesta::Fuera);
-    }
-
-    #[test]
-    fn un_clic_en_una_baldosa_la_hace_y_fuera_cierra() {
-        let mut h = hoja();
-        let ancla = Punto { x: 300, y: 740 };
-        let p = h.colocar(ancla, marco(), 100);
+        let p = h.colocar(ANCLA, marco(), 100);
         let (n, r) = p.baldosas[2];
         let dentro = Punto {
             x: r.x + 5,
             y: r.y + 5,
         };
         assert_eq!(
-            h.pulsar(dentro, ancla, marco(), 100),
+            h.pulsar(dentro, ANCLA, marco(), 100),
             Respuesta::Hacer(h.opciones[n].accion.clone())
         );
+        let (n, r) = p.chips[3];
+        assert_eq!(
+            h.pulsar(
+                Punto {
+                    x: r.x + 4,
+                    y: r.y + 4
+                },
+                ANCLA,
+                marco(),
+                100
+            ),
+            Respuesta::Hacer(h.opciones[n].accion.clone())
+        );
+        let cerrar = Punto {
+            x: p.cerrar.x + 4,
+            y: p.cerrar.y + 4,
+        };
+        assert_eq!(h.pulsar(cerrar, ANCLA, marco(), 100), Respuesta::Fuera);
         // Caso negativo: el relleno no hace nada y fuera cierra.
         let relleno = Punto {
             x: p.caja.x + 3,
             y: p.caja.y + 3,
         };
-        assert_eq!(h.pulsar(relleno, ancla, marco(), 100), Respuesta::Sigue);
+        assert_eq!(h.pulsar(relleno, ANCLA, marco(), 100), Respuesta::Sigue);
         assert_eq!(
-            h.pulsar(Punto { x: 2, y: 790 }, ancla, marco(), 100),
+            h.pulsar(Punto { x: 2, y: 890 }, ANCLA, marco(), 100),
             Respuesta::Fuera
         );
     }
 
     #[test]
-    fn las_flechas_saltan_por_filas_entre_baldosas() {
-        use super::super::{VK_ABAJO, VK_ARRIBA, VK_DERECHA, VK_IZQUIERDA};
-        assert_eq!(mover_eleccion(None, VK_DERECHA, 19, 8), Some(0));
-        assert_eq!(mover_eleccion(Some(1), VK_ABAJO, 19, 8), Some(5));
+    fn pegar_apagado_sin_nada_copiado() {
+        let catalogo = Catalogo::nuevo(Idioma::Espanol);
+        let mut h = Hoja::nueva(&catalogo);
+        let p = h.colocar(ANCLA, marco(), 100);
+        let (n, r) = p.pegar.expect("el boton de pegar");
+        let en_pegar = Punto {
+            x: r.x + 4,
+            y: r.y + 4,
+        };
+        // Sin nada copiado: se ve, pero ni se elige ni se pulsa.
+        assert!(!h.elegibles().contains(&n));
+        assert_eq!(h.pulsar(en_pegar, ANCLA, marco(), 100), Respuesta::Sigue);
+        let mut h = h.con_copiado(true);
         assert_eq!(
-            mover_eleccion(Some(5), VK_ABAJO, 19, 8),
-            Some(8),
-            "de la ultima fila a los chips"
+            h.pulsar(en_pegar, ANCLA, marco(), 100),
+            Respuesta::Hacer(Accion::PegarLoCopiado)
         );
-        assert_eq!(mover_eleccion(Some(9), VK_ARRIBA, 19, 8), Some(7));
-        assert_eq!(mover_eleccion(Some(5), VK_ARRIBA, 19, 8), Some(1));
-        // Casos negativos: no se sale por los extremos.
-        assert_eq!(mover_eleccion(Some(0), VK_IZQUIERDA, 19, 8), Some(0));
-        assert_eq!(mover_eleccion(Some(18), VK_DERECHA, 19, 8), Some(18));
-        assert_eq!(mover_eleccion(Some(0), VK_DERECHA, 0, 0), None);
+    }
+
+    #[test]
+    fn las_flechas_bajan_de_las_baldosas_a_los_chips_y_al_pie() {
+        use super::super::{VK_ABAJO, VK_ARRIBA, VK_DERECHA, VK_IZQUIERDA};
+        let mut h = hoja();
+        // Sin nada elegido, la primera.
+        h.tecla(VK_DERECHA);
+        assert_eq!(h.elegido, Some(0));
+        h.tecla(VK_DERECHA);
+        assert_eq!(h.elegido, Some(1));
+        // Abajo: la de debajo en la cuadricula (la sexta, Tabla).
+        h.tecla(VK_ABAJO);
+        assert_eq!(h.opciones[h.elegido.unwrap()].accion, Accion::AdjTabla);
+        // Otra vez abajo: a los chips, al de la izquierda (lo mas cerca).
+        h.tecla(VK_ABAJO);
+        let k = h.elegido.unwrap();
+        assert_eq!(h.opciones[k].forma, Forma::Chip);
+        assert_eq!(h.opciones[k].accion, Accion::AdjProyectos);
+        h.tecla(VK_DERECHA);
+        h.tecla(VK_ABAJO);
+        assert_eq!(h.opciones[h.elegido.unwrap()].accion, Accion::AdjCarpeta);
+        // Muy abajo se llega a «Pegar» y de ahi no se pasa.
+        for _ in 0..20 {
+            h.tecla(VK_ABAJO);
+        }
+        assert_eq!(
+            h.opciones[h.elegido.unwrap()].accion,
+            Accion::PegarLoCopiado
+        );
+        assert_eq!(
+            h.tecla(super::super::VK_ENTRAR),
+            Respuesta::Hacer(Accion::PegarLoCopiado)
+        );
+        // Y de vuelta arriba hasta la primera fila.
+        for _ in 0..20 {
+            h.tecla(VK_ARRIBA);
+        }
+        let arriba = h.colocar(ANCLA, marco(), 100).baldosas[0].1.y;
+        let ahora = h.colocar(ANCLA, marco(), 100);
+        assert_eq!(ahora.sitio_de(h.elegido.unwrap()).unwrap().y, arriba);
+        // Casos negativos: a la izquierda de la primera no hay nada.
+        h.elegido = Some(0);
+        h.tecla(VK_IZQUIERDA);
+        assert_eq!(h.elegido, Some(0));
+        assert_eq!(mover_eleccion(Some(0), VK_DERECHA, &[]), None);
+    }
+
+    #[test]
+    fn la_del_asistente_empieza_por_figura_y_tambien_pega() {
+        let h = Hoja::para_el_asistente(&Catalogo::nuevo(Idioma::Espanol));
+        assert_eq!(h.opciones[0].accion, Accion::AdjFigura);
+        assert_eq!(h.opciones[0].forma, Forma::Baldosa(1));
+        assert!(
+            h.opciones
+                .iter()
+                .any(|o| o.accion == Accion::PedirFigura && o.forma == Forma::Chip)
+        );
+        assert!(h.opciones.iter().any(|o| o.forma == Forma::Pegar));
+        // Caso negativo: Figura no sale dos veces.
+        assert_eq!(
+            h.opciones
+                .iter()
+                .filter(|o| o.accion == Accion::AdjFigura)
+                .count(),
+            1
+        );
     }
 }

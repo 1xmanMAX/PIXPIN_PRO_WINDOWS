@@ -1635,6 +1635,7 @@ v2menus-adj-captura = 스크린샷
 v2menus-adj-pagina = 프로젝트 페이지
 v2menus-adj-proyecto = 프로젝트 전체
 v2menus-adj-movil = 휴대폰에서 가져오기
+v2menus-adj-pegar-copiado = 복사한 항목 붙여넣기
 v2menus-envio-enviar = 보내기
 v2menus-envio-anadir = 추가
 v2menus-envio-fotos = { $cuantos ->

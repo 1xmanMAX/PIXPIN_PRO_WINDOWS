@@ -1094,6 +1094,38 @@ pub fn abrir(
         let mut cerrar = false;
         let disposicion = disponer(marco, escala, ancho_lista, abierto.as_ref());
         let mut nuevo_marco: Option<Rect> = None;
+        // Pegar lo copiado en el chat abierto: Ctrl+V y «Pegar» de la hoja
+        // del «+» (2-nov-2026, como la del iPhone) van por el mismo camino.
+        macro_rules! pegar_en_el_chat {
+            () => {{
+                if let Some(a) = abierto.as_mut() {
+                    match pegar(ubicacion, a, &identidad) {
+                        // Lo dice, que si no la foto parece no haber
+                        // entrado: en la caja solo se ve su renglon.
+                        Ok(Pegado::EnLaNota(n)) if n > 0 => {
+                            aviso = Some((
+                                textos.t("chat-foto-en-la-nota"),
+                                std::time::Instant::now(),
+                            ));
+                        }
+                        Ok(Pegado::Mensajes(cuantos)) if cuantos > 0 => {
+                            a.scroll = None;
+                            // Una foto al asistente tambien se contesta.
+                            if let Some(t) = asistente::al_enviar(ubicacion, a, textos) {
+                                aviso = Some((t, std::time::Instant::now()));
+                            }
+                            if let Some(i) = elegida {
+                                fichas[i].tocado = a.ficha.tocado;
+                                fichas[i].resumen = a.ficha.resumen.clone();
+                            }
+                        }
+                        Ok(_) => {}
+                        Err(e) => tracing::warn!(?e, "no se pudo pegar en el chat"),
+                    }
+                    a.colocado.borrow_mut().ancho = 0;
+                }
+            }};
+        }
         // Lo que se elige en un menu abierto, con el raton o con su tecla:
         // las dos vias pasan por aqui (v2-menus).
         macro_rules! hacer_del_menu {
@@ -1113,6 +1145,7 @@ pub fn abrir(
                             abierto.as_mut(),
                         );
                     }
+                    Some(Accion::PegarLoCopiado) => pegar_en_el_chat!(),
                     Some(Accion::AdjMusica) => {
                         let rutas = pindesk_shell::elegir::pedir_musica(ventana.handle());
                         if let Some(a) = abierto.as_mut()
@@ -2454,7 +2487,7 @@ pub fn abrir(
                         // El clip despliega su menu; lo que se adjunta se
                         // decide ahi, no aqui. Se retira al escribir, como en
                         // el movil, y entonces no se puede pulsar.
-                        // v2: la hoja del «+», cuadricula con buscador.
+                        // v2: la hoja del «+», como la «Adjuntar» del iPhone.
                         // Su ancla es la esquina de arriba del boton: la
                         // hoja crece hacia arriba desde ahi, y lo que abra
                         // despues (los proyectos, las mini-apps) nace ahi.
@@ -2467,7 +2500,8 @@ pub fn abrir(
                                 hoja_adjuntar::Hoja::para_el_asistente(textos)
                             } else {
                                 hoja_adjuntar::Hoja::nueva(textos)
-                            },
+                            }
+                            .con_copiado(pindesk_codec::portapapeles::hay_algo()),
                         ));
                         buscando = false;
                         hay_que_pintar = true;
@@ -4136,33 +4170,8 @@ pub fn abrir(
                     }
                 }
                 EventoOverlay::Tecla { vk, ctrl, .. } if vk == VK_V && ctrl => {
-                    if let Some(a) = abierto.as_mut() {
-                        match pegar(ubicacion, a, &identidad) {
-                            // Lo dice, que si no la foto parece no haber
-                            // entrado: en la caja solo se ve su renglon.
-                            Ok(Pegado::EnLaNota(n)) if n > 0 => {
-                                aviso = Some((
-                                    textos.t("chat-foto-en-la-nota"),
-                                    std::time::Instant::now(),
-                                ));
-                            }
-                            Ok(Pegado::Mensajes(cuantos)) if cuantos > 0 => {
-                                a.scroll = None;
-                                // Una foto al asistente tambien se contesta.
-                                if let Some(t) = asistente::al_enviar(ubicacion, a, textos) {
-                                    aviso = Some((t, std::time::Instant::now()));
-                                }
-                                if let Some(i) = elegida {
-                                    fichas[i].tocado = a.ficha.tocado;
-                                    fichas[i].resumen = a.ficha.resumen.clone();
-                                }
-                            }
-                            Ok(_) => {}
-                            Err(e) => tracing::warn!(?e, "no se pudo pegar en el chat"),
-                        }
-                        a.colocado.borrow_mut().ancho = 0;
-                        hay_que_pintar = true;
-                    }
+                    pegar_en_el_chat!();
+                    hay_que_pintar = true;
                 }
                 EventoOverlay::Tecla { vk, ctrl, .. } if vk == VK_RETROCESO => {
                     if let Some(a) = abierto.as_mut().filter(|a| !a.borrador.is_empty()) {
@@ -4604,9 +4613,6 @@ pub fn abrir(
         let rayita_ahora = rayita_con_teclado(
             &busqueda,
             buscando,
-            menu.as_ref()
-                .and_then(|m| m.hoja.as_ref())
-                .map(|h| &h.busqueda),
             abierto.as_ref(),
             std::time::Instant::now(),
         );
@@ -4645,9 +4651,6 @@ pub fn abrir(
             && let Some(sitio) = cajas_con_teclado(
                 &busqueda,
                 buscando,
-                menu.as_ref()
-                    .and_then(|m| m.hoja.as_ref())
-                    .map(|h| &h.busqueda),
                 abierto.as_ref(),
             )
             .first()
@@ -5107,9 +5110,6 @@ pub fn abrir(
         let hasta_la_rayita = cajas_con_teclado(
             &busqueda,
             buscando,
-            menu.as_ref()
-                .and_then(|m| m.hoja.as_ref())
-                .map(|h| &h.busqueda),
             abierto.as_ref(),
         )
         .iter()
@@ -5322,16 +5322,15 @@ impl LetrasPintadas {
     }
 }
 
-/// Las cajas de una linea que tienen el teclado: el buscador de la hoja del
-/// «+» si esta abierta, el de la lista si se esta escribiendo en el y las
-/// abiertas del proyecto. Son las que ensenan la rayita.
+/// Las cajas de una linea que tienen el teclado: el buscador de la lista si
+/// se esta escribiendo en el y las abiertas del proyecto. Son las que
+/// ensenan la rayita. (La hoja del «+» ya no tiene buscador, 2-nov-2026.)
 fn cajas_con_teclado<'a>(
     lista: &'a redaccion::CajaLinea,
     buscando: bool,
-    hoja: Option<&'a redaccion::CajaLinea>,
     abierto: Option<&'a Abierto>,
 ) -> Vec<&'a redaccion::CajaLinea> {
-    let mut v: Vec<&redaccion::CajaLinea> = hoja.into_iter().collect();
+    let mut v: Vec<&redaccion::CajaLinea> = Vec::new();
     if buscando {
         v.push(lista);
     }
@@ -5346,11 +5345,10 @@ fn cajas_con_teclado<'a>(
 fn rayita_con_teclado(
     lista: &redaccion::CajaLinea,
     buscando: bool,
-    hoja: Option<&redaccion::CajaLinea>,
     abierto: Option<&Abierto>,
     ahora: std::time::Instant,
 ) -> Vec<bool> {
-    cajas_con_teclado(lista, buscando, hoja, abierto)
+    cajas_con_teclado(lista, buscando, abierto)
         .iter()
         .map(|c| c.rayita_visible(ahora))
         .collect()
@@ -17579,6 +17577,8 @@ enum Accion {
     AdjFigura,
     /// «Pedir una figura nueva»: deja empezada la peticion en la caja.
     PedirFigura,
+    /// «Pegar» de la hoja del «+» (2-nov-2026): lo mismo que Ctrl+V.
+    PegarLoCopiado,
     /// «Guardar en mis figuras» de un lienzo del chat.
     GuardarEnFiguras(usize),
     /// Las carpetas de paginas (26-oct-2026): una nueva y vacia, desde el
@@ -20045,6 +20045,7 @@ fn ejecutar(accion: Accion, a: &mut Abierto, cx: &Contexto) -> Efecto {
         | Accion::AdjLienzo
         | Accion::AdjTabla
         | Accion::AdjDelMovil
+        | Accion::PegarLoCopiado
         | Accion::Fondos
         | Accion::NuevoChat(_)
         | Accion::NuevoChatEnLaNube

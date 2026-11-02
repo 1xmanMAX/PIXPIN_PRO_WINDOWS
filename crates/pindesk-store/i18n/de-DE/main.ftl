@@ -1646,6 +1646,7 @@ v2menus-adj-captura = Screenshot
 v2menus-adj-pagina = Eine Projektseite
 v2menus-adj-proyecto = Ganzes Projekt
 v2menus-adj-movil = Vom Handy holen
+v2menus-adj-pegar-copiado = Kopiertes einfügen
 v2menus-envio-enviar = Senden
 v2menus-envio-anadir = Hinzufügen
 v2menus-envio-fotos = { $cuantos ->

@@ -1645,6 +1645,7 @@ v2menus-adj-captura = Ekran görüntüsü
 v2menus-adj-pagina = Bir proje sayfası
 v2menus-adj-proyecto = Bütün proje
 v2menus-adj-movil = Telefondan getir
+v2menus-adj-pegar-copiado = Kopyalananı yapıştır
 v2menus-envio-enviar = Gönder
 v2menus-envio-anadir = Ekle
 v2menus-envio-fotos = { $cuantos ->

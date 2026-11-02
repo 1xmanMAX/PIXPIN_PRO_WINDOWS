@@ -1646,6 +1646,7 @@ v2menus-adj-captura = स्क्रीनशॉट
 v2menus-adj-pagina = प्रोजेक्ट का एक पेज
 v2menus-adj-proyecto = पूरा प्रोजेक्ट
 v2menus-adj-movil = फ़ोन से लाएँ
+v2menus-adj-pegar-copiado = कॉपी किया हुआ चिपकाएँ
 v2menus-envio-enviar = भेजें
 v2menus-envio-anadir = जोड़ें
 v2menus-envio-fotos = { $cuantos ->

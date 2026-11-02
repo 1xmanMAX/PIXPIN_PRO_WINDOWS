@@ -1563,6 +1563,7 @@ v2menus-adj-captura = Captura
 v2menus-adj-pagina = Página de um projeto
 v2menus-adj-proyecto = Projeto inteiro
 v2menus-adj-movil = Trazer do celular
+v2menus-adj-pegar-copiado = Colar o que foi copiado
 v2menus-envio-enviar = Enviar
 v2menus-envio-anadir = Adicionar
 v2menus-envio-fotos = { $cuantos ->

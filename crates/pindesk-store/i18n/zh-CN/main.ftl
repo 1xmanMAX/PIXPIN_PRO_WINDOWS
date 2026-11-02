@@ -1635,6 +1635,7 @@ v2menus-adj-captura = 截图
 v2menus-adj-pagina = 项目页面
 v2menus-adj-proyecto = 整个项目
 v2menus-adj-movil = 从手机获取
+v2menus-adj-pegar-copiado = 粘贴已复制的内容
 v2menus-envio-enviar = 发送
 v2menus-envio-anadir = 添加
 v2menus-envio-fotos = { $cuantos ->

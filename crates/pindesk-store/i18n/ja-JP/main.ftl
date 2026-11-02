@@ -1635,6 +1635,7 @@ v2menus-adj-captura = スクリーンショット
 v2menus-adj-pagina = プロジェクトのページ
 v2menus-adj-proyecto = プロジェクト全体
 v2menus-adj-movil = スマートフォンから取り込む
+v2menus-adj-pegar-copiado = コピーしたものを貼り付け
 v2menus-envio-enviar = 送信
 v2menus-envio-anadir = 追加
 v2menus-envio-fotos = { $cuantos ->

@@ -1665,6 +1665,7 @@ v2menus-adj-captura = Снимок экрана
 v2menus-adj-pagina = Страница проекта
 v2menus-adj-proyecto = Весь проект
 v2menus-adj-movil = Передать с телефона
+v2menus-adj-pegar-copiado = Вставить скопированное
 v2menus-envio-enviar = Отправить
 v2menus-envio-anadir = Добавить
 v2menus-envio-fotos = { $cuantos ->
