@@ -1216,6 +1216,22 @@ fn color_de_casilla(c: Casilla, actual: Option<ColorRgba>, tono: usize) -> Optio
     }
 }
 
+/// **Si un color ya esta a la vista** en el panel o en su paleta: los
+/// rapidos del trazo y del fondo, las quince casillas con sus tonos y los
+/// papeles. Lo que no, es un color elegido a mano, y va a los recientes.
+pub fn es_de_la_paleta(c: ColorRgba) -> bool {
+    let igual = |v: u32| casi(hex(v), c);
+    COLORES_TRAZO.iter().any(|q| casi(*q, c))
+        || COLORES_FONDO.iter().flatten().any(|q| casi(*q, c))
+        || COLORES_LIENZO.iter().any(|q| casi(*q, c))
+        || PAPELES_DEL_MOVIL.iter().any(|v| igual(*v))
+        || PALETA.iter().any(|k| match k {
+            Casilla::Transparente => false,
+            Casilla::Fijo(v) => igual(*v),
+            Casilla::Tonos(t) => t.iter().any(|v| igual(*v)),
+        })
+}
+
 /// Los tonos de la familia del color actual, si es de alguna.
 fn tonos_de(actual: Option<ColorRgba>) -> Option<[u32; 5]> {
     let a = actual?;
@@ -3565,6 +3581,14 @@ mod pruebas {
                 ..
             }
         )));
+    }
+
+    #[test]
+    fn lo_de_la_paleta_no_es_un_color_elegido_a_mano() {
+        assert!(es_de_la_paleta(hex(0x1e1e1e)));
+        assert!(es_de_la_paleta(hex(0x4dabf7)), "un tono de la paleta");
+        assert!(es_de_la_paleta(hex(0xfdf6e3)), "un papel del movil");
+        assert!(!es_de_la_paleta(hex(0x123456)));
     }
 
     #[test]

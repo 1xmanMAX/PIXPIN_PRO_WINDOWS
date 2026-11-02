@@ -27,22 +27,84 @@ use pindesk_render::{Color, Pintor, RectF};
 use pindesk_shell::overlay::EventoOverlay;
 use pindesk_store::{Catalogo, Idioma};
 use pindesk_ui::panel_lateral::{
-    self as pl, AccionPanel, Capa, ContextoPanel, Control, Desplegable, EdicionHex, Mandos,
-    PanelLateral, Seccion,
+    self as pl, AccionPanel, Agarre, Arrastre, Capa, ContextoPanel, Control, Desplegable,
+    EdicionHex, ExtrasColor, Mandos, PanelLateral, Seccion,
 };
+use pindesk_ui::selector_color::{Hsv, Recientes};
 
 use crate::caja_dibujo::{hex, sombra_isla};
 
-const ISLA: Color = hex(0xffffff);
-const TEXTO: Color = hex(0x1b1b1f);
-const TEXTO_SUAVE: Color = hex(0x999999);
-const BOTON: Color = hex(0xf6f6f9);
-const ACTIVO_FONDO: Color = hex(0xe0dfff);
-const ACTIVO_ICONO: Color = hex(0x030064);
-const CONTORNO_CLARO: Color = hex(0xebebeb);
-const CONTORNO_ACTIVO: Color = hex(0x4a47b1);
-const PISTA_RECORRIDA: Color = hex(0xccccff);
-const PULGAR: Color = hex(0x3d3d3d);
+/// **Los colores del panel**, del tema claro u oscuro de Excalidraw
+/// (`docs/excalidraw/interfaz.md` §2 y §5): el oscuro sobre papel de noche,
+/// como la barra (`caja_dibujo::tema_barra`).
+struct TemaPanel {
+    isla: Color,
+    texto: Color,
+    /// Los titulos de seccion: `--color-gray-70` de Excalidraw.
+    texto_suave: Color,
+    boton: Color,
+    /// Lo elegido: `--color-primary-light`, con el filo `--color-primary`.
+    activo_fondo: Color,
+    activo_icono: Color,
+    contorno_claro: Color,
+    contorno_activo: Color,
+    /// La barra de opacidad: gris por recorrer y azul lo recorrido.
+    pista: Color,
+    pista_recorrida: Color,
+    /// El filo del tirador blanco.
+    filo_tirador: Color,
+    /// Las dos casillas del tablero de lo transparente.
+    tablero: (Color, Color),
+}
+
+const CLARO: TemaPanel = TemaPanel {
+    isla: hex(0xffffff),
+    texto: hex(0x1b1b1f),
+    texto_suave: hex(0x5c5c66),
+    boton: hex(0xf6f6f9),
+    activo_fondo: hex(0xe0dfff),
+    activo_icono: hex(0x030064),
+    contorno_claro: hex(0xdedee6),
+    contorno_activo: hex(0x6965db),
+    pista: hex(0xe9ecef),
+    pista_recorrida: hex(0x228be6),
+    filo_tirador: hex(0xc4c4cc),
+    tablero: (hex(0xffffff), hex(0xd6d6d6)),
+};
+
+const OSCURO: TemaPanel = TemaPanel {
+    isla: hex(0x232329),
+    texto: hex(0xe3e3e8),
+    texto_suave: hex(0xa3a3ad),
+    boton: hex(0x2e2d39),
+    activo_fondo: hex(0x403e6a),
+    activo_icono: hex(0xe0dfff),
+    contorno_claro: hex(0x45454f),
+    contorno_activo: hex(0xa8a5ff),
+    pista: hex(0x3d3d47),
+    pista_recorrida: hex(0x4dabf7),
+    filo_tirador: hex(0x55555f),
+    tablero: (hex(0x5a5a62), hex(0x3c3c44)),
+};
+
+fn tema() -> &'static TemaPanel {
+    if crate::dibujo::tema::de_noche() {
+        &OSCURO
+    } else {
+        &CLARO
+    }
+}
+
+/// `Color` de pantalla a `ColorRgba` del motor (para las cuentas de
+/// contraste de `selector_color`).
+fn color_rgba(c: Color) -> ColorRgba {
+    ColorRgba {
+        r: c.r,
+        g: c.g,
+        b: c.b,
+        a: c.a,
+    }
+}
 
 /// **El panel quitado** (24-oct-2026, «pon un boton para mostrarla y
 /// quitarla»): lo dice el boton de arriba a la izquierda y vale para todos
@@ -96,6 +158,99 @@ thread_local! {
     /// (`ContextoPanel::lienzo`). Por hilo, como `ABIERTO`: es interfaz,
     /// no documento.
     static PAPEL: Cell<bool> = const { Cell::new(false) };
+    /// **Lo que se esta arrastrando** (la barra de opacidad, el cuadro o una
+    /// tira del selector de color), del boton-abajo al boton-arriba. Mientras
+    /// dura, el raton es del panel aunque salga de el ([`arrastrar`]).
+    static ARRASTRE: Cell<Option<Agarre>> = const { Cell::new(None) };
+    /// El tono que se esta eligiendo en el selector: lo que el cuadro tiene
+    /// debajo aunque el color de ahora sea un gris sin tono.
+    static TONO: Cell<Option<f32>> = const { Cell::new(None) };
+    /// El cuentagotas, esperando el clic en el lienzo.
+    static CUENTAGOTAS: Cell<bool> = const { Cell::new(false) };
+    /// El ultimo color sacado del selector avanzado, por apuntar en los
+    /// recientes: se apunta al soltar el arrastre o al cerrar, y no con cada
+    /// movimiento del raton (o la fila se llenaria de casi el mismo azul).
+    static PENDIENTE: Cell<Option<ColorRgba>> = const { Cell::new(None) };
+}
+
+/// **Los colores recientes**, uno para todos los lienzos: se leen de
+/// `estado.toml` la primera vez y se guardan cada vez que cambian. En las
+/// pruebas, por hilo y sin fichero, para que no se pisen entre ellas.
+#[cfg(not(test))]
+fn con_recientes<R>(f: impl FnOnce(&mut Recientes) -> R) -> R {
+    static RECIENTES: std::sync::Mutex<Option<Recientes>> = std::sync::Mutex::new(None);
+    let mut g = RECIENTES.lock().unwrap_or_else(|e| e.into_inner());
+    f(g.get_or_insert_with(|| {
+        crate::oscuro::ubicacion()
+            .map(|u| {
+                Recientes::de_codigos(&pindesk_store::estado::cargar(&u).lienzo_colores_recientes)
+            })
+            .unwrap_or_default()
+    }))
+}
+
+#[cfg(test)]
+fn con_recientes<R>(f: impl FnOnce(&mut Recientes) -> R) -> R {
+    thread_local! {
+        static RECIENTES: RefCell<Recientes> = RefCell::new(Recientes::default());
+    }
+    RECIENTES.with(|r| f(&mut r.borrow_mut()))
+}
+
+/// Apunta un color elegido a mano en los recientes (si no esta ya a la
+/// vista en la paleta) y lo recuerda.
+fn apuntar_reciente(c: ColorRgba) {
+    if pl::es_de_la_paleta(c) {
+        return;
+    }
+    let Some(codigos) = con_recientes(|r| r.apuntar(c).then(|| r.codigos())) else {
+        return;
+    };
+    if let Some(u) = crate::oscuro::ubicacion() {
+        let mut estado = pindesk_store::estado::cargar(&u);
+        estado.lienzo_colores_recientes = codigos;
+        if let Err(e) = pindesk_store::estado::guardar(&u, &estado) {
+            tracing::warn!(?e, "panel: no se pudieron recordar los colores recientes");
+        }
+    }
+}
+
+/// Apunta el color que quedo pendiente del selector, si lo hay.
+fn apuntar_pendiente() {
+    if let Some(c) = PENDIENTE.with(|p| p.take()) {
+        apuntar_reciente(c);
+    }
+}
+
+/// **Recuerda el ultimo «trazo a mano» elegido** (el `currentItemRoughness`
+/// de Excalidraw): el proximo lienzo nace con el.
+fn recordar_rugosidad(r: f32) {
+    let Some(u) = crate::oscuro::ubicacion() else {
+        return;
+    };
+    let v = r.round().clamp(0.0, 2.0) as u8;
+    let mut estado = pindesk_store::estado::cargar(&u);
+    if estado.lienzo_rugosidad == Some(v) {
+        return;
+    }
+    estado.lienzo_rugosidad = Some(v);
+    if let Err(e) = pindesk_store::estado::guardar(&u, &estado) {
+        tracing::warn!(?e, "panel: no se pudo recordar el trazo a mano");
+    }
+}
+
+/// **El estilo con lo que se recuerda del ultimo lienzo**: el trazo a mano
+/// elegido la ultima vez, o el de fabrica («artista», a mano) si nunca se
+/// toco. Lo dibujado no cambia: solo lo proximo que se dibuje.
+pub fn con_lo_recordado(
+    mut estilo: pindesk_motor2d::estilo::EstiloDibujo,
+) -> pindesk_motor2d::estilo::EstiloDibujo {
+    if let Some(v) =
+        crate::oscuro::ubicacion().and_then(|u| pindesk_store::estado::cargar(&u).lienzo_rugosidad)
+    {
+        estilo.rugosidad = v.min(2) as f32;
+    }
+    estilo
 }
 
 /// **Ensena el selector del papel del lienzo**, con su paleta ya abierta:
@@ -122,6 +277,9 @@ pub fn pedir_papel() {
 /// dejaria el editor sordo a sus atajos sin que se viera por que.
 pub fn cerrar_desplegable() -> bool {
     HEX.with(|h| h.borrow_mut().take());
+    apuntar_pendiente();
+    TONO.with(|t| t.set(None));
+    CUENTAGOTAS.with(|c| c.set(false));
     // El selector del papel se cierra con el: es un menu, y un clic en el
     // lienzo es la forma de decir «ya esta».
     let papel = PAPEL.with(|p| p.replace(false));
@@ -155,12 +313,16 @@ fn color_del_desplegable(gesto: &Gesto, escena: &Escena) -> Option<ColorRgba> {
 /// queda escribiendo, para corregirlo); Esc lo deja como estaba. Es lo
 /// minimo de un campo de texto: no hay cursor que mover, porque seis digitos
 /// se reescriben antes de lo que se tarda en apuntar.
+///
+/// **Con un desplegable abierto y sin escribir**, el teclado tambien es suyo
+/// para lo poco que tiene sentido (ver [`tecla_del_selector`]): Esc lo
+/// cierra, y en el de color las flechas mueven el tono y el brillo.
 pub fn tecla_del_hex(ev: &EventoOverlay, gesto: &mut Gesto, escena: &mut Escena) -> Option<bool> {
     const VK_RETROCESO: u32 = 0x08;
     const VK_ENTRAR: u32 = 0x0D;
     const VK_ESCAPE: u32 = 0x1B;
     if !escribiendo_hex() {
-        return None;
+        return tecla_del_selector(ev, gesto, escena);
     }
     let editar = |f: &mut dyn FnMut(&mut EdicionHex) -> bool| {
         HEX.with(|h| h.borrow_mut().as_mut().is_some_and(f))
@@ -188,10 +350,26 @@ pub fn tecla_del_hex(ev: &EventoOverlay, gesto: &mut Gesto, escena: &mut Escena)
                 (Some(c), Some(Desplegable::ColorLienzo)) => Some(AccionPanel::FondoLienzo(c)),
                 _ => None,
             };
+            // Los ocho digitos traen la opacidad, que va a su campo (el
+            // papel no tiene).
+            let opacidad = HEX.with(|h| h.borrow().as_ref().and_then(EdicionHex::opacidad));
             match accion {
                 Some(a) => {
                     HEX.with(|h| h.borrow_mut().take());
-                    aplicar(a, gesto, escena)
+                    let mut cambio = aplicar(a, gesto, escena);
+                    if let (Some(o), Some(Desplegable::ColorTrazo | Desplegable::ColorFondo)) =
+                        (opacidad, ABIERTO.with(Cell::get))
+                    {
+                        cambio |= aplicar(
+                            AccionPanel::Estilo(CambioEstilo::Opacidad(o)),
+                            gesto,
+                            escena,
+                        );
+                    }
+                    if let Some(c) = color {
+                        apuntar_reciente(c);
+                    }
+                    cambio
                 }
                 // A medio escribir: no se aplica nada ni se pierde lo escrito.
                 None => false,
@@ -202,6 +380,234 @@ pub fn tecla_del_hex(ev: &EventoOverlay, gesto: &mut Gesto, escena: &mut Escena)
         | EventoOverlay::TeclaSoltada(_) => false,
         _ => return None,
     })
+}
+
+/// **El teclado del selector de color**, sin estar escribiendo el codigo
+/// (lo que hace accesible el selector sin raton):
+///
+/// - Esc cierra el desplegable (cualquiera, tambien el de las puntas).
+/// - Intro o `#` empiezan a escribir el codigo.
+/// - ← → mueven el tono; Ctrl+← → la saturacion; ↑ ↓ el brillo. Con
+///   Mayusculas, a pasos grandes.
+/// - RePag y AvPag suben y bajan la opacidad (no en el papel).
+///
+/// Lo demas sigue su camino: Ctrl+Z, los atajos y la rueda no son suyos.
+fn tecla_del_selector(ev: &EventoOverlay, gesto: &mut Gesto, escena: &mut Escena) -> Option<bool> {
+    const VK_ENTRAR: u32 = 0x0D;
+    const VK_ESCAPE: u32 = 0x1B;
+    const VK_REPAG: u32 = 0x21;
+    const VK_AVPAG: u32 = 0x22;
+    const VK_IZQUIERDA: u32 = 0x25;
+    const VK_ARRIBA: u32 = 0x26;
+    const VK_DERECHA: u32 = 0x27;
+    const VK_ABAJO: u32 = 0x28;
+    let abierto = ABIERTO.with(Cell::get)?;
+    if let EventoOverlay::Tecla { vk: VK_ESCAPE, .. } = *ev {
+        cerrar_desplegable();
+        return Some(true);
+    }
+    if !matches!(
+        abierto,
+        Desplegable::ColorTrazo | Desplegable::ColorFondo | Desplegable::ColorLienzo
+    ) {
+        return None;
+    }
+    let (vk, shift, ctrl) = match *ev {
+        // Lo que llega como caracter detras de las teclas que ya se atienden.
+        EventoOverlay::Caracter('\r' | '\u{1b}') => return Some(false),
+        EventoOverlay::Caracter('#') => {
+            return Some(aplicar(AccionPanel::EditarHex, gesto, escena));
+        }
+        EventoOverlay::Tecla {
+            vk, shift, ctrl, ..
+        } => (vk, shift, ctrl),
+        _ => return None,
+    };
+    if vk == VK_ENTRAR {
+        return Some(aplicar(AccionPanel::EditarHex, gesto, escena));
+    }
+    if matches!(vk, VK_REPAG | VK_AVPAG) {
+        if abierto == Desplegable::ColorLienzo {
+            return None;
+        }
+        let paso = if shift { 0.1 } else { 0.05 };
+        let antes = opacidad_del_desplegable(gesto, escena);
+        let o = if vk == VK_REPAG {
+            antes + paso
+        } else {
+            antes - paso
+        };
+        let o = (o.clamp(0.0, 1.0) * 100.0).round() / 100.0;
+        return Some(aplicar_estilo(
+            CambioEstilo::Opacidad(o),
+            false,
+            gesto,
+            escena,
+        ));
+    }
+    if !matches!(vk, VK_IZQUIERDA | VK_DERECHA | VK_ARRIBA | VK_ABAJO) {
+        return None;
+    }
+    let mut hsv = hsv_del_desplegable(gesto, escena);
+    let signo = if matches!(vk, VK_DERECHA | VK_ARRIBA) {
+        1.0
+    } else {
+        -1.0
+    };
+    let grande = |si: f32, no: f32| if shift { si } else { no };
+    match vk {
+        VK_IZQUIERDA | VK_DERECHA if ctrl => {
+            hsv.s = (hsv.s + signo * grande(0.1, 0.02)).clamp(0.0, 1.0);
+        }
+        VK_IZQUIERDA | VK_DERECHA => {
+            hsv.h = (hsv.h + signo * grande(15.0, 2.0)).rem_euclid(360.0);
+        }
+        _ => hsv.v = (hsv.v + signo * grande(0.1, 0.02)).clamp(0.0, 1.0),
+    }
+    TONO.with(|t| t.set(Some(hsv.h)));
+    let c = hsv.color();
+    PENDIENTE.with(|p| p.set(Some(c)));
+    poner_color(c, false, gesto, escena);
+    // Aunque el color no cambie (el tono de un gris), cambia el cuadro.
+    Some(true)
+}
+
+/// El color del desplegable en HSV, con el tono que se estaba eligiendo si
+/// el color no tiene uno (un gris, el blanco, lo transparente).
+fn hsv_del_desplegable(gesto: &Gesto, escena: &Escena) -> Hsv {
+    Hsv::de(color_del_desplegable(gesto, escena).unwrap_or(ColorRgba::opaco(1.0, 1.0, 1.0)))
+        .con_tono_de(TONO.with(Cell::get))
+}
+
+/// La opacidad que ensena el panel: la de lo elegido, o la «actual».
+fn opacidad_del_desplegable(gesto: &Gesto, escena: &Escena) -> f32 {
+    pl::estilo_de_seleccion(&elegidos(gesto, escena))
+        .unwrap_or(gesto.estilo)
+        .opacidad
+}
+
+/// **Un cambio de estilo** a lo proximo que se dibuje y a lo elegido que lo
+/// admita; `en_paso` lo deja dentro del paso de deshacer que ya este
+/// abierto (el de un arrastre) en vez de hacer uno suyo.
+fn aplicar_estilo(
+    cambio: CambioEstilo,
+    en_paso: bool,
+    gesto: &mut Gesto,
+    escena: &mut Escena,
+) -> bool {
+    gesto.estilo.aplicar(cambio);
+    if let CambioEstilo::Grosor(n) = cambio {
+        gesto.grosor_tinta = n.de_tinta();
+    }
+    if let CambioEstilo::Rugosidad(r) = cambio {
+        recordar_rugosidad(r);
+    }
+    let destino = solo_quien_admite(&AccionPanel::Estilo(cambio), gesto, escena);
+    if !destino.esta_vacia() {
+        if en_paso {
+            pindesk_motor2d::estilo::aplicar_en_el_paso(escena, &destino, cambio);
+        } else {
+            pindesk_motor2d::estilo::aplicar_a(escena, &destino, cambio);
+        }
+    }
+    true
+}
+
+/// **Pone el color del selector** en lo que diga el desplegable abierto: el
+/// trazo, el fondo o el papel.
+fn poner_color(c: ColorRgba, en_paso: bool, gesto: &mut Gesto, escena: &mut Escena) -> bool {
+    match ABIERTO.with(Cell::get) {
+        Some(Desplegable::ColorTrazo) => {
+            aplicar_estilo(CambioEstilo::Trazo(c), en_paso, gesto, escena)
+        }
+        Some(Desplegable::ColorFondo) => {
+            aplicar_estilo(CambioEstilo::Relleno(Some(c)), en_paso, gesto, escena)
+        }
+        Some(Desplegable::ColorLienzo) => escena.poner_fondo(c),
+        _ => false,
+    }
+}
+
+/// Lo que pide el arrastre `a` con el raton en `p`.
+fn mover_arrastre(
+    a: Agarre,
+    p: pindesk_geom::Punto,
+    gesto: &mut Gesto,
+    escena: &mut Escena,
+) -> bool {
+    match a.cual {
+        Arrastre::Opacidad => {
+            aplicar_estilo(CambioEstilo::Opacidad(a.opacidad(p)), true, gesto, escena)
+        }
+        Arrastre::Cuadro => {
+            let (x, y) = a.fraccion(p);
+            let h = hsv_del_desplegable(gesto, escena).h;
+            TONO.with(|t| t.set(Some(h)));
+            let c = Hsv {
+                h,
+                s: x,
+                v: 1.0 - y,
+            }
+            .color();
+            PENDIENTE.with(|q| q.set(Some(c)));
+            poner_color(c, true, gesto, escena)
+        }
+        Arrastre::Tono => {
+            let h = (a.fraccion(p).0 * 360.0).min(359.9);
+            let hsv = Hsv {
+                h,
+                ..hsv_del_desplegable(gesto, escena)
+            };
+            TONO.with(|t| t.set(Some(h)));
+            // Lo transparente no se vuelve blanco por mover el tono: solo
+            // cambia el tono del cuadro, para el clic que venga.
+            if color_del_desplegable(gesto, escena).is_some() {
+                let c = hsv.color();
+                PENDIENTE.with(|q| q.set(Some(c)));
+                poner_color(c, true, gesto, escena);
+            }
+            true
+        }
+    }
+}
+
+/// **El raton mientras se arrastra algo del panel**: `None` si no se
+/// arrastra nada (el evento sigue su camino), `Some(repintar)` si si.
+pub fn arrastrar(p: pindesk_geom::Punto, gesto: &mut Gesto, escena: &mut Escena) -> Option<bool> {
+    let a = ARRASTRE.with(Cell::get)?;
+    Some(mover_arrastre(a, p, gesto, escena))
+}
+
+/// Si el cuentagotas espera su clic.
+#[cfg(test)]
+fn cuentagotas_activo() -> bool {
+    CUENTAGOTAS.with(Cell::get)
+}
+
+/// **El clic del cuentagotas**, en `q` del documento: toma el color de lo
+/// que haya encima de todo en ese punto —el trazo para el trazo; el fondo,
+/// o el trazo si no tiene, para el fondo y el papel— y lo pone. Sin nada
+/// debajo solo se suelta el cuentagotas.
+pub fn tomar_con_cuentagotas(
+    q: pindesk_motor2d::vector::Punto2,
+    gesto: &mut Gesto,
+    escena: &mut Escena,
+) -> bool {
+    CUENTAGOTAS.with(|c| c.set(false));
+    let Some(e) = pindesk_motor2d::impacto::elemento_en(&escena.elementos, q)
+        .and_then(|id| escena.buscar(id))
+    else {
+        return true;
+    };
+    let c = match ABIERTO.with(Cell::get) {
+        Some(Desplegable::ColorTrazo) => e.trazo,
+        _ => e.relleno.unwrap_or(e.trazo),
+    };
+    let c = ColorRgba { a: 1.0, ..c };
+    poner_color(c, false, gesto, escena);
+    TONO.with(|t| t.set(None));
+    apuntar_reciente(c);
+    true
 }
 
 static TEXTOS: OnceLock<Catalogo> = OnceLock::new();
@@ -308,6 +714,7 @@ pub fn panel_para(
         }
     };
     let papel = PAPEL.with(Cell::get);
+    let recientes = con_recientes(|r| r.colores().to_vec());
     let panel = PanelLateral::construir(
         area,
         escala_por_cien,
@@ -318,6 +725,11 @@ pub fn panel_para(
             mandos,
             abierto: ABIERTO.with(Cell::get),
             lienzo: papel.then_some(escena.fondo),
+            color: ExtrasColor {
+                recientes: &recientes,
+                tono: TONO.with(Cell::get),
+                cuentagotas: CUENTAGOTAS.with(Cell::get),
+            },
         },
     )?;
     // Quitado, solo su boton; el papel pedido desde el menu sale siempre.
@@ -339,6 +751,10 @@ pub enum ClicPanel {
     /// Fuera del panel: sigue hacia el lienzo. `cerro` si cerro un
     /// desplegable, que hay que repintar.
     Fuera { cerro: bool },
+    /// **El clic del cuentagotas**, fuera del panel: no llega al lienzo;
+    /// quien sabe pasar el punto al documento llama a
+    /// [`tomar_con_cuentagotas`].
+    Cuentagotas,
 }
 
 /// **El camino entero de un clic sobre el panel**, el mismo que recorre la
@@ -368,11 +784,36 @@ pub fn atender_clic(
     // panel haya cambiado entre medias. Pulsar «Borrar» deja sin nada
     // elegido y el panel desaparece: sin esto, el boton-arriba caia en el
     // hueco que dejo y seguia hacia el lienzo como un soltar huerfano.
+    // Soltar lo que se arrastraba: el arrastre entero es un solo paso de
+    // deshacer, y el color al que llego va a los recientes. El valor ya lo
+    // puso el ultimo movimiento ([`arrastrar`]): soltar no cambia nada.
+    if !pulsado && ARRASTRE.with(|c| c.take()).is_some() {
+        PULSADO_EN_PANEL.with(|c| c.set(false));
+        escena.cerrar_paso();
+        apuntar_pendiente();
+        return ClicPanel::Suyo { repintar: false };
+    }
     if !pulsado && PULSADO_EN_PANEL.with(|c| c.replace(false)) {
         return ClicPanel::Suyo { repintar: false };
     }
-    let destino = panel_para(gesto, escena, area, escala_por_cien)
-        .map_or(DestinoPanel::Fuera, |panel| panel.destino(p));
+    let panel = panel_para(gesto, escena, area, escala_por_cien);
+    // **Lo que se arrastra se coge al pulsar**: abre el paso de deshacer
+    // que cerrara el soltar, y ya pone el valor de donde se pulso.
+    if pulsado && let Some(a) = panel.as_ref().and_then(|panel| panel.agarre(p)) {
+        PULSADO_EN_PANEL.with(|c| c.set(true));
+        HEX.with(|h| h.borrow_mut().take());
+        ARRASTRE.with(|c| c.set(Some(a)));
+        escena.abrir_paso();
+        return ClicPanel::Suyo {
+            repintar: mover_arrastre(a, p, gesto, escena),
+        };
+    }
+    let destino = panel.map_or(DestinoPanel::Fuera, |panel| panel.destino(p));
+    // El cuentagotas se queda el clic de fuera del panel.
+    if pulsado && destino == DestinoPanel::Fuera && CUENTAGOTAS.with(Cell::get) {
+        PULSADO_EN_PANEL.with(|c| c.set(true));
+        return ClicPanel::Cuentagotas;
+    }
     if pulsado {
         PULSADO_EN_PANEL.with(|c| c.set(!matches!(destino, DestinoPanel::Fuera)));
         // Pulsar en cualquier otro sitio suelta el campo del codigo sin
@@ -414,21 +855,20 @@ pub fn aplicar(accion: AccionPanel, gesto: &mut Gesto, escena: &mut Escena) -> b
             return true;
         }
         AccionPanel::Abrir(d) => {
-            // El mismo disparador abre y cierra, como en Excalidraw.
+            // El mismo disparador abre y cierra, como en Excalidraw. Lo del
+            // selector (el tono, el cuentagotas) es del desplegable que se
+            // deja.
+            apuntar_pendiente();
+            TONO.with(|t| t.set(None));
+            CUENTAGOTAS.with(|c| c.set(false));
             ABIERTO.with(|a| a.set(if a.get() == Some(d) { None } else { Some(d) }));
         }
-        AccionPanel::Estilo(cambio) => {
-            // Siempre queda como el estilo de lo proximo que se dibuje; y si
-            // hay algo elegido, se le aplica tambien.
-            gesto.estilo.aplicar(cambio);
-            if let CambioEstilo::Grosor(n) = cambio {
-                gesto.grosor_tinta = n.de_tinta();
-            }
-            let destino = solo_quien_admite(&accion, gesto, escena);
-            if !destino.esta_vacia() {
-                pindesk_motor2d::estilo::aplicar_a(escena, &destino, cambio);
-            }
+        AccionPanel::Cuentagotas => {
+            CUENTAGOTAS.with(|c| c.set(!c.get()));
         }
+        // Siempre queda como el estilo de lo proximo que se dibuje; y si hay
+        // algo elegido, se le aplica tambien.
+        AccionPanel::Estilo(cambio) => return aplicar_estilo(cambio, false, gesto, escena),
         AccionPanel::Forma(cambio) => {
             // Como el estilo: queda como «actual» para lo proximo que se
             // dibuje (`currentItemRoundness` y compania en Excalidraw), y si
@@ -503,7 +943,12 @@ pub fn aplicar(accion: AccionPanel, gesto: &mut Gesto, escena: &mut Escena) -> b
                 return false;
             }
             let actual = color_del_desplegable(gesto, escena);
-            HEX.with(|h| *h.borrow_mut() = Some(EdicionHex::nueva(actual)));
+            let opacidad = if ABIERTO.with(Cell::get) == Some(Desplegable::ColorLienzo) {
+                1.0
+            } else {
+                opacidad_del_desplegable(gesto, escena)
+            };
+            HEX.with(|h| *h.borrow_mut() = Some(EdicionHex::nueva(actual, opacidad)));
         }
         // A la escena y a nada mas: ni a lo elegido ni al estilo de lo
         // proximo. La paleta se queda abierta para ir probando, como la de
@@ -740,6 +1185,7 @@ fn icono_de(accion: AccionPanel) -> Option<&'static pindesk_render::icono::Icono
         AccionPanel::Agrupar => &i::GROUP_ICON,
         AccionPanel::Desagrupar => &i::UNGROUP_ICON,
         AccionPanel::GuardarFigura => &i::LIBRARY_ICON,
+        AccionPanel::Cuentagotas => &i::EYE_DROPPER_ICON,
         // Si o no: la marca y el aspa.
         AccionPanel::PedirMedida(true) => &i::TABLER_CHECK_ICON,
         AccionPanel::PedirMedida(false) => &i::CLOSE_ICON,
@@ -808,45 +1254,142 @@ fn clave(s: Seccion) -> &'static str {
         Seccion::ModoArco => "lienzo-panel-modo-arco",
         Seccion::ArcosAngulo => "lienzo-panel-arcos-angulo",
         Seccion::ModoAngulo => "lienzo-panel-modo-angulo",
+        Seccion::Recientes => "lienzo-panel-recientes",
+        Seccion::Personalizado => "lienzo-panel-personalizado",
     }
 }
 
-/// Tablero de ajedrez del color transparente, como Excalidraw.
-fn transparente(p: &Pintor, r: RectF) {
-    let n = 4;
-    let (w, h) = (r.ancho / n as f32, r.alto / n as f32);
-    for fil in 0..n {
-        for col in 0..n {
-            let c = if (fil + col) % 2 == 0 {
-                hex(0xffffff)
-            } else {
-                hex(0xd6d6d6)
-            };
-            p.rellenar(
-                RectF {
-                    x: r.x + col as f32 * w,
-                    y: r.y + fil as f32 * h,
-                    ancho: w,
-                    alto: h,
-                },
-                c,
-            );
+/// Tablero de ajedrez del color transparente, como Excalidraw: casillas
+/// cuadradas de `lado`, aunque la zona sea una tira alargada.
+fn tablero(p: &Pintor, r: RectF, lado: f32) {
+    let t = tema();
+    p.con_recorte(r, |p| {
+        p.rellenar(r, t.tablero.0);
+        let (cols, fils) = (
+            (r.ancho / lado).ceil() as i32,
+            (r.alto / lado).ceil() as i32,
+        );
+        for fil in 0..fils {
+            for col in 0..cols {
+                if (fil + col) % 2 == 1 {
+                    p.rellenar(
+                        RectF {
+                            x: r.x + col as f32 * lado,
+                            y: r.y + fil as f32 * lado,
+                            ancho: lado,
+                            alto: lado,
+                        },
+                        t.tablero.1,
+                    );
+                }
+            }
         }
-    }
+    });
 }
 
-/// `#rrggbb`, sin la almohadilla: la pinta aparte el campo, como Excalidraw.
-fn codigo(c: Option<ColorRgba>) -> String {
-    pl::codigo_hex(c).unwrap_or_else(|| "transparent".to_string())
+/// La muestra transparente: el tablero en cuatro por cuatro.
+fn transparente(p: &Pintor, r: RectF) {
+    tablero(p, r, r.ancho.min(r.alto) / 4.0);
+}
+
+/// `#rrggbb` (o `rrggbbaa` con la opacidad por debajo del 100 %), sin la
+/// almohadilla: la pinta aparte el campo, como Excalidraw.
+fn codigo(c: Option<ColorRgba>, opacidad: f32) -> String {
+    match c {
+        Some(c) => pindesk_ui::selector_color::escribir_codigo(c, opacidad),
+        None => "transparent".to_string(),
+    }
 }
 
 fn pintar_isla(p: &Pintor, marco: Rect, e: f32) {
     let marco = rf(marco);
     sombra_isla(p, marco, 8.0 * e, e);
-    p.rellenar_redondeado(marco, 8.0 * e, ISLA);
+    p.rellenar_redondeado(marco, 8.0 * e, tema().isla);
+}
+
+/// Un rectangulo redondeado con borde: el borde, y el relleno encima un
+/// `grosor` hacia dentro.
+fn con_borde(p: &Pintor, r: RectF, radio: f32, grosor: f32, borde: Color, relleno: Color) {
+    p.rellenar_redondeado(r, radio, borde);
+    p.rellenar_redondeado(
+        RectF {
+            x: r.x + grosor,
+            y: r.y + grosor,
+            ancho: r.ancho - 2.0 * grosor,
+            alto: r.alto - 2.0 * grosor,
+        },
+        (radio - grosor).max(0.0),
+        relleno,
+    );
+}
+
+/// **El aro de colores** de la muestra del color propio: los tonos en
+/// vuelta entera, como el selector de color de cualquier sistema. Dice
+/// «aqui hay mas colores» sin una palabra.
+fn aro_de_tonos(p: &Pintor, centro: (f32, f32), radio: f32, grosor: f32) {
+    const TRAMOS: usize = 48;
+    let paso = std::f32::consts::TAU / TRAMOS as f32;
+    for k in 0..TRAMOS {
+        // Un pelo de solape para que no se vean las juntas.
+        let (a0, a1) = (k as f32 * paso, (k as f32 + 1.0) * paso + 0.03);
+        let color = color_de(pindesk_ui::selector_color::tono_puro(
+            k as f32 * 360.0 / TRAMOS as f32,
+        ));
+        p.linea(
+            (centro.0 + radio * a0.cos(), centro.1 + radio * a0.sin()),
+            (centro.0 + radio * a1.cos(), centro.1 + radio * a1.sin()),
+            grosor,
+            color,
+        );
+    }
+}
+
+/// La marca de lo elegido, blanca u oscura segun lo que se lea mejor
+/// encima del color (`selector_color::marca_clara`).
+fn marca(p: &Pintor, r: RectF, sobre: ColorRgba, e: f32) {
+    let tinta = if pindesk_ui::selector_color::marca_clara(sobre) {
+        hex(0xffffff)
+    } else {
+        hex(0x1e1e1e)
+    };
+    let (cx, cy) = (r.x + r.ancho / 2.0, r.y + r.alto / 2.0);
+    let l = r.ancho.min(r.alto) * 0.22;
+    p.polilinea(
+        &[
+            (cx - l, cy),
+            (cx - l * 0.3, cy + l * 0.7),
+            (cx + l, cy - l * 0.7),
+        ],
+        1.8 * e,
+        tinta,
+    );
+}
+
+/// El tirador redondo de una barra o una tira: blanco, con un filo que lo
+/// separa de cualquier color de debajo.
+fn tirador(p: &Pintor, centro: (f32, f32), radio: f32, e: f32) {
+    let t = tema();
+    p.circulo(
+        (centro.0, centro.1 + 0.8 * e),
+        radio + 0.6 * e,
+        sombra(0.18),
+    );
+    p.circulo(centro, radio, t.filo_tirador);
+    p.circulo(centro, radio - 1.2 * e, hex(0xffffff));
+}
+
+/// Negro con `alfa`.
+fn sombra(alfa: f32) -> Color {
+    Color {
+        r: 0.0,
+        g: 0.0,
+        b: 0.0,
+        a: alfa,
+    }
 }
 
 pub fn pintar(p: &Pintor, panel: &PanelLateral, escala_por_cien: u32) {
+    let t = tema();
     let e = escala_por_cien as f32 / 100.0;
     // El boton de mostrar y quitar: una isla como la del panel, con la
     // paleta para sacarlo y la flecha para quitarlo.
@@ -866,7 +1409,7 @@ pub fn pintar(p: &Pintor, panel: &PanelLateral, escala_por_cien: u32) {
                 ancho: lado,
                 alto: lado,
             },
-            TEXTO,
+            t.texto,
         );
     }
     if panel.plegado {
@@ -882,6 +1425,7 @@ pub fn pintar(p: &Pintor, panel: &PanelLateral, escala_por_cien: u32) {
 }
 
 fn pintar_controles(p: &Pintor, controles: &[Control], e: f32) {
+    let t = tema();
     for c in controles {
         match *c {
             Control::Titulo { seccion, rect } => {
@@ -890,26 +1434,55 @@ fn pintar_controles(p: &Pintor, controles: &[Control], e: f32) {
                     rect.x as f32,
                     rect.y as f32,
                     12.0 * e,
-                    TEXTO,
+                    t.texto_suave,
                 );
             }
             Control::Muestra {
                 rect,
                 color,
                 activa,
-                grande,
+                grande: true,
+                ..
+            } => {
+                // **La muestra del color propio**: un circulo con el color
+                // de ahora dentro de un aro de tonos, que abre el selector.
+                let r = rf(rect);
+                let centro = (r.x + r.ancho / 2.0, r.y + r.alto / 2.0);
+                let radio = r.ancho.min(r.alto) / 2.0;
+                if activa {
+                    p.circulo(centro, radio + 2.0 * e, t.contorno_activo);
+                    p.circulo(centro, radio + 0.8 * e, t.isla);
+                }
+                let aro = 2.6 * e;
+                aro_de_tonos(p, centro, radio - aro / 2.0, aro);
+                let dentro = radio - aro - 1.6 * e;
+                p.circulo(centro, dentro + 0.8 * e, t.isla);
+                match color {
+                    Some(col) => p.circulo(centro, dentro, color_de(col)),
+                    None => {
+                        // Transparente: el disco blanco tachado en rojo.
+                        p.circulo(centro, dentro, hex(0xffffff));
+                        let d = dentro * 0.7;
+                        p.linea(
+                            (centro.0 - d, centro.1 + d),
+                            (centro.0 + d, centro.1 - d),
+                            1.5 * e,
+                            hex(0xe03131),
+                        );
+                    }
+                }
+            }
+            Control::Muestra {
+                rect,
+                color,
+                activa,
                 ..
             } => {
                 let r = rf(rect);
-                // 4 las rapidas, 5 la del color actual y 6 las de la paleta
-                // (`ColorPicker.scss:89-103`, `:178-182`, `:198-202`).
-                let radio = if grande {
-                    5.0
-                } else if r.ancho >= 28.0 * e {
-                    6.0
-                } else {
-                    4.0
-                } * e;
+                // 4 las rapidas y 6 las de la paleta (`ColorPicker.scss:89-103`,
+                // `:198-202`).
+                let de_la_paleta = r.ancho >= 28.0 * e;
+                let radio = if de_la_paleta { 6.0 } else { 4.0 } * e;
                 if activa {
                     let fuera = RectF {
                         x: r.x - 2.0 * e,
@@ -917,24 +1490,20 @@ fn pintar_controles(p: &Pintor, controles: &[Control], e: f32) {
                         ancho: r.ancho + 4.0 * e,
                         alto: r.alto + 4.0 * e,
                     };
-                    p.rellenar_redondeado(fuera, radio + 2.0 * e, CONTORNO_ACTIVO);
-                    p.rellenar_redondeado(
-                        RectF {
-                            x: r.x - 1.0 * e,
-                            y: r.y - 1.0 * e,
-                            ancho: r.ancho + 2.0 * e,
-                            alto: r.alto + 2.0 * e,
-                        },
-                        radio + 1.0 * e,
-                        ISLA,
+                    con_borde(
+                        p,
+                        fuera,
+                        radio + 2.0 * e,
+                        1.5 * e,
+                        t.contorno_activo,
+                        t.isla,
                     );
                 }
                 match color {
                     None => p.con_recorte(r, |p| transparente(p, r)),
                     Some(col) => {
-                        // Los claros llevan contorno para no perderse en la
-                        // isla blanca.
-                        if col.r + col.g + col.b > 2.4 {
+                        // Los que se confunden con la isla llevan contorno.
+                        if pindesk_ui::selector_color::contraste(col, color_rgba(t.isla)) < 1.3 {
                             p.rellenar_redondeado(
                                 RectF {
                                     x: r.x - 1.0,
@@ -943,10 +1512,14 @@ fn pintar_controles(p: &Pintor, controles: &[Control], e: f32) {
                                     alto: r.alto + 2.0,
                                 },
                                 radio + 1.0,
-                                CONTORNO_CLARO,
+                                t.contorno_claro,
                             );
                         }
                         p.rellenar_redondeado(r, radio, color_de(col));
+                        // En la paleta, lo elegido lleva ademas su marca.
+                        if activa && de_la_paleta {
+                            marca(p, r, col, e);
+                        }
                     }
                 }
             }
@@ -956,7 +1529,14 @@ fn pintar_controles(p: &Pintor, controles: &[Control], e: f32) {
                 activa,
             } => {
                 let r = rf(rect);
-                p.rellenar_redondeado(r, 8.0 * e, if activa { ACTIVO_FONDO } else { BOTON });
+                // Elegido: el fondo lila con el filo morado de Excalidraw
+                // (`--color-primary-light` y `--color-primary`).
+                if activa {
+                    con_borde(p, r, 8.0 * e, 1.0 * e, t.contorno_activo, t.activo_fondo);
+                } else {
+                    p.rellenar_redondeado(r, 8.0 * e, t.boton);
+                }
+                let tinta = if activa { t.activo_icono } else { t.texto };
                 // **Cada letra escrita en su propia letra**: «Aa» en
                 // Excalifont, en Caveat... Con ocho familias, ocho iconos
                 // parecidos no dicen cual es cual; la muestra si. Cuesta una
@@ -974,7 +1554,7 @@ fn pintar_controles(p: &Pintor, controles: &[Control], e: f32) {
                         tam,
                         f32::MAX,
                         &letra,
-                        if activa { ACTIVO_ICONO } else { TEXTO },
+                        tinta,
                     );
                 } else if let Some(muestra) = rotulo_de_imagen(accion) {
                     // El aumento de la lupa y desenfocar se dicen con letras:
@@ -991,7 +1571,7 @@ fn pintar_controles(p: &Pintor, controles: &[Control], e: f32) {
                         r.x + (r.ancho - w) / 2.0,
                         r.y + (r.alto - h) / 2.0,
                         tam,
-                        if activa { ACTIVO_ICONO } else { TEXTO },
+                        tinta,
                     );
                 } else if let AccionPanel::SeriePunto(s) = accion {
                     // La serie se dice con su propio principio, como en el
@@ -1008,7 +1588,7 @@ fn pintar_controles(p: &Pintor, controles: &[Control], e: f32) {
                         r.x + (r.ancho - w) / 2.0,
                         r.y + (r.alto - h) / 2.0,
                         tam,
-                        if activa { ACTIVO_ICONO } else { TEXTO },
+                        tinta,
                     );
                 } else if let Some(ic) = icono_de(accion) {
                     let lado = 16.0 * e;
@@ -1020,7 +1600,7 @@ fn pintar_controles(p: &Pintor, controles: &[Control], e: f32) {
                             ancho: lado,
                             alto: lado,
                         },
-                        if activa { ACTIVO_ICONO } else { TEXTO },
+                        tinta,
                     );
                 }
             }
@@ -1032,8 +1612,12 @@ fn pintar_controles(p: &Pintor, controles: &[Control], e: f32) {
                 ..
             } => {
                 let r = rf(rect);
-                p.rellenar_redondeado(r, 8.0 * e, if activa { ACTIVO_FONDO } else { BOTON });
-                let tinta = if activa { ACTIVO_ICONO } else { TEXTO };
+                if activa {
+                    con_borde(p, r, 8.0 * e, 1.0 * e, t.contorno_activo, t.activo_fondo);
+                } else {
+                    p.rellenar_redondeado(r, 8.0 * e, t.boton);
+                }
+                let tinta = if activa { t.activo_icono } else { t.texto };
                 // Los iconos de punta son de 40 × 20: se les da una caja con
                 // esa proporcion, o saldrian la mitad de pequenos.
                 let ancho = (r.ancho - 4.0 * e).min(36.0 * e);
@@ -1044,8 +1628,8 @@ fn pintar_controles(p: &Pintor, controles: &[Control], e: f32) {
                     alto: ancho / 2.0,
                 };
                 match punta {
-                    Some(t) if al_inicio => p.icono_volteado(icono_de_punta(t), caja, tinta),
-                    Some(t) => p.icono(icono_de_punta(t), caja, tinta),
+                    Some(tp) if al_inicio => p.icono_volteado(icono_de_punta(tp), caja, tinta),
+                    Some(tp) => p.icono(icono_de_punta(tp), caja, tinta),
                     // Puntas distintas en lo elegido: los tres puntos, que
                     // dicen «hay varias» sin elegir ninguna.
                     None => {
@@ -1063,27 +1647,21 @@ fn pintar_controles(p: &Pintor, controles: &[Control], e: f32) {
                     }
                 }
             }
-            Control::Hex { rect, color } => {
+            Control::Hex {
+                rect,
+                color,
+                opacidad,
+            } => {
                 let r = rf(rect);
                 // Escribiendo: el contorno del foco, lo escrito y la barra
                 // del cursor al final (o todo resaltado si aun esta elegido,
                 // que es lo que dice que la primera tecla lo sustituye).
                 let edicion = HEX.with(|h| h.borrow().clone());
+                let tam = 14.0 * e;
+                let y = r.y + (r.alto - tam * 1.3) / 2.0;
+                let x = r.x + 24.0 * e;
                 if let Some(ed) = edicion {
-                    p.rellenar_redondeado(r, 8.0 * e, CONTORNO_ACTIVO);
-                    p.rellenar_redondeado(
-                        RectF {
-                            x: r.x + 2.0,
-                            y: r.y + 2.0,
-                            ancho: r.ancho - 4.0,
-                            alto: r.alto - 4.0,
-                        },
-                        6.0 * e,
-                        ISLA,
-                    );
-                    let tam = 14.0 * e;
-                    let y = r.y + (r.alto - tam * 1.3) / 2.0;
-                    let x = r.x + 24.0 * e;
+                    con_borde(p, r, 8.0 * e, 2.0, t.contorno_activo, t.isla);
                     let (ancho_escrito, _) = p.medir_texto(ed.texto(), tam);
                     if ed.todo_elegido() && !ed.texto().is_empty() {
                         p.rellenar(
@@ -1093,11 +1671,11 @@ fn pintar_controles(p: &Pintor, controles: &[Control], e: f32) {
                                 ancho: ancho_escrito,
                                 alto: tam * 1.3,
                             },
-                            ACTIVO_FONDO,
+                            t.activo_fondo,
                         );
                     }
-                    p.texto("#", r.x + 10.0 * e, y, tam, TEXTO_SUAVE);
-                    p.texto(ed.texto(), x, y, tam, TEXTO);
+                    p.texto("#", r.x + 10.0 * e, y, tam, t.texto_suave);
+                    p.texto(ed.texto(), x, y, tam, t.texto);
                     if !ed.todo_elegido() {
                         p.rellenar(
                             RectF {
@@ -1106,55 +1684,106 @@ fn pintar_controles(p: &Pintor, controles: &[Control], e: f32) {
                                 ancho: (1.0 * e).max(1.0),
                                 alto: tam * 1.3,
                             },
-                            TEXTO,
+                            t.texto,
                         );
                     }
                     continue;
                 }
-                p.rellenar_redondeado(r, 8.0 * e, CONTORNO_CLARO);
-                p.rellenar_redondeado(
-                    RectF {
-                        x: r.x + 1.0,
-                        y: r.y + 1.0,
-                        ancho: r.ancho - 2.0,
-                        alto: r.alto - 2.0,
-                    },
-                    7.0 * e,
-                    ISLA,
-                );
-                let tam = 14.0 * e;
-                let y = r.y + (r.alto - tam * 1.3) / 2.0;
-                p.texto("#", r.x + 10.0 * e, y, tam, TEXTO_SUAVE);
-                p.texto(&codigo(color), r.x + 24.0 * e, y, tam, TEXTO);
+                con_borde(p, r, 8.0 * e, 1.0, t.contorno_claro, t.isla);
+                p.texto("#", r.x + 10.0 * e, y, tam, t.texto_suave);
+                p.texto(&codigo(color, opacidad), x, y, tam, t.texto);
             }
             Control::Deslizador { rect, valor } => {
+                // **La barra de opacidad**: pista azul hasta el tirador, gris
+                // despues, el tirador blanco y redondo, y la cifra en la
+                // linea del titulo, a la derecha (el titulo va justo encima).
                 let r = rf(rect);
-                let alto_pista = 4.0 * e;
+                let alto_pista = 6.0 * e;
                 let pista = RectF {
                     x: r.x,
                     y: r.y + (r.alto - alto_pista) / 2.0,
                     ancho: r.ancho,
                     alto: alto_pista,
                 };
-                p.rellenar_redondeado(pista, 2.0 * e, BOTON);
+                p.rellenar_redondeado(pista, alto_pista / 2.0, t.pista);
                 p.rellenar_redondeado(
                     RectF {
-                        ancho: r.ancho * valor,
+                        ancho: (r.ancho * valor).max(alto_pista),
                         ..pista
                     },
-                    2.0 * e,
-                    PISTA_RECORRIDA,
+                    alto_pista / 2.0,
+                    t.pista_recorrida,
                 );
-                let lado = 16.0 * e;
-                p.rellenar_redondeado(
-                    RectF {
-                        x: (r.x + r.ancho * valor - lado / 2.0).clamp(r.x, r.x + r.ancho - lado),
-                        y: r.y + (r.alto - lado) / 2.0,
-                        ancho: lado,
-                        alto: lado,
-                    },
-                    lado / 2.0,
-                    PULGAR,
+                let radio = 8.0 * e;
+                let cx = (r.x + r.ancho * valor).clamp(r.x + radio, r.x + r.ancho - radio);
+                tirador(p, (cx, r.y + r.alto / 2.0), radio, e);
+                let cifra = format!("{}", (valor * 100.0).round() as i32);
+                let tam = 12.0 * e;
+                let (w, _) = p.medir_texto(&cifra, tam);
+                p.texto(&cifra, r.x + r.ancho - w, r.y - 18.0 * e, tam, t.texto);
+            }
+            Control::Cuadro { rect, h, s, v } => {
+                // El tono puro, aclarado hacia la izquierda y oscurecido
+                // hacia abajo: las dos capas de cualquier selector HSV.
+                let r = rf(rect);
+                let blanco = hex(0xffffff);
+                p.con_recorte(r, |p| {
+                    p.rellenar(r, color_de(pindesk_ui::selector_color::tono_puro(h)));
+                    p.rect_degradado(
+                        r,
+                        (r.x, r.y),
+                        (r.x + r.ancho, r.y),
+                        blanco,
+                        Color { a: 0.0, ..blanco },
+                    );
+                    p.rect_degradado(r, (r.x, r.y), (r.x, r.y + r.alto), sombra(0.0), sombra(1.0));
+                });
+                let punto = (r.x + s * r.ancho, r.y + (1.0 - v) * r.alto);
+                p.anillo(punto, 6.0 * e, 1.2 * e, sombra(0.55));
+                p.anillo(punto, 4.8 * e, 2.0 * e, blanco);
+            }
+            Control::TiraTono { rect, h } => {
+                let r = rf(rect);
+                let tono = pindesk_ui::selector_color::tono_puro;
+                let tramo = r.ancho / 6.0;
+                for k in 0..6 {
+                    let x = r.x + k as f32 * tramo;
+                    p.rect_degradado(
+                        RectF {
+                            x,
+                            // Medio pixel de solape: sin el, las juntas se ven.
+                            ancho: tramo + 0.5,
+                            ..r
+                        },
+                        (x, r.y),
+                        (x + tramo, r.y),
+                        color_de(tono(k as f32 * 60.0)),
+                        color_de(tono((k + 1) as f32 * 60.0)),
+                    );
+                }
+                tirador(
+                    p,
+                    (r.x + h / 360.0 * r.ancho, r.y + r.alto / 2.0),
+                    r.alto / 2.0 + 2.0 * e,
+                    e,
+                );
+            }
+            Control::TiraOpacidad { rect, color, valor } => {
+                let r = rf(rect);
+                tablero(p, r, r.alto / 2.0);
+                let c = color_de(color.unwrap_or(ColorRgba::opaco(0.5, 0.5, 0.5)));
+                p.rect_degradado(
+                    r,
+                    (r.x, r.y),
+                    (r.x + r.ancho, r.y),
+                    Color { a: 0.0, ..c },
+                    Color { a: 1.0, ..c },
+                );
+                tirador(
+                    p,
+                    (r.x + valor * r.ancho, r.y + r.alto / 2.0),
+                    r.alto / 2.0 + 2.0 * e,
+                    e,
                 );
             }
         }
@@ -2101,15 +2730,26 @@ mod pruebas {
                     .and_then(|p| p.emergente)
                     .and_then(|e| {
                         e.controles.iter().find_map(|c| match *c {
-                            Control::Hex { color, .. } => Some(pl::codigo_hex(color)),
+                            Control::Hex {
+                                color, opacidad, ..
+                            } => color
+                                .map(|c| pindesk_ui::selector_color::escribir_codigo(c, opacidad)),
                             _ => None,
                         })
                     })
-                    .flatten()
                     .unwrap_or_default();
                 match ed {
                     Some(ed) if ed.texto() == ensena && despues.elementos == antes.elementos => {}
                     otra => return Err(format!("escribiendo {otra:?} y ensena {ensena}")),
+                }
+            }
+            // El cuentagotas: no toca la escena, se queda esperando el clic.
+            AccionPanel::Cuentagotas => {
+                if despues.elementos != antes.elementos {
+                    return Err("el cuentagotas cambio el dibujo".into());
+                }
+                if !cuentagotas_activo() {
+                    return Err("el cuentagotas no quedo esperando".into());
                 }
             }
         }
@@ -2136,7 +2776,10 @@ mod pruebas {
     fn deberia_cambiar(accion: AccionPanel, escena: &Escena, ids: &[u64]) -> bool {
         let elegidos: Vec<&Elemento> = ids.iter().map(|id| escena.buscar(*id).unwrap()).collect();
         match accion {
-            AccionPanel::Abrir(_) | AccionPanel::EditarHex | AccionPanel::GuardarFigura => false,
+            AccionPanel::Abrir(_)
+            | AccionPanel::EditarHex
+            | AccionPanel::GuardarFigura
+            | AccionPanel::Cuentagotas => false,
             // El modo guia y el ojo no dibujan ni van al historial, como en
             // el movil: los mira su propia prueba.
             AccionPanel::ModoGuia(_) | AccionPanel::VerGuias(_) => false,
@@ -2661,5 +3304,262 @@ mod pruebas {
             println!("{nombre}: {}", ruta.display());
         }
         ABIERTO.with(|a| a.set(None));
+    }
+
+    /// **El panel y el selector de color avanzado, de dia y de noche**, en
+    /// PNG para mirarlos en Windows: `cargo test -p pindesk --bin pindesk
+    /// muestra_del_selector_de_color -- --ignored --nocapture`. Deja
+    /// `selector-*.png` en `PINDESK_MUESTRAS` o en la carpeta temporal.
+    #[test]
+    #[ignore = "necesita GPU; genera PNG para mirarlos"]
+    fn muestra_del_selector_de_color() {
+        use pindesk_render::MotorRender;
+        use pindesk_render::fuera_de_pantalla::FueraDePantalla;
+
+        let d = pindesk_capture::Dispositivo::nuevo().expect("GPU real");
+        let motor = MotorRender::nuevo(d.d3d()).expect("motor");
+        let (ancho, alto) = (560u32, 980u32);
+        let fuera = FueraDePantalla::nuevo(&motor, d.d3d(), ancho, alto).expect("superficie");
+        let carpeta = std::env::var_os("PINDESK_MUESTRAS")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(std::env::temp_dir);
+        let area = Rect {
+            x: 0,
+            y: 0,
+            ancho,
+            alto,
+        };
+        let mut escena = Escena::nueva();
+        let caja = con(&mut escena, Figura::Rectangulo);
+        {
+            let e = escena.buscar_mut(caja).unwrap();
+            e.trazo = ColorRgba::opaco(0.11, 0.44, 0.76);
+            e.relleno = Some(ColorRgba::opaco(0.65, 0.85, 1.0));
+            e.opacidad = 0.7;
+        }
+        con_recientes(|r| {
+            r.apuntar(ColorRgba::opaco(0.2, 0.6, 0.5));
+            r.apuntar(ColorRgba::opaco(0.55, 0.2, 0.7));
+            r.apuntar(ColorRgba::opaco(0.9, 0.5, 0.2));
+        });
+        let casos: [(&str, Option<Desplegable>, bool); 6] = [
+            ("panel-claro", None, false),
+            ("panel-oscuro", None, true),
+            ("trazo-claro", Some(Desplegable::ColorTrazo), false),
+            ("trazo-oscuro", Some(Desplegable::ColorTrazo), true),
+            ("fondo-claro", Some(Desplegable::ColorFondo), false),
+            ("fondo-oscuro", Some(Desplegable::ColorFondo), true),
+        ];
+        for (nombre, abierto, noche) in casos {
+            let mut gesto = Gesto::default();
+            gesto.seleccion.poner(caja);
+            ABIERTO.with(|a| a.set(abierto));
+            let papel = if noche { hex(0x121212) } else { hex(0xffffff) };
+            let papel_motor = color_rgba(papel);
+            motor
+                .dibujar(&fuera.destino, |p| {
+                    p.limpiar(papel);
+                    crate::dibujo::tema::con_papel(Some(papel_motor), || {
+                        let panel = panel_para(&gesto, &escena, area, 100).expect("panel");
+                        pintar(p, &panel, 100);
+                    });
+                })
+                .expect("pintar");
+            fuera.esperar_gpu().expect("esperar");
+            let (_, _, pixeles) = fuera.leer_rgba().expect("leer");
+            let png = pindesk_codec::imagen::codificar_png(&pindesk_codec::imagen::ImagenRgba {
+                ancho,
+                alto,
+                pixeles,
+            })
+            .expect("codificar");
+            let ruta = carpeta.join(format!("selector-{nombre}.png"));
+            std::fs::write(&ruta, png).expect("guardar");
+            println!("{nombre}: {}", ruta.display());
+        }
+        ABIERTO.with(|a| a.set(None));
+    }
+
+    #[test]
+    fn arrastrar_el_cuadro_cambia_el_color_y_es_un_solo_ctrl_z() {
+        let mut escena = Escena::nueva();
+        let caja = con(&mut escena, Figura::Rectangulo);
+        escena.buscar_mut(caja).unwrap().trazo = ColorRgba::opaco(1.0, 0.0, 0.0);
+        let mut gesto = Gesto::default();
+        gesto.seleccion.poner(caja);
+        aplicar(
+            AccionPanel::Abrir(Desplegable::ColorTrazo),
+            &mut gesto,
+            &mut escena,
+        );
+        let panel = panel_para(&gesto, &escena, area(), 100).unwrap();
+        let cuadro = panel
+            .emergente
+            .as_ref()
+            .unwrap()
+            .controles
+            .iter()
+            .find_map(|c| match *c {
+                Control::Cuadro { rect, .. } => Some(rect),
+                _ => None,
+            })
+            .expect("el cuadro");
+        let pasos = escena.pasos_en_historial().0;
+        let en = |fx: f32, fy: f32| pindesk_geom::Punto {
+            x: cuadro.x + (cuadro.ancho as f32 * fx) as i32,
+            y: cuadro.y + (cuadro.alto as f32 * fy) as i32,
+        };
+        // Pulsar arriba a la derecha (rojo puro), arrastrar al centro y
+        // soltar fuera del panel, abajo a la izquierda: negro.
+        let a = atender_clic(en(0.99, 0.0), true, &mut gesto, &mut escena, area(), 100);
+        assert_eq!(a, ClicPanel::Suyo { repintar: true });
+        assert_eq!(arrastrar(en(0.5, 0.5), &mut gesto, &mut escena), Some(true));
+        let medio = escena.buscar(caja).unwrap().trazo;
+        assert!(medio.r > 0.4 && medio.r < 0.6 && medio.g > 0.2, "{medio:?}");
+        let fuera = pindesk_geom::Punto {
+            x: cuadro.x - 400,
+            y: cuadro.y + 4000,
+        };
+        assert_eq!(arrastrar(fuera, &mut gesto, &mut escena), Some(true));
+        let soltar = atender_clic(fuera, false, &mut gesto, &mut escena, area(), 100);
+        assert_eq!(soltar, ClicPanel::Suyo { repintar: false });
+        let negro = escena.buscar(caja).unwrap().trazo;
+        assert!(
+            negro.r < 0.01 && negro.g < 0.01 && negro.b < 0.01,
+            "{negro:?}"
+        );
+        assert_eq!(
+            arrastrar(en(0.5, 0.5), &mut gesto, &mut escena),
+            None,
+            "ya solto"
+        );
+        assert_eq!(escena.pasos_en_historial().0, pasos + 1, "un solo paso");
+        assert!(escena.deshacer());
+        assert_eq!(
+            escena.buscar(caja).unwrap().trazo,
+            ColorRgba::opaco(1.0, 0.0, 0.0)
+        );
+        cerrar_desplegable();
+    }
+
+    #[test]
+    fn el_codigo_de_ocho_digitos_pone_el_color_y_la_opacidad() {
+        let mut escena = Escena::nueva();
+        let caja = con(&mut escena, Figura::Rectangulo);
+        let mut gesto = Gesto::default();
+        gesto.seleccion.poner(caja);
+        aplicar(
+            AccionPanel::Abrir(Desplegable::ColorTrazo),
+            &mut gesto,
+            &mut escena,
+        );
+        assert!(aplicar(AccionPanel::EditarHex, &mut gesto, &mut escena));
+        for c in "12345680".chars() {
+            tecla_del_hex(&EventoOverlay::Caracter(c), &mut gesto, &mut escena);
+        }
+        let intro = EventoOverlay::Tecla {
+            vk: 0x0D,
+            shift: false,
+            ctrl: false,
+            alt: false,
+        };
+        assert_eq!(tecla_del_hex(&intro, &mut gesto, &mut escena), Some(true));
+        let e = escena.buscar(caja).unwrap();
+        assert_eq!(pl::codigo_hex(Some(e.trazo)).as_deref(), Some("123456"));
+        assert!((e.opacidad - 128.0 / 255.0).abs() < 1e-3, "{}", e.opacidad);
+        // El color hecho a mano queda en los recientes.
+        assert!(
+            con_recientes(|r| r.colores().to_vec())
+                .iter()
+                .any(|c| pl::codigo_hex(Some(*c)).as_deref() == Some("123456"))
+        );
+        cerrar_desplegable();
+    }
+
+    #[test]
+    fn esc_cierra_el_selector_y_las_flechas_mueven_el_tono() {
+        let mut escena = Escena::nueva();
+        let caja = con(&mut escena, Figura::Rectangulo);
+        escena.buscar_mut(caja).unwrap().trazo = ColorRgba::opaco(1.0, 0.0, 0.0);
+        let mut gesto = Gesto::default();
+        gesto.seleccion.poner(caja);
+        aplicar(
+            AccionPanel::Abrir(Desplegable::ColorTrazo),
+            &mut gesto,
+            &mut escena,
+        );
+        let tecla = |vk: u32, shift: bool| EventoOverlay::Tecla {
+            vk,
+            shift,
+            ctrl: false,
+            alt: false,
+        };
+        // Mayusculas + derecha: 15 grados hacia el amarillo.
+        assert_eq!(
+            tecla_del_hex(&tecla(0x27, true), &mut gesto, &mut escena),
+            Some(true)
+        );
+        let h = Hsv::de(escena.buscar(caja).unwrap().trazo).h;
+        assert!((h - 15.0).abs() < 1.0, "{h}");
+        // Una tecla que no es del selector sigue su camino.
+        assert_eq!(
+            tecla_del_hex(&tecla(b'R' as u32, false), &mut gesto, &mut escena),
+            None
+        );
+        assert_eq!(
+            tecla_del_hex(&tecla(0x1B, false), &mut gesto, &mut escena),
+            Some(true)
+        );
+        assert_eq!(ABIERTO.with(Cell::get), None, "Esc lo cerro");
+        // Y cerrado, Esc ya no es suyo: es del lienzo.
+        assert_eq!(
+            tecla_del_hex(&tecla(0x1B, false), &mut gesto, &mut escena),
+            None
+        );
+    }
+
+    #[test]
+    fn el_cuentagotas_toma_el_color_de_lo_que_hay_debajo() {
+        let mut escena = Escena::nueva();
+        let origen = con(&mut escena, Figura::Rectangulo);
+        {
+            let e = escena.buscar_mut(origen).unwrap();
+            e.x = 500.0;
+            e.y = 500.0;
+            e.relleno = Some(ColorRgba::opaco(0.2, 0.4, 0.6));
+            e.estilo_relleno = EstiloRelleno::Solido;
+        }
+        let destino = con(&mut escena, Figura::Rectangulo);
+        let mut gesto = Gesto::default();
+        gesto.seleccion.poner(destino);
+        aplicar(
+            AccionPanel::Abrir(Desplegable::ColorFondo),
+            &mut gesto,
+            &mut escena,
+        );
+        assert!(aplicar(AccionPanel::Cuentagotas, &mut gesto, &mut escena));
+        assert!(cuentagotas_activo());
+        // Un clic fuera del panel es del cuentagotas y no cierra la paleta.
+        let lejos = pindesk_geom::Punto { x: 1200, y: 800 };
+        assert_eq!(
+            atender_clic(lejos, true, &mut gesto, &mut escena, area(), 100),
+            ClicPanel::Cuentagotas
+        );
+        assert!(tomar_con_cuentagotas(
+            pindesk_motor2d::vector::Punto2::nuevo(550.0, 520.0),
+            &mut gesto,
+            &mut escena
+        ));
+        assert_eq!(
+            escena.buscar(destino).unwrap().relleno,
+            Some(ColorRgba::opaco(0.2, 0.4, 0.6))
+        );
+        assert!(!cuentagotas_activo(), "se suelta tras un clic");
+        // Su boton-arriba tampoco llega al lienzo.
+        assert!(matches!(
+            atender_clic(lejos, false, &mut gesto, &mut escena, area(), 100),
+            ClicPanel::Suyo { .. }
+        ));
+        cerrar_desplegable();
     }
 }

@@ -151,6 +151,9 @@ fn ajustes_rendimiento() -> pindesk_store::Rendimiento {
 fn gesto_inicial(ajustes_iman: pindesk_motor2d::enganche::Ajustes) -> Gesto {
     let mut gesto = Gesto::nuevo();
     gesto.enganche = ajustes_iman;
+    // **Las figuras nacen a mano** («artista», rugosidad 1, la de fabrica de
+    // Excalidraw), o con el trazo a mano que se eligio la ultima vez.
+    gesto.estilo = crate::panel_dibujo::con_lo_recordado(gesto.estilo);
     // **El iman fino**: los cruces, el canto (puntos sobre la circunferencia)
     // y las tangentes, para las laminas de geometria. El gesto los trae
     // apagados porque cuestan memoria en cada movimiento del raton; el
