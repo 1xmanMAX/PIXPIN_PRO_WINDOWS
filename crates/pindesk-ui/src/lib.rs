@@ -55,6 +55,8 @@ pub mod reproductor;
 pub mod resaltado;
 pub mod riel_a_la_vista;
 pub mod riel_marcas;
+/// Las cuentas del selector de color: HSV, codigos, contraste y recientes.
+pub mod selector_color;
 pub mod tabla;
 /// Lo que no se mueve bajo el raton en Tareas: lo recien tachado y el orden.
 pub mod tareas_quietas;
