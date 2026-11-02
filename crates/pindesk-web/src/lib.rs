@@ -93,12 +93,17 @@ impl VisorHtml {
     /// el teclado: sin esto no llegan a la ventana que lo contiene, y el
     /// visor no se podria cerrar ni pasar a pantalla completa mientras se
     /// escribe en la pagina.
+    /// `guion`: lo que se pone en cada pagina que se abra (tambien al
+    /// recargar), antes que sus propios guiones: el de marcar el texto
+    /// (2-nov-2026). Va antes de abrir el fichero para que la primera ya lo
+    /// lleve.
     pub fn nuevo(
         padre: HWND,
         area: Rect,
         ruta: &Path,
         al_guardar: Box<dyn Fn(Vec<u8>) + 'static>,
         al_tecla: Box<dyn Fn(u32) + 'static>,
+        guion: Option<&str>,
     ) -> Result<VisorHtml, ErrorWeb> {
         if !Self::hay_runtime() {
             return Err(ErrorWeb::SinRuntime);
@@ -125,6 +130,9 @@ impl VisorHtml {
         medir_carga(&vista, "html", t0);
         let otros = Rc::new(std::cell::RefCell::new(Vec::new()));
         conectar_puente(&vista, al_guardar.clone(), Rc::clone(&otros))?;
+        if let Some(g) = guion {
+            poner_al_crear(&vista, g)?;
+        }
         conectar_descargas(&vista, al_guardar, temporal.clone())?;
         let ctrl_p = Rc::new(std::cell::Cell::new(false));
         conectar_teclas(&controlador, Rc::from(al_tecla), Rc::clone(&ctrl_p))?;
@@ -777,6 +785,22 @@ fn conectar_puente(
         .map_err(|e| ErrorWeb::Creacion(e.to_string()))?;
 
     Ok(())
+}
+
+/// Pone `guion` en cada documento que se cree a partir de ahora.
+fn poner_al_crear(vista: &ICoreWebView2, guion: &str) -> Result<(), ErrorWeb> {
+    let script = CoTaskMemPWSTR::from(guion);
+    let manejador =
+        AddScriptToExecuteOnDocumentCreatedCompletedHandler::create(Box::new(|codigo, _id| {
+            if let Err(e) = codigo {
+                tracing::warn!(error = %e, "no se pudo poner el guion de la pagina");
+            }
+            Ok(())
+        }));
+    // SAFETY: `script` vive hasta el final de la funcion y WebView2 copia la
+    // cadena antes de volver; `vista` es la recien sacada del controlador.
+    unsafe { vista.AddScriptToExecuteOnDocumentCreated(*script.as_ref().as_pcwstr(), &manejador) }
+        .map_err(|e| ErrorWeb::Creacion(e.to_string()))
 }
 
 /// Cuantos mensajes que no son guardados se guardan sin recoger: una pagina

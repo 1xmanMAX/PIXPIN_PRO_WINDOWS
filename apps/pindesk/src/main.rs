@@ -63,6 +63,7 @@ mod aligerar;
 mod croquis3d;
 mod globo_pista;
 mod guardar_de_paso;
+mod marcas_web;
 mod marco_imprimir;
 mod marcos_doc;
 // El asistente local del chat (modelo pequeno con llama.cpp, `pindesk-ia`).

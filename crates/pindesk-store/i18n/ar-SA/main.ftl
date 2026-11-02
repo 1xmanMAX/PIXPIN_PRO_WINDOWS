@@ -2566,6 +2566,7 @@ pin-v2-marca-subrayar = تسطير
 pin-v2-marca-tachar = شطب
 pin-v2-marca-tapar = تغطية
 pin-v2-marca-quitar = إزالة العلامة
+marcas-texto-color = اللون
 pin-v2-modo-texto = تحديد النص
 pin-v2-leyendo = جارٍ القراءة…
 pin-v2-invertir-colores = عكس الألوان

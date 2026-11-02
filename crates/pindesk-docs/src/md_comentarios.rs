@@ -527,7 +527,7 @@ fn ultimo(h: &Hilo) -> i64 {
 /// (`mio`) y lo que hay ahora en disco (`disco`). Lo nuevo de cada lado
 /// entra; lo borrado en un lado (estaba en `base`) se va si el otro no lo
 /// cambio; lo cambiado en uno solo gana; cambiado en los dos, se mira dentro.
-fn juntar<T: Clone + PartialEq>(
+pub(crate) fn juntar<T: Clone + PartialEq>(
     base: &[T],
     mio: &[T],
     disco: &[T],

@@ -173,6 +173,34 @@ ya guardado lo suyo. Un visor que pinta su barra con otros medios
 lienzo no sabe de chats: quien lo abre pone `en_linea::en_lienzo` mientras
 dura.
 
+## Las marcas de texto (para la web de la nube)
+
+Desde el 2-nov-2026 lo anotado de un documento trae un fichero más,
+`anot-<uid>.marcas-texto.json` (terminación `MARCAS_TEXTO`): las marcas
+(resaltar, ondulada, subrayar, tachar, tapar) que se hicieron leyendo una
+**nota Markdown** o una **página web**. Sube y baja como los demás JSON de
+lo anotado: entero, gana el más nuevo (no es un delta de trazos).
+
+Para que la web de la nube (AGENTE) las enseñe, lo mismo que hace el PC:
+
+- El formato, con un ejemplo, está en
+  `docs/sincronizar-marcos-vistas-y-tinta.md` §3.10: cada marca lleva su
+  cita como los selectores de la W3C (`TextQuoteSelector` con `exact`,
+  `prefix`, `suffix`; `TextPositionSelector` con `start`, `end` en UTF-16).
+- `sobre: "markdown"`: las posiciones cuentan sobre el `.md` tal cual (la
+  web tiene que llevarlas al HTML que pinta: lo más sencillo es buscar la
+  cita en el `.md`, y pintar sobre el texto renderizado buscando `exact` con
+  su contexto, sin las marcas de Markdown). `sobre: "html"`: sobre los nodos
+  de texto de `<body>` de la página, en orden, sin `script`/`style`/
+  `noscript`/`template`/`textarea`/`select`.
+- Buscar y pintar: `herramientas/lector-md/src/marcas-texto.mjs` es JS sin
+  dependencias (`ubicar`, `reglasCss`) y sirve tal cual en el navegador;
+  pintar con `CSS.highlights` no toca el DOM de la página.
+- Una marca que no se encuentra no se pinta y **no se borra** al reescribir.
+- Las celdas marcadas de una hoja de cálculo y lo marcado en un PDF o un
+  Word no son este fichero: son trazos de su capa (`marca-texto-*` en
+  `groupIds`), que la web ya pinta como la tinta.
+
 ## Pruebas
 
 - `cargo test -p pindesk-sincro nube`: los deltas (regla, empates,

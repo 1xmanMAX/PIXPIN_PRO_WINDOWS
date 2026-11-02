@@ -2375,6 +2375,7 @@ pin-v2-marca-subrayar = Sublinhar
 pin-v2-marca-tachar = Riscar
 pin-v2-marca-tapar = Cobrir
 pin-v2-marca-quitar = Remover a marca
+marcas-texto-color = Cor
 pin-v2-modo-texto = Selecionar texto
 pin-v2-leyendo = Lendo…
 pin-v2-invertir-colores = Inverter cores

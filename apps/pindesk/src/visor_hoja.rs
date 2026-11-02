@@ -36,6 +36,7 @@
 
 mod capa;
 mod logica;
+mod marcar;
 mod marcos;
 mod riel;
 
@@ -419,6 +420,8 @@ struct Estado<'l> {
     sin_interfaz: bool,
     /// «En línea / Sin conexión», si el libro es de un chat de la nube.
     en_linea: Option<crate::en_linea::EnLinea>,
+    /// La barrita de marcar celdas (`marcar`).
+    marcar: marcar::Marcar,
 }
 
 fn zonas(ancho: f32, alto: f32, e: f32) -> Zonas {
@@ -1882,6 +1885,7 @@ fn ver_en(
         vistas: crate::marcos_doc::Vistas::de_documento(ruta),
         sin_interfaz: false,
         en_linea: ruta.map(crate::en_linea::EnLinea::de),
+        marcar: marcar::Marcar::default(),
     };
     let activa = est.activa;
     est.abrir_hoja(activa, motor);
@@ -2118,6 +2122,15 @@ fn ver_en(
                 }
                 EventoOverlay::BotonPulsado(_) if matches!(est.gesto, Some(Gesto::Mano { .. })) => {
                 }
+                // Un clic en la barrita de marcar celdas es suyo.
+                EventoOverlay::BotonPulsado(p)
+                    if {
+                        est.raton = local(p);
+                        marcar::pulsar(&mut est, textos)
+                    } =>
+                {
+                    hay_que_pintar = true;
+                }
                 EventoOverlay::BotonPulsado(p) => {
                     est.raton = local(p);
                     // Escribiendo, un clic fuera de la celda deja escrito lo
@@ -2169,6 +2182,7 @@ fn ver_en(
                 EventoOverlay::BotonSoltado(p) => {
                     est.raton = local(p);
                     est.soltar(textos, motor);
+                    marcar::al_soltar(&mut est);
                     est.encima_de = est.barra_bajo_el_raton();
                     ventana.soltar_raton();
                     hay_que_pintar = true;
@@ -2287,10 +2301,11 @@ fn ver_en(
                     // Ctrl+E: el «Exportar» comun (PDF, HTML, .pindesk, imagen, CSV, original).
                     // Ctrl+Z / Ctrl+Y viendo: lo ultimo que anoto el asistente.
                     if al_visor && !est.editando && ctrl && !alt && (vk == VK_Z || vk == VK_Y) {
+                        // Y las celdas marcadas (`marcar`).
                         let hecho = if vk == VK_Z && !shift {
-                            est.anotado.deshacer()
+                            est.anotado.deshacer() || marcar::deshacer(&mut est)
                         } else {
-                            est.anotado.rehacer()
+                            est.anotado.rehacer() || marcar::rehacer(&mut est)
                         };
                         hay_que_pintar |= hecho;
                         if hecho {
@@ -2963,6 +2978,8 @@ fn pintar(p: &Pintor, est: &mut Estado, textos: &Catalogo) {
     if let Some(n) = &est.en_linea {
         n.pintar(p, 14.0 * e, z.hoja.y + 14.0 * e, e, textos);
     }
+    // La barrita de marcar celdas, encima de lo elegido.
+    marcar::pintar(p, est, textos);
 
     if let Some((texto, _)) = &est.aviso {
         crate::lector::aviso_en(p, texto, ancho / 2.0, z.pestanas.y - 56.0 * e, e);

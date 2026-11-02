@@ -47,8 +47,9 @@ Se añadieron a `TERMINACIONES` (PC):
 |---|---|---|
 | `.marcos.json` | `MARCOS` | los marcos numerados de un documento |
 | `.vistas.json` | `VISTAS` | lo que guarda cada marcador además de su sitio |
+| `.marcas-texto.json` | `MARCAS_TEXTO` | las marcas de texto de una nota o una página web (2-nov, §3.10) |
 
-**Android tiene que añadir las mismas dos a su `TERMINACIONES`** (Kotlin).
+**Android tiene que añadir las mismas a su `TERMINACIONES`** (Kotlin).
 Sin eso las guarda al llegar pero no las lista: el PC las reenvía en cada
 ronda, Android no devuelve sus cambios y no las borra con el mensaje (ya pasa
 con `.asistente.json`).
@@ -288,6 +289,103 @@ ya las ve y las puede borrar como dibujo.
   `apps/pindesk/src/lector_pdf/marcar.rs` (el lector de PDF y Office),
   `apps/pindesk/src/visor/marcar.rs` (el de Word, libros y páginas).
 
+- **Hojas de cálculo** (2-nov-2026): leyendo, con dos celdas o más elegidas
+  con el ratón sale la misma barrita y **se marca la celda entera** (no un
+  trozo de su texto: casi siempre es una cifra, y el texto se recorta o se
+  desborda según el ancho de la columna, que cambia de un aparato a otro).
+  Resaltar y tapar: **un** rectángulo que cubre el rango; subrayar, tachar y
+  ondulada: una raya **por fila**, de lado a lado del rango. Van en la capa
+  de la hoja (`anot-<uid>-h<i>`, §3.5) en sus unidades (la rejilla de
+  `rejilla_de_la_capa`), con el mismo grupo `marca-texto-<ms>` y las mismas
+  formas. Código: `apps/pindesk/src/visor_hoja/marcar.rs`.
+
+### 3.10 Marcas de texto de las notas y las páginas web — `anot-<uid>.marcas-texto.json` (2-nov-2026)
+
+En una nota Markdown (el lector de notas) y en una página web (el visor de
+HTML) el texto **se recoloca** con el ancho de la ventana, así que una caja no
+sirve: cada marca guarda **su cita**, como los selectores de la W3C (*Web
+Annotation Data Model*: `TextQuoteSelector` y `TextPositionSelector`), y al
+abrir se vuelve a buscar. Es un **fichero nuevo**, uno por documento:
+
+- De un adjunto del chat o de una nota (mensaje `NOTA` u hoja `nota`):
+  `pins/draw/anot-<uid>.marcas-texto.json` — viaja y se borra con su mensaje
+  (terminación `MARCAS_TEXTO`). Vacío se escribe `{"marcas":[]}`, no se borra.
+- Un fichero suelto: `<fichero>.pixpin-marcas-texto.json` a su lado (no
+  viaja; sin marcas se quita). Al abrirlo como adjunto pasa una vez al
+  mensaje (`del_mensaje_o_junto`).
+
+```json
+{
+  "version": 1,
+  "sobre": "markdown",
+  "marcas": [
+    {
+      "id": "marca-texto-1793582613265",
+      "marca": "ondulada",
+      "color": "#5BA4F5",
+      "cuando": 1793582613265,
+      "cita": {"type": "TextQuoteSelector", "exact": "el curado empieza",
+               "prefix": "… ya está **hormigonada** y ", "suffix": " mañana.\n\nOtra…"},
+      "posicion": {"type": "TextPositionSelector", "start": 44, "end": 61}
+    }
+  ]
+}
+```
+
+- `sobre`: en qué texto se cuentan las posiciones. `markdown`: el `.md` tal
+  cual (las mismas posiciones que los comentarios, `.comentarios.json`).
+  `html`: los nodos de texto de `<body>` en orden, sin `<script>`, `<style>`,
+  `<noscript>`, `<template>`, `<textarea>`, `<select>`/`<option>` ni lo que
+  pone PinDesk (`#pixpin-riel-capa`, `#pixpin-marcas`). Es el
+  `textContent` de un `TreeWalker` de texto: cualquier `WebView` lo cuenta
+  igual.
+- Posiciones en **unidades UTF-16** (las de JavaScript y Kotlin). `prefix` y
+  `suffix`: hasta 32 de cada lado (sin partir un par sustituto). La cita va
+  sin blancos en los bordes.
+- `marca`: `resaltar`, `ondulada`, `subrayar`, `tachar` o `tapar`; `color`:
+  uno de los cinco de §3.9. Lo que no se conozca se conserva al reescribir.
+- **Volver a encontrarla** (en este orden): (1) la cita tal cual en su
+  `start` con el mismo contexto; (2) la aparición de la cita con más contexto
+  igual y, si empatan, la más cercana a `start`; (3) lo que haya entre su
+  `prefix` y su `suffix` (también con solo 16 u 8 letras pegadas a la cita;
+  no más del doble de la cita + 64); (4) la **parecida**: el trozo con menos
+  cambios (como mucho uno por cada cinco letras; citas de menos de 5 letras
+  no) buscado alrededor de los trozos de la cita que siguen tal cual. Si
+  nada, la marca queda **sin sitio**: no se pinta, no se borra (vuelve si el
+  texto vuelve). Las cuentas, con pruebas: `herramientas/lector-md/src/marcas-texto.mjs`.
+- **Pintarlas**: resaltar = fondo del color al 40 % (`#RRGGBB66`); tapar =
+  fondo y letra del color (no deja leer); subrayar y tachar = raya de 2 px;
+  ondulada = raya ondulada de 1,5 px. En una página web el PC usa
+  `CSS.highlights` (no toca el DOM); en la nota, decoraciones de CodeMirror.
+- **Juntar** dos versiones (la página abierta y lo que trajo la
+  sincronización): por `id`, lo nuevo de cada lado entra, lo quitado en un
+  lado se va si el otro no lo cambió; si los dos cambiaron la misma, gana la
+  de quien guarda (`pindesk_docs::ancla_texto::fusionar`). Entre aparatos el
+  fichero entero gana el más nuevo, como los demás JSON (§1).
+- **La interfaz**: los mismos botones que la barrita del PDF. En la nota van
+  en la misma burbuja que «Comentar», solo leyendo; un clic en una marca la
+  elige (otra marca la cambia, un color la pinta, el círculo la quita);
+  Ctrl+Z / Ctrl+Y dentro de la página.
+- **Código**: `crates/pindesk-docs/src/ancla_texto.rs` (fichero y fusión),
+  `apps/pindesk/src/marcas_web.rs` (dónde va, leer y guardar),
+  `herramientas/lector-md/src/marcas-texto.mjs` (anclar y buscar),
+  `marcas-nota.js` (la nota), `marcas-pagina.js` (cualquier página;
+  construido en `apps/pindesk/recursos/marcas-pagina.js`), `barra-marcas.js`.
+
+**Dónde no hay marcas de texto** (2-nov-2026), y por qué:
+
+- **El pin de Office** (Visio, correos `.msg`, un Word/PowerPoint que no se
+  deja convertir): lo pinta el previsualizador de Office en su propia
+  ventana; no da el texto ni sus posiciones (ni su desplazamiento: allí
+  tampoco hay marcadores). Lo que se convierte (`.doc`, `.ppt`, RTF,
+  OpenDocument) ya se lee en el visor propio, con marcas.
+- **Los mensajes del chat y la línea de tiempo**: son conversación y
+  rótulos cortos, no un documento que se lee; una marca ahí sería de todos
+  los del chat. Para marcar lo de un mensaje se abre como nota.
+- **La transcripción de una clase grabada** (`estudiar_clase`): ya resalta
+  lo que suena y lleva sus marcadores por minuto; marcar su texto queda
+  para más adelante (su texto se rehace al transcribir otra vez).
+
 ## 4. Lo que NO viaja (a propósito)
 
 - Lo de un documento que **no es un adjunto** de un chat: queda al lado del
@@ -348,7 +446,8 @@ ya las ve y las puede borrar como dibujo.
 
 | Pieza | Fichero |
 |---|---|
-| Lista blanca | `crates/pindesk-sincro/src/anotado.rs` (`MARCOS`, `VISTAS`) |
+| Lista blanca | `crates/pindesk-sincro/src/anotado.rs` (`MARCOS`, `VISTAS`, `MARCAS_TEXTO`) |
+| Marcas de texto de notas y páginas | `crates/pindesk-docs/src/ancla_texto.rs`, `apps/pindesk/src/marcas_web.rs`, `herramientas/lector-md/src/marcas-*.js` |
 | Marcos y vistas de documentos | `apps/pindesk/src/marcos_doc.rs` |
 | A qué fichero va cada cosa | `apps/pindesk/src/anotado_del_adjunto.rs` (`del_mensaje_o_junto`, `tinta_de_la_hoja_del_libro`, `tinta_de_la_pagina`) |
 | Planos y modelos | `crates/pindesk-cad/src/marcadores.rs`, `apps/pindesk/src/plano_cad.rs` (`SitioDeMarcadores`) |
@@ -369,3 +468,10 @@ ya las ve y las puede borrar como dibujo.
 6. La interfaz y las teclas de §5.
 7. Marcas de texto (§3.9): opcional; reconocer el grupo `marca-texto-*` para
    ofrecer la misma barrita al elegir texto en el lector de PDF.
+8. Marcas de texto de notas y páginas web (§3.10): añadir
+   `.marcas-texto.json` a `TERMINACIONES`; en el `WebView` del lector de
+   notas y del visor de HTML, leer el fichero, buscar cada cita en el texto
+   (el `.md` o los nodos de texto de `<body>`, según `sobre`) con el orden de
+   §3.10 y pintarla; al marcar, escribir la lista entera (atómico, `[]` en
+   vez de borrar). Se puede usar tal cual `marcas-texto.mjs` (sin
+   dependencias). Excel: nada nuevo, son trazos de la capa de la hoja.

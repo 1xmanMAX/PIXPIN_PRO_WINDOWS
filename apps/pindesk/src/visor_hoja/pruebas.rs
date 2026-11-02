@@ -59,6 +59,7 @@ fn estado<'l>(libro: &'l mut Libro, e: f32, ancho: u32, alto: u32) -> Estado<'l>
         vistas: Default::default(),
         sin_interfaz: false,
         en_linea: None,
+        marcar: super::marcar::Marcar::default(),
     }
 }
 
@@ -219,7 +220,7 @@ fn editar_solo_en_las_hojas_del_chat() {
 
 /// Un libro de tablas del chat (como el que se ve de una hoja del chat),
 /// con `filas` x `columnas` numeros.
-fn libro_de_tabla(filas: u32, columnas: u32) -> Libro {
+pub(super) fn libro_de_tabla(filas: u32, columnas: u32) -> Libro {
     let mut t = pindesk_proyecto::tabla::Tabla::default();
     for f in 0..filas {
         for c in 0..columnas {
@@ -643,7 +644,7 @@ pub(super) fn estado_de_prueba(libro: &mut Libro) -> Estado<'_> {
 }
 
 /// Una hoja de tabla abierta y leida entera, de `ancho` x `alto`.
-fn abierta_de_prueba(libro: &mut Libro, ancho: u32, alto: u32) -> Estado<'_> {
+pub(super) fn abierta_de_prueba(libro: &mut Libro, ancho: u32, alto: u32) -> Estado<'_> {
     let mut est = estado(libro, 1.0, ancho, alto);
     est.digito = Some(7.0);
     est.abrir_hoja_con_digito(0);

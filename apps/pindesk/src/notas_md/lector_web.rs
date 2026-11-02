@@ -40,8 +40,8 @@
 //! # Lo que se dicen la pagina y PinDesk
 //!
 //! Textos JSON con un `tipo`. De PinDesk a la pagina: `abrir` (el texto, el
-//! idioma, las preferencias), `guardado`, `adjuntado`, `texto_externo` y
-//! `cerrando`. De la pagina a PixPin: [`DeLaPagina`].
+//! idioma, las preferencias y las marcas de texto), `guardado`, `adjuntado`,
+//! `texto_externo`, `marcas_texto` (las que llegaron al disco) y `cerrando`. De la pagina a PixPin: [`DeLaPagina`].
 
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
@@ -162,6 +162,11 @@ pub enum DeLaPagina {
         texto: String,
         hilo: String,
         si: bool,
+    },
+    /// Las marcas de texto (resaltar, subrayar...) tras cada cambio, la
+    /// lista entera (`crate::marcas_web`).
+    MarcasTexto {
+        marcas: serde_json::Value,
     },
     Compartir,
     /// «⚡ Lectura veloz» del ⋮ (27-oct-2026): la nota, ya guardada, en la
@@ -529,6 +534,12 @@ pub fn correr(cx: Contexto, repuesto: Option<Repuesto>) -> anyhow::Result<Salida
     let clave_vista = super::clave_de_vista(&cx.actual.borrow());
     let (vista, solo_esta) = leer_vista(&raiz, &clave_vista);
     let de_proyecto = !matches!(*cx.actual.borrow(), Destino::Fichero { .. });
+    // Las marcas de texto (2-nov-2026): junto a lo demas de la nota (su
+    // tinta, sus comentarios), por la misma base que el riel.
+    let mut marcas = crate::marcas_web::MarcasDeLaPagina::abrir(
+        documento_del_riel(&raiz, &cx.actual.borrow()).as_deref(),
+        pindesk_docs::ancla_texto::SOBRE_MARKDOWN,
+    );
     let abrir = json!({
         "tipo": "abrir",
         "idioma": cx.idioma.base().codigo(),
@@ -542,6 +553,7 @@ pub fn correr(cx: Contexto, repuesto: Option<Repuesto>) -> anyhow::Result<Salida
         },
         // La cabecera propia no: la barra es la comun de los visores.
         "enPin": true,
+        "marcasTexto": {"marcas": marcas.lista(), "rotulos": crate::marcas_web::rotulos(cx.textos)},
     })
     .to_string();
     let mut medios: Option<super::incrustados::MediosDeLaNota> = None;
@@ -740,6 +752,7 @@ pub fn correr(cx: Contexto, repuesto: Option<Repuesto>) -> anyhow::Result<Salida
                             if let Some((antes, nuevo)) = cambio {
                                 (cx.al_cambiar_destino)(&antes, &nuevo);
                                 comentarios.mudar(&raiz, &nuevo);
+                                marcas.mudar(documento_del_riel(&raiz, &nuevo).as_deref());
                             }
                             if ok {
                                 ultimo_conocido = texto;
@@ -900,6 +913,13 @@ pub fn correr(cx: Contexto, repuesto: Option<Repuesto>) -> anyhow::Result<Salida
                                 }
                             }
                         }
+                        DeLaPagina::MarcasTexto { marcas: lista } => {
+                            if let Some(l) = marcas.de_la_pagina(&lista) {
+                                pagina.mandar(
+                                    &json!({"tipo": "marcas_texto", "marcas": l}).to_string(),
+                                );
+                            }
+                        }
                         DeLaPagina::ComentariosPedir { texto } => {
                             pagina.mandar(&comentarios.json(&texto).to_string());
                         }
@@ -1008,6 +1028,10 @@ pub fn correr(cx: Contexto, repuesto: Option<Repuesto>) -> anyhow::Result<Salida
                 pagina.mandar(
                     &json!({"tipo": "capacidades", "capacidades": {"lecturaVeloz": r}}).to_string(),
                 );
+            }
+            // Marcas que llegaron con la sincronizacion.
+            if let Some(l) = marcas.mirar() {
+                pagina.mandar(&json!({"tipo": "marcas_texto", "marcas": l}).to_string());
             }
             let ahora = huella(&raiz, &cx.actual.borrow());
             if ahora != firma {
@@ -1295,6 +1319,12 @@ mod pruebas {
             DeLaPagina::LecturaVeloz {
                 texto: "# Tema 3".into(),
                 titulo: "Tema 3".into()
+            }
+        );
+        assert_eq!(
+            serde_json::from_str::<DeLaPagina>(r#"{"tipo":"marcas_texto","marcas":[]}"#).unwrap(),
+            DeLaPagina::MarcasTexto {
+                marcas: serde_json::json!([])
             }
         );
         // Caso negativo: un tipo que no existe no se toma por otro.

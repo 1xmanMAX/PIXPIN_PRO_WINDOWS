@@ -17,6 +17,8 @@ import { crearBuscador } from './buscador.js'
 import { instalarMaqueta, reaplicarMaqueta } from './maqueta.js'
 import { TEXTOS } from './textos.js'
 import { crearComentarios, resaltados } from './comentarios.js'
+import { crearMarcas, marcasPintadas } from './marcas-nota.js'
+import { montarBotones, CSS as CSS_MARCAS } from './barra-marcas.js'
 
 const $ = id => document.getElementById(id)
 const desdeFuera = Annotation.define()
@@ -53,7 +55,11 @@ function ponerLectura(si) {
   if (si) {
     flotante.hidden = true
     guardarYa()
-  } else vista?.focus()
+  } else {
+    rangoDeMarca = null
+    marcasNota.soltar()
+    vista?.focus()
+  }
   mandarEstado()
 }
 
@@ -65,9 +71,12 @@ function orden(que) {
     case 'editar':
       return ponerLectura(false)
     case 'deshacer':
+      // Leyendo, lo ultimo que se hizo es marcar (el texto no se toca).
+      if (leyendo && marcasNota.deshacer()) return
       vista.focus()
       return undo(vista)
     case 'rehacer':
+      if (leyendo && marcasNota.rehacer()) return
       vista.focus()
       return redo(vista)
     case 'buscar':
@@ -590,6 +599,7 @@ function menuContextual(x, y) {
     return abrirMenu(
       [
         { icono: '💬', texto: tx.comentar, atajo: 'Ctrl+Alt+M', accion: () => com.comentar(elegido || vista.state.selection.main) },
+        ...(elegido ? [{ icono: '🖍', texto: rotulosMarcas.resaltar || 'Resaltar', accion: () => alMarcar('resaltar', elegido) }] : []),
         ...(copiado ? [{ texto: tx.copiar, atajo: 'Ctrl+C', accion: () => navigator.clipboard.writeText(copiado) }] : []),
         { texto: tx.buscar, atajo: 'Ctrl+F', accion: ORDENES.buscar },
         'linea',
@@ -761,8 +771,9 @@ function rangoElegido() {
 function mostrarFlotante() {
   if (!vista) return
   const st = vista.state
-  const r = leyendo ? seleccionLeyendo() : st.selection.main
-  // Leyendo solo sale «Comentar» (la barra de formato es para escribir).
+  const r = leyendo ? seleccionLeyendo() || rangoDeMarca : st.selection.main
+  // Leyendo salen «Comentar» y los botones de marcar (la barra de formato
+  // es para escribir).
   if (!r || r.empty || (!leyendo && !vista.hasFocus) || menuActual) {
     flotante.hidden = true
     return
@@ -791,8 +802,47 @@ document.addEventListener('mouseup', () => {
   if (leyendo) requestAnimationFrame(mostrarFlotante)
 })
 document.addEventListener('selectionchange', () => {
-  if (leyendo && !flotante.hidden && !seleccionLeyendo()) flotante.hidden = true
+  if (leyendo && !flotante.hidden && !seleccionLeyendo() && !rangoDeMarca) flotante.hidden = true
 })
+
+// ------------------------------------------------------------------ marcar
+
+// Las marcas de la nota (`marcas-nota.js`): sus botones van en la misma
+// burbuja que «Comentar», solo leyendo.
+const marcasNota = crearMarcas({ vistaDe: () => vista, mandar })
+let rotulosMarcas = {}
+// La marca elegida con un clic (sin texto elegido): su sitio.
+let rangoDeMarca = null
+{
+  const estilo = document.createElement('style')
+  estilo.textContent = CSS_MARCAS
+  document.head.append(estilo)
+}
+const separador = Object.assign(document.createElement('span'), { className: 'sep de-marcas' })
+const barraMarcas = montarBotones(flotante, que => alMarcar(que))
+flotante.insertBefore(separador, flotante.querySelector('[data-f="emoji"]'))
+flotante.insertBefore(barraMarcas.caja, flotante.querySelector('[data-f="emoji"]'))
+barraMarcas.ponerColor(marcasNota.color())
+
+function alMarcar(que, rango) {
+  const r = rango || seleccionLeyendo() || rangoDeMarca
+  if (que === 'copiar') {
+    const t = window.getSelection()?.toString() || (r ? vista.state.doc.sliceString(r.from, r.to) : '')
+    if (t) navigator.clipboard.writeText(t)
+    flotante.hidden = true
+    return
+  }
+  const hecho = marcasNota.pulsar(que, r)
+  barraMarcas.ponerColor(marcasNota.color())
+  if (que === 'quitar' && hecho) {
+    rangoDeMarca = null
+    window.getSelection()?.removeAllRanges()
+    flotante.hidden = true
+  } else if (rangoDeMarca && hecho === 'hecho') {
+    // La marca elegida ya cambio: sigue elegida donde esta.
+    requestAnimationFrame(mostrarFlotante)
+  }
+}
 flotante.addEventListener('mousedown', e => e.preventDefault())
 flotante.addEventListener('click', e => {
   const b = e.target.closest('[data-f]')
@@ -1185,6 +1235,16 @@ document.addEventListener(
       }
       return
     }
+    const k = e.key.toLowerCase()
+    if (leyendo && e.ctrlKey && !e.altKey && (k === 'z' || k === 'y')) {
+      if (k === 'y' || e.shiftKey ? marcasNota.rehacer() : marcasNota.deshacer()) {
+        e.preventDefault()
+        e.stopPropagation()
+        rangoDeMarca = null
+        flotante.hidden = true
+      }
+      return
+    }
     if (e.key === 'F11') {
       e.preventDefault()
       mandar({ tipo: 'ventana', accion: 'pantalla' })
@@ -1224,12 +1284,14 @@ function crear(textoInicial) {
         markdown({ base: markdownLanguage, addKeymap: false }),
         vivo,
         resaltados,
+        marcasPintadas,
         placeholder(tx.pista),
         EditorView.contentAttributes.of({ spellcheck: 'true', lang: 'es' }),
         keymap.of([...atajos(), ...searchKeymap, ...historyKeymap, { key: 'Mod-y', run: redo }, ...defaultKeymap]),
         EditorView.updateListener.of(u => {
           if (u.docChanged) {
             ponerTitulo()
+            marcasNota.alCambiar(u.transactions.some(t => t.annotation(desdeFuera)))
             if (!u.transactions.some(t => t.annotation(desdeFuera))) {
               version++
               programarGuardado()
@@ -1259,6 +1321,12 @@ function crear(textoInicial) {
           mousedown(e, view) {
             flotante.hidden = true
             com.alClicEnTexto(e)
+            // Leyendo, un clic en una marca la elige (la burbuja sale al
+            // soltar): otra marca la cambia y el circulo la quita.
+            if (leyendo && e.button === 0) {
+              const r = marcasNota.elegirEn(e.target)
+              rangoDeMarca = r ? { from: r[0], to: r[1], empty: false } : null
+            }
             if (clicEnCasilla(view, e)) return true
             const enlace = e.target.closest?.('.pp-enlace')
             if (enlace && e.ctrlKey) {
@@ -1387,6 +1455,10 @@ function recibir(msg) {
       document.body.classList.toggle('en-pin', enPin)
       aplicarPreferencias()
       crear(msg.texto || '')
+      rangoDeMarca = null
+      rotulosMarcas = msg.marcasTexto?.rotulos || {}
+      barraMarcas.ponerRotulos(rotulosMarcas)
+      marcasNota.recibir(msg.marcasTexto?.marcas || [])
       com.pedir()
       version = guardada = 0
       ultimoTitulo = null
@@ -1416,6 +1488,10 @@ function recibir(msg) {
       break
     case 'comentarios':
       com.recibir(msg)
+      break
+    case 'marcas_texto':
+      // Llegaron otras del disco (la sincronizacion): las de alli.
+      marcasNota.recibir(msg.marcas || [])
       break
     case 'hojas': {
       // El selector de hojas: las del proyecto de la nota arriba, las de

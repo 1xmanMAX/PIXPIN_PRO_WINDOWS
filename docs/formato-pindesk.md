@@ -53,7 +53,7 @@ escribir el nuevo (y se apunta aquí).
 |---|---|---|---|
 | QR que enseña el PC (enviar, recibir, invitar a un chat) | `pixpin-envio:1:…`, `pixpin-recibe:1:…`, `pixpin-chat:1:…` | `pindesk-envio:`, `pindesk-recibe:`, `pindesk-chat:` | sí |
 | Rutas portátiles dentro de los datos (cuaderno, notas, tareas, lecciones, memoria) | `pixpin:files/<ruta>` | `pindesk:files/<ruta>` | no (hay que enseñárselo antes a todos) |
-| Ficheros al lado de un documento y dentro de `archivos/` de un chat | `<doc>.pixpin-lectura` (y su cabecera `pixpin-lectura N`), `<doc>.pixpin-anotado/`, `<doc>.pixpin-marcos`, `<doc>.pixpin-vistas`, `<lienzo>.excalidraw.pixpin-marcas`, `<lienzo>.excalidraw.pixpin-vistas` | `.pindesk-lectura`, `.pindesk-anotado/`… | no |
+| Ficheros al lado de un documento y dentro de `archivos/` de un chat | `<doc>.pixpin-lectura` (y su cabecera `pixpin-lectura N`), `<doc>.pixpin-anotado/`, `<doc>.pixpin-marcos`, `<doc>.pixpin-vistas`, `<doc>.pixpin-marcas-texto.json` (2-nov-2026: las marcas de texto de una nota o una página web; en un adjunto van en `anot-<uid>.marcas-texto.json`, ver `docs/sincronizar-marcos-vistas-y-tinta.md` §3.10), `<lienzo>.excalidraw.pixpin-marcas`, `<lienzo>.excalidraw.pixpin-vistas` | `.pindesk-lectura`, `.pindesk-anotado/`… | no |
 | Dibujos sobre una imagen y listas sueltas (formato interno) | `.pixpin2d`, `.pixpin-lista` | `.pindesk2d`, `.pindesk-lista` | no |
 | Fotos y carpeta del móvil | `PixPin_<fecha>.png`, `Pictures/PixPin` | los decide Android | — (el PC los acepta con cualquier nombre) |
 

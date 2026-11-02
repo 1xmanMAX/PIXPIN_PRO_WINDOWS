@@ -921,6 +921,23 @@ body.leyendo .flotante .b[data-f='comentar'] {
 body.leyendo .flotante .rotulo {
   display: inline;
 }
+/* Y los botones de marcar (2-nov-2026), en la misma burbuja: solo leyendo. */
+.flotante .pp-marcas,
+.flotante .sep.de-marcas {
+  display: none;
+}
+body.leyendo .flotante .pp-marcas {
+  display: flex;
+}
+body.leyendo .flotante .sep.de-marcas,
+body.leyendo .flotante .pp-marcas .sep {
+  display: block;
+}
+/* La marca elegida con un clic: un borde, sin tapar su color. */
+.pp-mt-elegida {
+  outline: 1.5px solid var(--acento);
+  outline-offset: 1px;
+}
 .flotante .b {
   height: 30px;
   min-width: 30px;

@@ -2432,6 +2432,7 @@ pin-v2-marca-subrayar = 下划线
 pin-v2-marca-tachar = 删除线
 pin-v2-marca-tapar = 遮盖
 pin-v2-marca-quitar = 移除标记
+marcas-texto-color = 颜色
 pin-v2-modo-texto = 选择文字
 pin-v2-leyendo = 正在识别…
 pin-v2-invertir-colores = 反转颜色

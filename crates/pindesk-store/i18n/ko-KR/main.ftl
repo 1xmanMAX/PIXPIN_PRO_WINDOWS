@@ -2432,6 +2432,7 @@ pin-v2-marca-subrayar = 밑줄
 pin-v2-marca-tachar = 취소선
 pin-v2-marca-tapar = 가리기
 pin-v2-marca-quitar = 표시 제거
+marcas-texto-color = 색상
 pin-v2-modo-texto = 텍스트 선택
 pin-v2-leyendo = 읽는 중…
 pin-v2-invertir-colores = 색 반전

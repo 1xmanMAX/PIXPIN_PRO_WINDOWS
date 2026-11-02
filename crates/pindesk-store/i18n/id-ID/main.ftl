@@ -2433,6 +2433,7 @@ pin-v2-marca-subrayar = Garis bawah
 pin-v2-marca-tachar = Coret
 pin-v2-marca-tapar = Tutupi
 pin-v2-marca-quitar = Hapus tanda
+marcas-texto-color = Warna
 pin-v2-modo-texto = Pilih teks
 pin-v2-leyendo = Membaca…
 pin-v2-invertir-colores = Balik warna

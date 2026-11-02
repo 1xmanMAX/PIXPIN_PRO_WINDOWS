@@ -2458,6 +2458,7 @@ pin-v2-marca-subrayar = Unterstreichen
 pin-v2-marca-tachar = Durchstreichen
 pin-v2-marca-tapar = Abdecken
 pin-v2-marca-quitar = Markierung entfernen
+marcas-texto-color = Farbe
 pin-v2-modo-texto = Text auswählen
 pin-v2-leyendo = Wird gelesen…
 pin-v2-invertir-colores = Farben umkehren

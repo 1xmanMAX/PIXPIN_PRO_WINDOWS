@@ -27,6 +27,9 @@
 //!   ([`lleva_anotado`], [`hojas_quitadas`]).
 //! - `anot-<uid>.asistente.json`: lo que penso el asistente al escribir esa
 //!   nota y su hoja de trabajo (13-oct, [`ASISTENTE`]).
+//! - `anot-<uid>.marcas-texto.json`: **las marcas de texto** de una nota o
+//!   de una pagina web (resaltar, subrayar, tachar..., 2-nov,
+//!   [`MARCAS_TEXTO`]), ancladas por su cita.
 //!
 //! El PDF de un proyecto lleva su tinta en las hojas (ya viajan); sus
 //! marcadores y espacios van aqui con el codigo **del proyecto**. Y los
@@ -46,7 +49,7 @@ pub const CARPETA: &str = "pins/draw";
 pub const PREFIJO: &str = "anot-";
 
 /// Las terminaciones de lo anotado (`TERMINACIONES`): ni temporales ni otra cosa.
-pub const TERMINACIONES: [&str; 11] = [
+pub const TERMINACIONES: [&str; 12] = [
     ".excalidraw.gz",
     ".marcas",
     ".espacios",
@@ -58,6 +61,7 @@ pub const TERMINACIONES: [&str; 11] = [
     ASISTENTE,
     MARCOS,
     VISTAS,
+    MARCAS_TEXTO,
 ];
 
 /// Los marcos numerados de un documento (`anot-<uid>.marcos.json`, 20-oct,
@@ -68,6 +72,12 @@ pub const MARCOS: &str = ".marcos.json";
 /// Lo que guarda cada marcador ademas de su sitio (`anot-<uid>.vistas.json`,
 /// 20-oct): el zoom, o la camara y el estado de un plano o un modelo 3D.
 pub const VISTAS: &str = ".vistas.json";
+
+/// Las marcas de texto de una nota o una pagina web
+/// (`anot-<uid>.marcas-texto.json`, 2-nov): resaltar, subrayar, tachar...
+/// ancladas por su cita (`pindesk_docs::ancla_texto`). Ver
+/// `docs/sincronizar-marcos-vistas-y-tinta.md` §3.10.
+pub const MARCAS_TEXTO: &str = ".marcas-texto.json";
 
 /// La terminacion del marco de la tinta ([`MarcoDeLaHoja`]).
 pub const HOJA: &str = ".hoja";
@@ -806,6 +816,22 @@ mod pruebas {
             ["pins/draw/anot-ABCDE23456.comentarios.json"]
         );
         assert_eq!(rel(&del_pdf("ABCDE23456"), COMENTARIOS), rels[0]);
+    }
+
+    #[test]
+    fn las_marcas_de_texto_viajan_con_su_mensaje_y_su_temporal_no() {
+        let rels = [
+            "pins/draw/anot-ABCDE23456.marcas-texto.json",
+            "pins/draw/anot-ABCDE23456.marcas-texto.json.tmp",
+            "pins/draw/apuntes.md.pixpin-marcas-texto.json",
+        ];
+        let m = por_uid(rels);
+        assert_eq!(m.len(), 1);
+        assert_eq!(
+            m["ABCDE23456"],
+            ["pins/draw/anot-ABCDE23456.marcas-texto.json"]
+        );
+        assert_eq!(rel(&del_pdf("ABCDE23456"), MARCAS_TEXTO), rels[0]);
     }
 
     fn j(v: serde_json::Value) -> Json {
