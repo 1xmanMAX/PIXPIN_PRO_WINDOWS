@@ -1300,8 +1300,6 @@ chat-figura-vacia = Essa tela está vazia: não há nada para salvar
 figuras-titulo = Formas
 figuras-buscar = Pesquisar uma forma…
 # El interruptor ☀/☾ de los paneles de figuras: las plantillas de día o sus gemelas «(noche)».
-figuras-dia = Dia
-figuras-noche = Noite
 figuras-sin-resultados = Nenhuma forma tem isso no nome nem nos textos.
 figuras-de-serie = padrão
 figuras-tuya = sua

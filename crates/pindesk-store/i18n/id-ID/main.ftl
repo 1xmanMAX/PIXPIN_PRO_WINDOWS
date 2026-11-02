@@ -1353,8 +1353,6 @@ chat-figura-vacia = Kanvas itu kosong: tidak ada yang bisa disimpan
 figuras-titulo = Bentuk
 figuras-buscar = Cari bentuk…
 # The ☀/☾ switch of the shape panels: day templates or their «(night)» twins.
-figuras-dia = Siang
-figuras-noche = Malam
 figuras-sin-resultados = Tidak ada bentuk dengan itu di nama atau teksnya.
 figuras-de-serie = bawaan
 figuras-tuya = milik Anda

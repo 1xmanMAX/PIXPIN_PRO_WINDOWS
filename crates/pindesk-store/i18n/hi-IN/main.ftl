@@ -1364,8 +1364,6 @@ chat-figura-vacia = वह कैनवस खाली है: सहेजन�
 figuras-titulo = आकृतियाँ
 figuras-buscar = कोई आकृति खोजें…
 # The ☀/☾ switch of the shape panels: day templates or their «(night)» twins.
-figuras-dia = दिन
-figuras-noche = रात
 figuras-sin-resultados = किसी आकृति के नाम या टेक्स्ट में यह नहीं है।
 figuras-de-serie = अंतर्निहित
 figuras-tuya = आपकी

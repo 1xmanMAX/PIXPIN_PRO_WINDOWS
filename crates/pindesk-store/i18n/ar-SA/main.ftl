@@ -1408,8 +1408,6 @@ chat-figura-vacia = تلك اللوحة فارغة: لا شيء لحفظه
 figuras-titulo = الأشكال
 figuras-buscar = ابحث عن شكل…
 # The ☀/☾ switch of the shape panels: day templates or their «(night)» twins.
-figuras-dia = نهاري
-figuras-noche = ليلي
 figuras-sin-resultados = لا يوجد شكل يحتوي على ذلك في اسمه أو نصوصه.
 figuras-de-serie = مدمج
 figuras-tuya = لك

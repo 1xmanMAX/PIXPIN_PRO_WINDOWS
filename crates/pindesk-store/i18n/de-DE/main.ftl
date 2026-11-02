@@ -1364,8 +1364,6 @@ chat-figura-vacia = Diese Leinwand ist leer: nichts zu speichern
 figuras-titulo = Formen
 figuras-buscar = Form suchen…
 # The ☀/☾ switch of the shape panels: day templates or their «(night)» twins.
-figuras-dia = Tag
-figuras-noche = Nacht
 figuras-sin-resultados = Keine Form enthält das in Name oder Texten.
 figuras-de-serie = integriert
 figuras-tuya = eigene

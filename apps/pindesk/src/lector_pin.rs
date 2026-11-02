@@ -1106,7 +1106,9 @@ fn pintar_barra(
         };
         if activo {
             p.rellenar_redondeado(caja, 8.0 * e, AZUL);
-        } else if aspecto.encima_de == Some(*pieza) && *pieza != Pieza::Asa {
+        } else if aspecto.encima_de == Some(*pieza)
+            && !matches!(pieza, Pieza::Asa | Pieza::Oscuro)
+        {
             p.rellenar_redondeado(caja, 8.0 * e, ENCIMA);
         }
         let centrado = RectF {
@@ -1143,16 +1145,23 @@ fn pintar_barra(
                     TINTA,
                 );
             }
-            // La luna para pasar a oscuro; en oscuro, el sol para volver.
-            Pieza::Oscuro => p.icono(
-                if aspecto.oscuro {
-                    &material::LIGHT_MODE
-                } else {
-                    &material::DARK_MODE
-                },
-                centrado,
-                TINTA,
-            ),
+            // El ☀/☾ redondo del movil (2-nov-2026): dice el modo puesto,
+            // el sol de dia y la luna en oscuro.
+            Pieza::Oscuro => {
+                let d = (lado - 4.0 * e).min(caja.ancho - 4.0 * e);
+                crate::boton_dia_noche::pintar_quieto(
+                    p,
+                    RectF {
+                        x: caja.x + (caja.ancho - d) / 2.0,
+                        y: caja.y + (lado - d) / 2.0,
+                        ancho: d,
+                        alto: d,
+                    },
+                    aspecto.oscuro,
+                    aspecto.encima_de == Some(*pieza),
+                    &crate::boton_dia_noche::Colores::OSCURO,
+                );
+            }
             Pieza::Boton(AccionPin::Propio(id)) => {
                 if let Some(b) = propios.iter().find(|b| b.id == *id) {
                     p.icono(

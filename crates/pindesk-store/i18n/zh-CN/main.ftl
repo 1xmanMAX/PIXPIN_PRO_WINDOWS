@@ -1353,8 +1353,6 @@ chat-figura-vacia = 该画布为空：没有可保存的内容
 figuras-titulo = 形状
 figuras-buscar = 搜索形状…
 # The ☀/☾ switch of the shape panels: day templates or their «(night)» twins.
-figuras-dia = 日间
-figuras-noche = 夜间
 figuras-sin-resultados = 没有形状的名称或文字中包含该内容。
 figuras-de-serie = 内置
 figuras-tuya = 你的

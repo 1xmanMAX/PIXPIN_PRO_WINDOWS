@@ -1363,8 +1363,6 @@ chat-figura-vacia = O tuval boş: kaydedilecek bir şey yok
 figuras-titulo = Şekiller
 figuras-buscar = Şekil ara…
 # The ☀/☾ switch of the shape panels: day templates or their «(night)» twins.
-figuras-dia = Gündüz
-figuras-noche = Gece
 figuras-sin-resultados = Adında veya metinlerinde bu geçen bir şekil yok.
 figuras-de-serie = yerleşik
 figuras-tuya = sizin

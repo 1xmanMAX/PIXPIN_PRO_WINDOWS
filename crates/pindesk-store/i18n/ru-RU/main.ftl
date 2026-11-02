@@ -1383,8 +1383,6 @@ chat-figura-vacia = Этот холст пуст: сохранять нечег�
 figuras-titulo = Фигуры
 figuras-buscar = Поиск фигуры…
 # The ☀/☾ switch of the shape panels: day templates or their «(night)» twins.
-figuras-dia = День
-figuras-noche = Ночь
 figuras-sin-resultados = Ни в одном названии или тексте фигур этого нет.
 figuras-de-serie = встроенная
 figuras-tuya = ваша

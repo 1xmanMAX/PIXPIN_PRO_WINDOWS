@@ -1353,8 +1353,6 @@ chat-figura-vacia = そのキャンバスは空です：保存するものがあ
 figuras-titulo = 図形
 figuras-buscar = 図形を検索…
 # The ☀/☾ switch of the shape panels: day templates or their «(night)» twins.
-figuras-dia = 昼
-figuras-noche = 夜
 figuras-sin-resultados = 名前やテキストにそれを含む図形はありません。
 figuras-de-serie = 組み込み
 figuras-tuya = 自分の

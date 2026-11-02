@@ -1861,6 +1861,7 @@ fn pintar_cabecera(e: &mut Estado, p: &Pintor, w: f32, escala: f32, textos: &Cat
                 accion: Accion::Carpeta,
             },
         ],
+        dia_noche: None,
         mover: Accion::Mover,
         cerrar: Accion::Cerrar,
     };

@@ -1353,8 +1353,6 @@ chat-figura-vacia = 해당 캔버스가 비어 있어 저장할 것이 없습니
 figuras-titulo = 도형
 figuras-buscar = 도형 검색…
 # The ☀/☾ switch of the shape panels: day templates or their «(night)» twins.
-figuras-dia = 주간
-figuras-noche = 야간
 figuras-sin-resultados = 이름이나 텍스트에 해당 내용이 있는 도형이 없습니다.
 figuras-de-serie = 기본 제공
 figuras-tuya = 내 도형
