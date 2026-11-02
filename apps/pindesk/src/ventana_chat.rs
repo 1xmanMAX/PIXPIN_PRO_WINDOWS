@@ -186,6 +186,9 @@ mod microfono_flotante;
 /// Muestra en PNG de una foto con su descripcion (3-oct).
 #[cfg(test)]
 mod muestra_descripcion;
+/// La lista de chats de las muestras, con fechas y lineas de verdad.
+#[cfg(test)]
+mod muestra_lista;
 /// v2-menus: muestras en PNG de los menus nuevos.
 #[cfg(test)]
 mod muestra_menus;

@@ -525,8 +525,8 @@ fn muestra_de_la_voz_del_asistente() {
     };
     let miniaturas = crate::miniaturas::Miniaturas::nuevo();
     let previas = crate::miniaturas::Miniaturas::con_lado(PREVIA_LADO);
-    let fichas = vec![a.ficha.clone()];
-    let orden = vec![0usize];
+    let fichas = crate::ventana_chat::muestra_lista::fichas(&a.ficha, &a, ahora);
+    let orden = crate::ventana_chat::muestra_lista::orden(&fichas);
     let marcados = Default::default();
     let salida = std::env::var_os("PINDESK_MUESTRAS")
         .map(PathBuf::from)

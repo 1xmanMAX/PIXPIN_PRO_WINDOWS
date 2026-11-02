@@ -99,8 +99,8 @@ fn muestras_de_los_menus_v2() {
     let mut miniaturas = crate::miniaturas::Miniaturas::nuevo();
     let mut previas = crate::miniaturas::Miniaturas::con_lado(super::PREVIA_LADO);
     miniaturas.asegurar(&fotos, &motor);
-    let fichas = vec![ficha.clone()];
-    let orden = vec![0usize];
+    let fichas = crate::ventana_chat::muestra_lista::fichas(&ficha, &a, ahora);
+    let orden = crate::ventana_chat::muestra_lista::orden(&fichas);
     let marcados = Default::default();
     let salida = std::env::var_os("PINDESK_MUESTRAS")
         .map(std::path::PathBuf::from)
