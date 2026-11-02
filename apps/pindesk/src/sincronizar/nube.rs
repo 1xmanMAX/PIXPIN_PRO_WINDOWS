@@ -577,31 +577,41 @@ fn novedades(raiz: PathBuf) {
 
 // ------------------------------------------------- «En línea / Sin conexión»
 
-/// El documento de un visor, si es un adjunto de un chat de la nube:
-/// (carpeta de datos, chat, codigo del adjunto).
-pub(crate) fn documento(doc: &Path) -> Option<(PathBuf, String, String)> {
+/// Lo anotado de un visor en un chat de la nube: la carpeta de datos, el
+/// chat y la clave de lo anotado (el codigo del adjunto, `anot-<uid>…`, o la
+/// referencia de un lienzo, `pins/draw/<referencia>.excalidraw.gz`).
+pub(crate) type Sitio = (PathBuf, String, String);
+
+/// El documento de un visor, si es un adjunto de un chat de la nube.
+pub(crate) fn documento(doc: &Path) -> Option<Sitio> {
     let raiz = pindesk_proyecto::anotado::raiz_de(doc)?;
     let x = pindesk_proyecto::anotado::adjunto_de(&raiz, doc)?;
     (modo(&raiz, &x.chat) == Modo::Nube).then_some((raiz, x.chat, x.uid))
 }
 
-/// Si el documento esta «Sin conexión».
-pub(crate) fn sin_conexion(doc: &Path) -> bool {
-    documento(doc)
-        .is_some_and(|(raiz, chat, uid)| SinConexion::nuevo(&sincro(&raiz)).esta(&chat, &uid))
+/// El lienzo `referencia` de la ficha `ficha` (una hoja DIBUJO o PAGINA, o
+/// el lienzo de una foto), si su chat va por la nube.
+pub(crate) fn lienzo(raiz: &Path, ficha: &str, referencia: &str) -> Option<Sitio> {
+    if referencia.is_empty() || raiz.as_os_str().is_empty() {
+        return None;
+    }
+    let chat = pindesk_proyecto::vista::chat_de_ficha(raiz, ficha)?;
+    (modo(raiz, &chat) == Modo::Nube).then(|| (raiz.to_path_buf(), chat, referencia.to_string()))
 }
 
-/// **Pasa el documento a sin conexion o lo vuelve a en linea** (lo de aqui
+/// Si lo anotado de `sitio` esta «Sin conexión».
+pub(crate) fn sin_conexion((raiz, chat, clave): &Sitio) -> bool {
+    SinConexion::nuevo(&sincro(raiz)).esta(chat, clave)
+}
+
+/// **Pasa lo anotado a sin conexion o lo vuelve a en linea** (lo de aqui
 /// sube en la vuelta siguiente, solo los trazos nuevos).
-pub(crate) fn poner_sin_conexion(doc: &Path, sin: bool) {
-    let Some((raiz, chat, uid)) = documento(doc) else {
-        return;
-    };
-    let sc = SinConexion::nuevo(&sincro(&raiz));
+pub(crate) fn poner_sin_conexion((raiz, chat, clave): &Sitio, sin: bool) {
+    let sc = SinConexion::nuevo(&sincro(raiz));
     let r = if sin {
-        sc.retener(&DiscoPc::nuevo(&raiz), &chat, &uid, super::ahora_ms())
+        sc.retener(&DiscoPc::nuevo(raiz), chat, clave, super::ahora_ms())
     } else {
-        sc.volver(&chat, &uid)
+        sc.volver(chat, clave)
     };
     if let Err(e) = r {
         tracing::warn!(?e, "no se pudo cambiar «Sin conexión»");
@@ -613,12 +623,9 @@ pub(crate) fn poner_sin_conexion(doc: &Path, sin: bool) {
 /// guarde lo suyo): se pregunta. «Sí» (lo de por omision, como pidio el
 /// usuario) descarta lo anotado sin conexion; «No» vuelve a en linea y lo
 /// sube; «Cancelar» lo deja sin conexion para la proxima vez que se abra.
-pub(crate) fn al_cerrar(doc: &Path, textos: &pindesk_store::Catalogo) {
-    let Some((raiz, chat, uid)) = documento(doc) else {
-        return;
-    };
-    let sc = SinConexion::nuevo(&sincro(&raiz));
-    if !sc.esta(&chat, &uid) {
+pub(crate) fn al_cerrar((raiz, chat, clave): &Sitio, textos: &pindesk_store::Catalogo) {
+    let sc = SinConexion::nuevo(&sincro(raiz));
+    if !sc.esta(chat, clave) {
         return;
     }
     use pindesk_shell::dialogo::{Eleccion, elegir_al_frente};
@@ -627,12 +634,12 @@ pub(crate) fn al_cerrar(doc: &Path, textos: &pindesk_store::Catalogo) {
         &textos.t("nube-cerrar-pregunta"),
     ) {
         Eleccion::Si => {
-            if let Err(e) = sc.descartar(&disco(&raiz), &chat, &uid) {
+            if let Err(e) = sc.descartar(&disco(raiz), chat, clave) {
                 tracing::warn!(?e, "no se pudo descartar lo anotado sin conexion");
             }
         }
         Eleccion::No => {
-            let _ = sc.volver(&chat, &uid);
+            let _ = sc.volver(chat, clave);
             despertar();
         }
         Eleccion::Luego => {}

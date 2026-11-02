@@ -277,4 +277,39 @@ mod pruebas {
         assert!(!pertenece("d1", "pins/draw/d10.excalidraw.gz"));
         assert!(!pertenece("d1", "guardados/d1.pdf"));
     }
+
+    /// **La clave de cada visor** con «En línea / Sin conexión»: el codigo
+    /// del adjunto retiene todo lo que ese visor escribe de el; la
+    /// referencia de un lienzo, el lienzo y lo de su lado.
+    #[test]
+    fn la_clave_de_cada_visor_retiene_lo_que_ese_visor_escribe() {
+        let uid = "ABCDEFGHJK";
+        let del_adjunto = [
+            // PDF: una capa por pagina; Word y libros: la capa y la maqueta.
+            "pins/draw/anot-ABCDEFGHJK-p3.excalidraw.gz",
+            "pins/draw/anot-ABCDEFGHJK.excalidraw.gz",
+            "pins/draw/anot-ABCDEFGHJK.maqueta",
+            "pins/draw/anot-ABCDEFGHJK-texto.excalidraw.gz",
+            // Hoja de calculo: una capa por hoja.
+            "pins/draw/anot-ABCDEFGHJK-h0.excalidraw.gz",
+            // Plano y modelo: los marcadores, los marcos y lo de cada marcador.
+            "pins/draw/anot-ABCDEFGHJK.vistas.json",
+            "pins/draw/anot-ABCDEFGHJK.marcos.json",
+            "pins/draw/anot-ABCDEFGHJK-mm18f2a.excalidraw.gz",
+            "pins/draw/anot-ABCDEFGHJK-mm18f2a.hoja",
+        ];
+        for rel in del_adjunto {
+            assert!(pertenece(uid, rel), "{rel}");
+            // Caso negativo: otro documento del mismo chat no se retiene.
+            assert!(!pertenece("ZZZZZZZZZZ", rel), "{rel}");
+        }
+        // El lienzo de una hoja DIBUJO o PAGINA (o de una foto), por su
+        // referencia; el de otra hoja no.
+        assert!(pertenece("foto-171", "pins/draw/foto-171.excalidraw.gz"));
+        assert!(pertenece("foto-171", "pins/draw/foto-171.marcas"));
+        assert!(!pertenece("foto-171", "pins/draw/foto-1710.excalidraw.gz"));
+        // Caso negativo: la referencia de un lienzo no se lleva los
+        // `anot-…` de ningun adjunto.
+        assert!(!pertenece("anot", "pins/draw/anot-ABCDEFGHJK.marcas"));
+    }
 }
