@@ -19,6 +19,12 @@
 //! hoja DIBUJO o PAGINA, o el lienzo de una foto), su referencia:
 //! `pins/draw/<referencia>.excalidraw.gz` y lo de su lado. El lienzo no
 //! sabe de que chat es: quien lo abre lo dice con [en_lienzo] mientras dura.
+//! El PDF de un proyecto retiene ademas el lienzo de cada hoja
+//! (`sincronizar::nube::documento`, `sin_conexion::clave_con_lienzos`).
+//!
+//! Los visores web (HTML y notas) lo ponen en una ventanita encima del
+//! WebView, junto al riel (`visor_html::riel`): miden el boton con [tamano]
+//! y lo pintan con [EnLinea::pintar_con].
 
 use std::cell::{Cell, RefCell};
 use std::path::{Path, PathBuf};
@@ -120,11 +126,18 @@ impl EnLinea {
 
     /// Pinta el boton arriba a la izquierda (`x`, `y` su esquina).
     pub(crate) fn pintar(&self, p: &Pintor, x: f32, y: f32, e: f32, textos: &Catalogo) {
+        self.pintar_con(p, x, y, e, &Rotulos::de(textos));
+    }
+
+    /// Como [EnLinea::pintar], con los rotulos ya sacados (quien pinta
+    /// fuera del bucle del visor y no tiene el catalogo: el riel de los
+    /// visores web, `visor_html::riel`).
+    pub(crate) fn pintar_con(&self, p: &Pintor, x: f32, y: f32, e: f32, rotulos: &Rotulos) {
         let Some(sin) = self.estado() else {
             self.caja.set(None);
             return;
         };
-        let texto = rotulo(sin, textos);
+        let texto = rotulos.de_(sin).to_string();
         let tam = 13.0 * e;
         let lado = 18.0 * e;
         let (ancho, alto, h) = medidas(p, &texto, e);
@@ -202,6 +215,48 @@ pub(crate) fn para_cad(doc: &Path) -> (Rc<EnLinea>, Option<pindesk_cad::ventana:
         }
     });
     (n, boton)
+}
+
+/// Los dos rotulos del boton, en el idioma de la app.
+pub(crate) struct Rotulos {
+    en_linea: String,
+    sin_conexion: String,
+}
+
+impl Rotulos {
+    pub(crate) fn de(textos: &Catalogo) -> Rotulos {
+        Rotulos {
+            en_linea: rotulo(false, textos),
+            sin_conexion: rotulo(true, textos),
+        }
+    }
+
+    fn de_(&self, sin: bool) -> &str {
+        if sin {
+            &self.sin_conexion
+        } else {
+            &self.en_linea
+        }
+    }
+}
+
+/// **El tamano del boton** fuera de un fotograma (DirectWrite mide sin
+/// destino), para quien lo pone en su propia ventanita (el riel de los
+/// visores web): `None` fuera de un chat de la nube. Lleva un poco de
+/// holgura, por si la medida del pintor redondea distinto.
+pub(crate) fn tamano(
+    n: &EnLinea,
+    motor: &pindesk_render::MotorRender,
+    e: f32,
+    rotulos: &Rotulos,
+) -> Option<(u32, u32)> {
+    let sin = n.estado()?;
+    let (w, h) = motor.medir_texto_ajustado(rotulos.de_(sin), 13.0 * e, f32::MAX);
+    let lado = 18.0 * e;
+    Some((
+        (w + lado + 30.0 * e + 4.0 * e).ceil() as u32,
+        (h.max(lado) + 14.0 * e + 2.0 * e).ceil() as u32,
+    ))
 }
 
 fn rotulo(sin: bool, textos: &Catalogo) -> String {

@@ -1046,11 +1046,17 @@ pub fn correr(cx: Contexto, repuesto: Option<Repuesto>) -> anyhow::Result<Salida
         }
     }
     // Cerrar: se esconde ya (que se note al instante) y luego se suelta todo.
+    // «En línea / Sin conexión» (`en_linea`): ya guardado lo del riel y
+    // escondida la ventana, si se deja sin conexion se pregunta.
+    let en_linea = riel.as_ref().and_then(|r| r.en_linea());
     if let Some(r) = riel.take() {
         r.cerrar();
     }
     drop(pin);
     ventana.ocultar();
+    if let Some(n) = en_linea {
+        n.al_cerrar(cx.textos);
+    }
     drop(pagina);
     drop(ventana);
     Ok(salida)

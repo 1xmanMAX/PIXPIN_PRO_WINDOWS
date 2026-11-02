@@ -21,6 +21,14 @@
 //!   tiene (solo los trazos nuevos).
 //! - **Descartar** ([SinConexion::descartar]): la copia vuelve a su sitio y
 //!   lo que nacio sin conexion se borra.
+//!
+//! **La clave** de lo retenido es el codigo de un adjunto (`anot-<uid>…`),
+//! la referencia de un lienzo, o **varias partes** ([clave_con_lienzos]): el
+//! PDF de un proyecto escribe sus marcadores en `anot-<unico del proyecto>…`
+//! y la tinta de cada hoja en el lienzo de la hoja del proyecto
+//! (`pins/draw/<dibujo>.excalidraw.gz`), asi que su clave lleva el codigo y
+//! esos lienzos. Dos claves con la misma primera parte son el mismo
+//! documento ([misma_clave]).
 
 use std::io;
 use std::path::{Path, PathBuf};
@@ -62,8 +70,50 @@ pub struct Retenido {
     pub habia: Vec<String>,
 }
 
+/// Entre las partes de una clave ([clave_con_lienzos]). No cabe en un
+/// nombre de fichero de Windows ni en un codigo: ningun lienzo lo lleva.
+pub const ENTRE_PARTES: char = '|';
+
+/// **La clave de un documento cuya tinta va en lienzos** (el PDF de un
+/// proyecto, `pindesk_proyecto::capas_del_pdf`): `codigo` es el de lo
+/// anotado `anot-<codigo>…` (sus marcadores y espacios) y `lienzos`, el
+/// dibujo de cada hoja (`pins/draw/<dibujo>.excalidraw.gz` y lo de su lado).
+/// Sin repetidos ni vacios; el codigo, siempre delante.
+pub fn clave_con_lienzos(codigo: &str, lienzos: &[String]) -> String {
+    let mut s = codigo.to_string();
+    let mut vistos: Vec<&str> = vec![codigo];
+    for l in lienzos {
+        let l = l.as_str();
+        if l.is_empty() || l.contains(ENTRE_PARTES) || vistos.contains(&l) {
+            continue;
+        }
+        vistos.push(l);
+        s.push(ENTRE_PARTES);
+        s.push_str(l);
+    }
+    s
+}
+
+/// Las partes de una clave (una sola si es de un adjunto o de un lienzo).
+fn partes(clave: &str) -> impl Iterator<Item = &str> {
+    clave.split(ENTRE_PARTES).filter(|p| !p.is_empty())
+}
+
+/// La primera parte: la que dice de que documento es.
+fn primera(clave: &str) -> &str {
+    clave.split(ENTRE_PARTES).next().unwrap_or(clave)
+}
+
+/// **Si dos claves son del mismo documento**: la misma primera parte. Los
+/// lienzos de un PDF de un proyecto pueden cambiar mientras esta sin
+/// conexion (el movil le pone dibujo a una hoja): sigue siendo el.
+pub fn misma_clave(a: &str, b: &str) -> bool {
+    primera(a) == primera(b)
+}
+
 /// Si el fichero `rel` es de lo anotado con `clave`: `anot-<clave>…`, o el
-/// lienzo `pins/draw/<clave>.excalidraw.gz` y lo de su lado.
+/// lienzo `pins/draw/<clave>.excalidraw.gz` y lo de su lado; con varias
+/// partes ([clave_con_lienzos]), de cualquiera de ellas.
 pub fn pertenece(clave: &str, rel: &str) -> bool {
     let Some(nombre) = rel
         .strip_prefix(anotado::CARPETA)
@@ -72,10 +122,10 @@ pub fn pertenece(clave: &str, rel: &str) -> bool {
     else {
         return false;
     };
-    match anotado::uid_del_nombre(nombre) {
-        Some(u) => u == clave,
-        None => nombre.starts_with(&format!("{clave}.")),
-    }
+    partes(clave).any(|parte| match anotado::uid_del_nombre(nombre) {
+        Some(u) => u == parte,
+        None => nombre.starts_with(&format!("{parte}.")),
+    })
 }
 
 /// Los documentos sin conexion de un aparato.
@@ -98,7 +148,7 @@ impl SinConexion {
         super::estado::carpeta(&self.sincro)
             .join("sin-conexion")
             .join(limpio(chat))
-            .join(limpio(clave))
+            .join(limpio(primera(clave)))
     }
 
     fn copia_de(&self, chat: &str, clave: &str, rel: &str) -> PathBuf {
@@ -124,7 +174,7 @@ impl SinConexion {
     pub fn esta(&self, chat: &str, clave: &str) -> bool {
         self.lista()
             .iter()
-            .any(|r| r.chat == chat && r.clave == clave)
+            .any(|r| r.chat == chat && misma_clave(&r.clave, clave))
     }
 
     /// Lo anotado de `clave` que hay ahora en disco.
@@ -134,10 +184,12 @@ impl SinConexion {
             .into_iter()
             .filter(|r| pertenece(clave, r))
             .collect();
-        for t in [".excalidraw.gz", ".marcas", ".vistas.json"] {
-            let r = format!("{}/{clave}{t}", anotado::CARPETA);
-            if !v.contains(&r) && d.ruta(chat, &r).is_file() {
-                v.push(r);
+        for parte in partes(clave) {
+            for t in [".excalidraw.gz", ".marcas", ".vistas.json"] {
+                let r = format!("{}/{parte}{t}", anotado::CARPETA);
+                if !v.contains(&r) && d.ruta(chat, &r).is_file() {
+                    v.push(r);
+                }
             }
         }
         v
@@ -153,7 +205,9 @@ impl SinConexion {
         ahora: i64,
     ) -> io::Result<()> {
         let mut l = self.lista();
-        if l.iter().any(|r| r.chat == chat && r.clave == clave) {
+        if l.iter()
+            .any(|r| r.chat == chat && misma_clave(&r.clave, clave))
+        {
             return Ok(());
         }
         let habia = Self::ficheros(d, chat, clave);
@@ -176,7 +230,7 @@ impl SinConexion {
         let l: Vec<Retenido> = self
             .lista()
             .into_iter()
-            .filter(|r| !(r.chat == chat && r.clave == clave))
+            .filter(|r| !(r.chat == chat && misma_clave(&r.clave, clave)))
             .collect();
         self.guardar(&l)?;
         let _ = std::fs::remove_dir_all(self.carpeta_de(chat, clave));
@@ -200,10 +254,18 @@ impl SinConexion {
         let Some(r) = self
             .lista()
             .into_iter()
-            .find(|r| r.chat == chat && r.clave == clave)
+            .find(|r| r.chat == chat && misma_clave(&r.clave, clave))
         else {
             return Ok(0);
         };
+        // Lo de la clave con que se retuvo (y lo de la de ahora, si el
+        // documento gano un lienzo mientras tanto).
+        let lienzos: Vec<String> = partes(&r.clave)
+            .skip(1)
+            .chain(partes(clave).skip(1))
+            .map(str::to_string)
+            .collect();
+        let clave = &clave_con_lienzos(primera(&r.clave), &lienzos);
         let mut n = 0;
         for rel in &r.habia {
             let copia = self.copia_de(chat, clave, rel);
@@ -297,6 +359,11 @@ mod pruebas {
             "pins/draw/anot-ABCDEFGHJK.marcos.json",
             "pins/draw/anot-ABCDEFGHJK-mm18f2a.excalidraw.gz",
             "pins/draw/anot-ABCDEFGHJK-mm18f2a.hoja",
+            // Pagina web y nota (visor de HTML, lector de notas): las marcas
+            // de texto, la tinta y las marcas del riel, los comentarios.
+            "pins/draw/anot-ABCDEFGHJK.marcas-texto.json",
+            "pins/draw/anot-ABCDEFGHJK.marcas",
+            "pins/draw/anot-ABCDEFGHJK.comentarios.json",
         ];
         for rel in del_adjunto {
             assert!(pertenece(uid, rel), "{rel}");
@@ -311,5 +378,111 @@ mod pruebas {
         // Caso negativo: la referencia de un lienzo no se lleva los
         // `anot-…` de ningun adjunto.
         assert!(!pertenece("anot", "pins/draw/anot-ABCDEFGHJK.marcas"));
+    }
+
+    /// **El PDF de un proyecto** (`lector_pdf` con `capas_del_pdf`): sus
+    /// marcadores van en `anot-<unico del proyecto>…` y la tinta de cada
+    /// hoja en el lienzo de la hoja (`pdf-<huella>-p<i>` si la puso el PC,
+    /// o el que le puso el movil). La clave lleva el codigo y esos lienzos,
+    /// y nada mas.
+    #[test]
+    fn la_clave_del_pdf_de_un_proyecto_retiene_sus_hojas_y_nada_mas() {
+        let lienzos = [
+            "pdf-1a2b3c-p0".to_string(),
+            "pdf-1a2b3c-p1".to_string(),
+            "d1730000000".to_string(),
+            // Repetidos y vacios no cuentan.
+            "pdf-1a2b3c-p0".to_string(),
+            String::new(),
+        ];
+        let clave = clave_con_lienzos("PRYCTABCDE", &lienzos);
+        assert_eq!(clave, "PRYCTABCDE|pdf-1a2b3c-p0|pdf-1a2b3c-p1|d1730000000");
+        for rel in [
+            "pins/draw/anot-PRYCTABCDE.marcas",
+            "pins/draw/anot-PRYCTABCDE.espacios",
+            "pins/draw/anot-PRYCTABCDE.vistas.json",
+            "pins/draw/pdf-1a2b3c-p0.excalidraw.gz",
+            "pins/draw/pdf-1a2b3c-p1.excalidraw.gz",
+            "pins/draw/pdf-1a2b3c-p1.marcas",
+            "pins/draw/d1730000000.excalidraw.gz",
+        ] {
+            assert!(pertenece(&clave, rel), "{rel}");
+        }
+        for rel in [
+            // Otra pagina con un numero que empieza igual.
+            "pins/draw/pdf-1a2b3c-p10.excalidraw.gz",
+            // El mismo numero de hoja de otro PDF.
+            "pins/draw/pdf-ffff00-p0.excalidraw.gz",
+            // Otra hoja del proyecto que no es de una pagina del PDF.
+            "pins/draw/d17.excalidraw.gz",
+            // Lo anotado de otro adjunto del mismo chat.
+            "pins/draw/anot-ZZZZZZZZZZ-p0.excalidraw.gz",
+            // Ni el PDF ni algo de otra carpeta.
+            "guardados/plano.pdf",
+            "pins/draw/sub/pdf-1a2b3c-p0.excalidraw.gz",
+            "proyectos/proyecto.json",
+        ] {
+            assert!(!pertenece(&clave, rel), "{rel}");
+        }
+        // Caso negativo: la clave de un adjunto suelto no se lleva los
+        // lienzos de las hojas.
+        assert!(!pertenece(
+            "PRYCTABCDE",
+            "pins/draw/pdf-1a2b3c-p0.excalidraw.gz"
+        ));
+    }
+
+    #[test]
+    fn dos_claves_con_el_mismo_codigo_son_el_mismo_documento() {
+        let antes = clave_con_lienzos("PRYCTABCDE", &["pdf-1a-p0".into()]);
+        let ahora = clave_con_lienzos("PRYCTABCDE", &["pdf-1a-p0".into(), "d9".into()]);
+        assert!(misma_clave(&antes, &ahora));
+        assert!(misma_clave("PRYCTABCDE", &ahora));
+        assert!(!misma_clave("ZZZZZZZZZZ", &ahora));
+        // Un lienzo no es el documento cuyo codigo empieza igual.
+        assert!(!misma_clave("PRYCTAB", &ahora));
+        // `|` no puede colarse en un lienzo.
+        assert_eq!(clave_con_lienzos("A", &["x|y".into()]), "A");
+    }
+
+    #[test]
+    fn retener_el_pdf_de_un_proyecto_copia_sus_hojas_y_descartar_las_devuelve() {
+        let raiz = std::env::temp_dir().join(format!(
+            "pindesk-sin-conexion-proyecto-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&raiz);
+        let d = crate::disco_android::DiscoAndroid::nuevo(raiz.join("files"), "a");
+        let poner = |rel: &str, texto: &str| {
+            let f = d.ruta("p1", rel);
+            std::fs::create_dir_all(f.parent().unwrap()).unwrap();
+            std::fs::write(f, texto).unwrap();
+        };
+        poner("pins/draw/pdf-1a-p0.excalidraw.gz", "hoja 0");
+        poner("pins/draw/anot-PRYCTABCDE.marcas", "m");
+        poner("pins/draw/d17.excalidraw.gz", "otra hoja");
+        let sc = SinConexion::nuevo(&d.sincro());
+        let clave = clave_con_lienzos("PRYCTABCDE", &["pdf-1a-p0".into(), "pdf-1a-p1".into()]);
+        sc.retener(&d, "p1", &clave, 1).unwrap();
+        assert!(sc.esta("p1", "PRYCTABCDE"));
+        assert!(sc.retenido("p1", "pins/draw/pdf-1a-p0.excalidraw.gz"));
+        assert!(!sc.retenido("p1", "pins/draw/d17.excalidraw.gz"));
+        // Sin conexion: se pinta en la hoja 0 y nace la hoja 1.
+        poner("pins/draw/pdf-1a-p0.excalidraw.gz", "hoja 0 sin red");
+        poner("pins/draw/pdf-1a-p1.excalidraw.gz", "hoja 1 sin red");
+        poner("pins/draw/d17.excalidraw.gz", "otra hoja, en linea");
+        assert_eq!(sc.descartar(&d, "p1", &clave).unwrap(), 2);
+        let leer = |rel: &str| std::fs::read_to_string(d.ruta("p1", rel)).ok();
+        assert_eq!(
+            leer("pins/draw/pdf-1a-p0.excalidraw.gz").as_deref(),
+            Some("hoja 0")
+        );
+        assert_eq!(leer("pins/draw/pdf-1a-p1.excalidraw.gz"), None);
+        assert_eq!(
+            leer("pins/draw/d17.excalidraw.gz").as_deref(),
+            Some("otra hoja, en linea")
+        );
+        assert!(!sc.esta("p1", &clave));
+        let _ = std::fs::remove_dir_all(&raiz);
     }
 }

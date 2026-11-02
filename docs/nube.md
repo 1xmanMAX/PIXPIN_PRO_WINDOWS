@@ -146,24 +146,67 @@ omisión, en línea. Fuera de un chat de la nube no sale.
 | Visor | Dónde va el botón | Qué retiene (la clave) |
 |---|---|---|
 | Lector de PDF, y de Word/PowerPoint convertidos (`lector_pdf`) | arriba a la izquierda | `anot-<uid>…` del adjunto |
+| Lector de PDF con **el PDF de un proyecto** (su `pdfOrigen` o su copia limpia) | arriba a la izquierda | `anot-<unico del proyecto>…` (marcadores, espacios) **y el lienzo de cada hoja con pagina** (`pins/draw/<dibujo>.excalidraw.gz` y su `.marcas`; `pdf-<huella>-p<i>` si aun no tenia) |
 | Lector de Word, libros y páginas (`visor`) | arriba a la izquierda | `anot-<uid>…` (también `-texto`) |
 | Visor de hojas, un Excel o una tabla del chat (`visor_hoja`) | arriba a la izquierda de la hoja, bajo la barra de fórmulas | `anot-<uid>-h<i>…` |
 | Plano CAD (`plano_cad`, `pindesk_cad::ventana`) | un botón de su barra, antes de luna/sol | `anot-<uid>…` (marcadores, marcos, lo de cada marcador) |
 | Modelo BIM / 3D (`modelo_bim`, `pindesk_cad::ventana3d`) | igual, en su barra | `anot-<uid>-m<id>…` y sus marcadores |
 | Lienzo de una hoja DIBUJO o PAGINA, y el de una foto del chat (`ventana_chat::abrir_una_hoja` → `ventana_editor`) | arriba a la izquierda (no presentando) | la **referencia** del lienzo |
+| Visor de HTML, una pagina web del chat (`visor_html`) | arriba a la izquierda, en su ventanita encima del WebView (`visor_html::riel`, como el riel) | `anot-<uid>…`: tinta, marcas y marcos del riel, vistas y las **marcas de texto** (`anot-<uid>.marcas-texto.json`) |
+| Lector de notas Markdown (`notas_md::lector_web`), una nota de un proyecto o un `.md` del chat | igual, en su ventanita | `anot-<codigo>…` de la nota (lo mismo, y sus comentarios) |
 
-La clave la saca `en_linea::Clave`: de un documento, su adjunto
-(`pindesk_proyecto::anotado::adjunto_de`); de un lienzo, la ficha y su
-referencia (`en_linea::referencia_de_la_hoja`). Las pruebas de que cada
-clave retiene lo que escribe su visor:
-`nube::sin_conexion::pruebas::la_clave_de_cada_visor_retiene_lo_que_ese_visor_escribe`.
+La clave la saca `en_linea::Clave` con `sincronizar::nube::documento`: de
+un documento, su adjunto (`pindesk_proyecto::anotado::adjunto_de`) o, si no
+es un adjunto, la base `anot-<codigo>` de lo suyo
+(`anotado_del_adjunto::base_de`: una nota de un proyecto abierta en el
+lector de notas, `cache/riel-notas/<ficha>-<codigo>.md`); de un lienzo, la
+ficha y su referencia (`en_linea::referencia_de_la_hoja`).
 
-No lo llevan, porque no anotan `anot-<uid>…` ni un lienzo con referencia:
-el croquis 3D (sin tinta), el lienzo de un pin o de una foto suelta (su
-`.pixpin2d` de al lado). Los visores web (HTML, Markdown) y el pin de
-Office anotan en ventanas de DirectComposition encima de un WebView
-(`visor_html::riel`): ahí el botón necesitaría su propia ventanita; queda
-por hacer si hace falta.
+**El PDF de un proyecto** escribe en dos sitios: sus marcadores en
+`anot-<unico del proyecto>…` (`anotado::base_del_pdf`) y la tinta de cada
+hoja en el lienzo de **la hoja del proyecto con esa pagina**
+(`capas_del_pdf::dibujo_de_la_pagina`). Su clave lleva las dos cosas:
+`clave_con_lienzos(codigo, dibujos)` = `codigo|dibujo0|dibujo1…` (`|` no
+cabe en un nombre de fichero), con los dibujos de
+`capas_del_pdf::dibujos_de_las_paginas` (el de cada hoja con `pagina`, o el
+`pdf-<huella>-p<i>` que tendra al escribir, con la misma huella del lector).
+Dos claves con el mismo codigo son el mismo documento (`misma_clave`): si
+mientras esta sin conexion el movil le pone dibujo a una hoja, se sigue
+viendo «Sin conexión» y descartar mira las dos. Apuntar el dibujo nuevo en
+`proyecto.json` no se retiene (es el proyecto, no la tinta): sin su lienzo
+la hoja queda vacia.
+
+Las pruebas de que cada clave retiene lo que escribe su visor, y nada más:
+`nube::sin_conexion::pruebas::la_clave_de_cada_visor_retiene_lo_que_ese_visor_escribe`,
+`la_clave_del_pdf_de_un_proyecto_retiene_sus_hojas_y_nada_mas`,
+`dos_claves_con_el_mismo_codigo_son_el_mismo_documento` y
+`retener_el_pdf_de_un_proyecto_copia_sus_hojas_y_descartar_las_devuelve`.
+
+Los **visores web** (HTML y notas) pintan sus mandos en ventanas de
+DirectComposition encima del WebView (el riel y la tinta,
+`visor_html::riel`), así que el botón va igual: una tercera ventanita del
+tamaño justo del botón, arriba a la izquierda de la vista, que no tapa la
+página. Al cerrar, como los demás: ya guardado lo del riel y escondida la
+ventana, si quedó sin conexión se pregunta.
+
+No lo llevan:
+
+- El croquis 3D: no tiene tinta.
+- El pin de Office (`pin_office`): su tinta y sus marcos son solo mientras
+  está abierto (la vista previa de Office no dice por dónde va); no se
+  guarda nada que pueda subir.
+- **El lienzo de un pin o de una foto suelta (`.pixpin2d`)**: **nunca viaja
+  a la nube**. Un pin vive en el almacén de pines (`almacen/objetos/…`,
+  `pindesk_store`), fuera de cualquier chat, y su `.pixpin2d` está a su lado
+  (`pines::ruta_anotacion`). La vuelta de la nube solo manda el `alcance` de
+  un chat (`pindesk_sincro::disco::alcance_de`): las rutas que nombran sus
+  mensajes, lo anotado `anot-<uid>…` de sus adjuntos y los lienzos de sus
+  hojas y fotos; ningún mensaje nombra un `.pixpin2d`. El `.pixpin2d` que
+  el PC dejaba junto a una **foto del chat** tampoco viaja: se adopta en el
+  lienzo de la foto (`pindesk_proyecto::lienzo_de_la_foto`,
+  `foto_anotada::asegurar_lienzo`), que sí viaja y ya lleva el botón (la
+  referencia del lienzo). Sin nada que retener, no hace falta el botón en
+  la barra de anotar del pin.
 
 Para otro visor: guardar un `en_linea::EnLinea::de(doc)` (o `de_lienzo`),
 pintarlo encima de lo suyo, pasarle los clics antes y llamar a `al_cerrar`
