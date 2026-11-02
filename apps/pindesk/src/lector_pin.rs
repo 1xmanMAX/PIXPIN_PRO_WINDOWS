@@ -1106,8 +1106,7 @@ fn pintar_barra(
         };
         if activo {
             p.rellenar_redondeado(caja, 8.0 * e, AZUL);
-        } else if aspecto.encima_de == Some(*pieza)
-            && !matches!(pieza, Pieza::Asa | Pieza::Oscuro)
+        } else if aspecto.encima_de == Some(*pieza) && !matches!(pieza, Pieza::Asa | Pieza::Oscuro)
         {
             p.rellenar_redondeado(caja, 8.0 * e, ENCIMA);
         }

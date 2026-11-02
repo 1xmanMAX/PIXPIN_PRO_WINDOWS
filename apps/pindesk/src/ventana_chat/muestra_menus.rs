@@ -150,7 +150,12 @@ fn muestras_de_los_menus_v2() {
         ("menu-mensaje", &OSCURO, Some(&menu_msg), None),
         ("hoja-mas", &OSCURO, Some(&menu_hoja), None),
         ("hoja-mas-dia", &CLARO, Some(&menu_hoja_dia), None),
-        ("hoja-mas-asistente", &CLARO, Some(&menu_hoja_asistente), None),
+        (
+            "hoja-mas-asistente",
+            &CLARO,
+            Some(&menu_hoja_asistente),
+            None,
+        ),
         ("enviar-fotos", &OSCURO, None, Some(&pend)),
     ];
     for (nombre, tema, menu, pendientes) in escenas {

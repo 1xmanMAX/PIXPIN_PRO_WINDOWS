@@ -1103,10 +1103,8 @@ pub fn abrir(
                         // Lo dice, que si no la foto parece no haber
                         // entrado: en la caja solo se ve su renglon.
                         Ok(Pegado::EnLaNota(n)) if n > 0 => {
-                            aviso = Some((
-                                textos.t("chat-foto-en-la-nota"),
-                                std::time::Instant::now(),
-                            ));
+                            aviso =
+                                Some((textos.t("chat-foto-en-la-nota"), std::time::Instant::now()));
                         }
                         Ok(Pegado::Mensajes(cuantos)) if cuantos > 0 => {
                             a.scroll = None;
@@ -4648,13 +4646,9 @@ pub fn abrir(
         // El IME (japones, chino) compone encima de la rayita de la caja
         // con el teclado, no en una esquina de la pantalla.
         if hay_que_pintar
-            && let Some(sitio) = cajas_con_teclado(
-                &busqueda,
-                buscando,
-                abierto.as_ref(),
-            )
-            .first()
-            .and_then(|c| c.sitio_ime())
+            && let Some(sitio) = cajas_con_teclado(&busqueda, buscando, abierto.as_ref())
+                .first()
+                .and_then(|c| c.sitio_ime())
         {
             ventana.poner_posicion_ime(sitio);
         }
@@ -5107,14 +5101,10 @@ pub fn abrir(
             .map(|_| 400u32);
         // Y hasta que toque encender o apagar la rayita de la caja que tiene
         // el teclado (solo mientras parpadea).
-        let hasta_la_rayita = cajas_con_teclado(
-            &busqueda,
-            buscando,
-            abierto.as_ref(),
-        )
-        .iter()
-        .filter_map(|c| c.ms_hasta_parpadeo(std::time::Instant::now()))
-        .min();
+        let hasta_la_rayita = cajas_con_teclado(&busqueda, buscando, abierto.as_ref())
+            .iter()
+            .filter_map(|c| c.ms_hasta_parpadeo(std::time::Instant::now()))
+            .min();
         let dormir = [
             hasta_la_rayita,
             hasta_el_aviso,

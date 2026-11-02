@@ -85,15 +85,14 @@ pub(super) struct Hoja {
 impl Hoja {
     pub(super) fn nueva(textos: &Catalogo) -> Hoja {
         use pindesk_proyecto::mini;
-        let baldosa = |n: u8, clave: &str, accion: Accion, color: u32, icono: &'static Icono| {
-            Opcion {
+        let baldosa =
+            |n: u8, clave: &str, accion: Accion, color: u32, icono: &'static Icono| Opcion {
                 rotulo: textos.t(clave),
                 accion,
                 color,
                 icono,
                 forma: Forma::Baldosa(n),
-            }
-        };
+            };
         let chip = |clave: &str, accion: Accion, icono: &'static Icono| Opcion {
             rotulo: textos.t(clave),
             accion,
@@ -104,7 +103,13 @@ impl Hoja {
         // Los colores del iPhone: azul, gris, naranja, verde, verde, indigo
         // y rojo.
         let opciones = vec![
-            baldosa(1, "adjuntar-imagen", Accion::AdjImagen, 0x0a84ff, &mi::IMAGE),
+            baldosa(
+                1,
+                "adjuntar-imagen",
+                Accion::AdjImagen,
+                0x0a84ff,
+                &mi::IMAGE,
+            ),
             baldosa(
                 2,
                 "adjuntar-archivo",
@@ -112,8 +117,20 @@ impl Hoja {
                 0x8e8e93,
                 &mi::DESCRIPTION,
             ),
-            baldosa(3, "v2menus-adj-lienzo", Accion::AdjLienzo, 0xff9500, &mi::DRAW),
-            baldosa(4, "chat-adj-nota-md", Accion::AdjNotaMd, 0x34c759, &mi::LIST),
+            baldosa(
+                3,
+                "v2menus-adj-lienzo",
+                Accion::AdjLienzo,
+                0xff9500,
+                &mi::DRAW,
+            ),
+            baldosa(
+                4,
+                "chat-adj-nota-md",
+                Accion::AdjNotaMd,
+                0x34c759,
+                &mi::LIST,
+            ),
             baldosa(
                 5,
                 "v2menus-adj-tareas",
@@ -162,11 +179,7 @@ impl Hoja {
                 &mi::SPEED,
             ),
             chip("mini-alarma", Accion::AdjMini(mini::ALARMA), &mi::ALARM),
-            chip(
-                "v2menus-adj-conversacion",
-                Accion::Conversacion,
-                &mi::FORUM,
-            ),
+            chip("v2menus-adj-conversacion", Accion::Conversacion, &mi::FORUM),
             chip("chat-adj-telepronter", Accion::Telepronter, &mi::SUBTITLES),
             chip(
                 "chat-adj-pronunciar",
@@ -675,7 +688,10 @@ pub(super) fn pintar(p: &Pintor, c: &Pinta, h: &Hoja, ancla: Punto, marco: Rect)
     }
 
     for r in &puesta.rayas {
-        p.rellenar(rf(*r), con_alfa(tema.texto, if claro { 0.10 } else { 0.14 }));
+        p.rellenar(
+            rf(*r),
+            con_alfa(tema.texto, if claro { 0.10 } else { 0.14 }),
+        );
     }
 
     // «Más» en gris y las dos columnas de pastillas.
@@ -697,7 +713,11 @@ pub(super) fn pintar(p: &Pintor, c: &Pinta, h: &Hoja, ancla: Punto, marco: Rect)
         let caja = rf(*r);
         let radio = caja.alto / 2.0;
         if elegida {
-            p.rellenar_redondeado(encoger(caja, -2.0 * e), radio + 2.0 * e, super::AZUL_ELEGIDO);
+            p.rellenar_redondeado(
+                encoger(caja, -2.0 * e),
+                radio + 2.0 * e,
+                super::AZUL_ELEGIDO,
+            );
         }
         p.rellenar_redondeado(caja, radio, if sobre { gris_sobre } else { gris });
         let ic = 18.0 * e;
@@ -740,7 +760,11 @@ pub(super) fn pintar(p: &Pintor, c: &Pinta, h: &Hoja, ancla: Punto, marco: Rect)
         let boton = rf(r);
         let radio = boton.alto / 2.0;
         if elegida {
-            p.rellenar_redondeado(encoger(boton, -2.0 * e), radio + 2.0 * e, super::AZUL_ELEGIDO);
+            p.rellenar_redondeado(
+                encoger(boton, -2.0 * e),
+                radio + 2.0 * e,
+                super::AZUL_ELEGIDO,
+            );
         }
         let (fondo, tinta) = if !h.hay_copiado {
             (gris, con_alfa(tema.texto, 0.35))

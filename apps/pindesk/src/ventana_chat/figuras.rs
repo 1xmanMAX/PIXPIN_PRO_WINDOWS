@@ -972,9 +972,8 @@ fn pintar_todo(
     let columnas = ((ancho_util + ei(HUECO)) / paso.max(1)).max(1) as usize;
     g.columnas.set(columnas);
     // Las fichas se estiran para llenar la fila, como en el movil.
-    let ancho_celda = (ancho_util.saturating_sub((columnas as u32 - 1) * ei(HUECO))
-        / columnas as u32)
-        .max(1);
+    let ancho_celda =
+        (ancho_util.saturating_sub((columnas as u32 - 1) * ei(HUECO)) / columnas as u32).max(1);
     let alto_dibujo = ancho_celda * CELDA_DIBUJO / CELDA_ANCHO;
     let alto_celda = alto_dibujo + ei(CELDA_NOMBRE);
     let mut visibles = Vec::new();
@@ -1067,8 +1066,7 @@ fn pintar_todo(
     // Al final sobra lo que tapa el buscador flotante, para que la ultima
     // fila se pueda ver entera.
     g.alto_total.set(
-        (y + g.scroll - rejilla.y - rejilla.alto as i32 + ei(MARGEN + BUSCADOR + 24) as i32)
-            .max(0),
+        (y + g.scroll - rejilla.y - rejilla.alto as i32 + ei(MARGEN + BUSCADOR + 24) as i32).max(0),
     );
 
     // --- El buscador flotante, abajo en medio de la rejilla (lo que se
@@ -1094,11 +1092,7 @@ fn pintar_todo(
     p.rellenar_redondeado(
         encoger(b, 1.0),
         radio - 1.0,
-        if claro {
-            tema.cabecera
-        } else {
-            tema.barra
-        },
+        if claro { tema.cabecera } else { tema.barra },
     );
     let lupa = 18.0 * e;
     p.icono(
@@ -1485,6 +1479,11 @@ pub(super) fn guardar_lienzo(escena: &pindesk_motor2d::Escena, nombre: &str) -> 
         Err("no se pudo escribir".into())
     }
 }
+
+/// Muestras en PNG de la ventana, de dia y de noche (2-nov-2026).
+#[cfg(test)]
+#[path = "muestra_figuras.rs"]
+mod muestra;
 
 #[cfg(test)]
 mod pruebas {
