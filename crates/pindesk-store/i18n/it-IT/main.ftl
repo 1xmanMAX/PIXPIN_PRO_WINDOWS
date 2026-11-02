@@ -3531,3 +3531,37 @@ tareas-exportar-creada = Creata il { $fecha }
 tareas-exportar-de = { $hechas } di { $total }
 tareas-exportar-foto = Foto
 compartir-tipo-tareas = Elenco attività
+
+## La nube de los chats compartidos (1-nov-2026, sincronizar::nube)
+chat-nuevo-nube = Chat condivisa nel cloud
+chat-nuevo-nube-detalle = Quello che carichi, gli altri lo scaricano ovunque siano
+nube-modo-titulo = Come si sincronizza
+nube-modo-local = Rete locale
+nube-modo-nube = Cloud
+nube-modo-local-detalle = Si sincronizza quando siete sulla stessa Wi-Fi, gratis e senza server.
+nube-modo-nube-detalle = Passa dal tuo cloud: quello che carichi gli altri lo scaricano ovunque siano, ed è visibile sul web. Si carica solo ciò che cambia.
+nube-falta-configurar = Manca il cloud: inserisci indirizzo e chiave in Sincronizza → Cloud.
+nube-titulo = Cloud
+nube-portada-como = Le chat condivise impostate su «Cloud» passano dal tuo server. Le tue restano sulla rete locale.
+nube-ajustes = Impostazioni del cloud
+nube-explica = Il tuo server conserva le chat condivise che passano dal cloud e le mostra sul web. Le chat personali restano sulla rete locale, senza server.
+nube-direccion = Indirizzo web
+nube-llave = Chiave del dispositivo (pxn_…)
+nube-llave-guardada = Chiave salvata:
+nube-olvidar = Dimentica
+nube-guardar = Salva
+nube-probar = Prova
+nube-guardado = Salvato.
+nube-direccion-mala = L'indirizzo deve iniziare con https://.
+nube-llave-mala = La chiave inizia con pxn_ (te la dà il sito quando registri questo dispositivo).
+nube-probado = Connesso: spazio { $espacio }.
+nube-no-contesta = Il cloud non risponde:
+nube-que-va = Si carica solo ciò che cambia: di una pianta annotata, il tratto nuovo e non tutta la pianta.
+nube-en-linea = Online
+nube-sin-conexion = Offline
+nube-cerrar-titulo = Modifiche offline
+nube-cerrar-pregunta =
+    Hai annotato questo documento offline.
+    Sì: scarta queste modifiche (restano quelle degli altri).
+    No: torna online e caricale.
+    Annulla: lascialo offline per la prossima volta.

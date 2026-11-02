@@ -3594,3 +3594,37 @@ tareas-exportar-creada = Dibuat { $fecha }
 tareas-exportar-de = { $hechas } dari { $total }
 tareas-exportar-foto = Foto
 compartir-tipo-tareas = Daftar tugas
+
+## La nube de los chats compartidos (1-nov-2026, sincronizar::nube)
+chat-nuevo-nube = Obrolan bersama di cloud
+chat-nuevo-nube-detalle = Yang kamu unggah, orang lain mengunduhnya di mana pun mereka berada
+nube-modo-titulo = Cara sinkron
+nube-modo-local = Jaringan lokal
+nube-modo-nube = Cloud
+nube-modo-local-detalle = Sinkron saat kalian di Wi-Fi yang sama, gratis dan tanpa server.
+nube-modo-nube-detalle = Lewat cloud-mu: yang kamu unggah diunduh orang lain di mana pun mereka berada, dan terlihat di web. Hanya perubahan yang diunggah.
+nube-falta-configurar = Cloud belum diatur: isi alamat dan kuncimu di Sinkron → Cloud.
+nube-titulo = Cloud
+nube-portada-como = Obrolan bersama yang disetel ke «Cloud» lewat servermu. Obrolanmu sendiri tetap lewat jaringan lokal.
+nube-ajustes = Pengaturan cloud
+nube-explica = Servermu menyimpan obrolan bersama yang lewat cloud dan menampilkannya di web. Obrolan pribadi tetap lewat jaringan lokal, tanpa server.
+nube-direccion = Alamat web
+nube-llave = Kunci perangkat (pxn_…)
+nube-llave-guardada = Kunci tersimpan:
+nube-olvidar = Lupakan
+nube-guardar = Simpan
+nube-probar = Uji
+nube-guardado = Tersimpan.
+nube-direccion-mala = Alamat harus diawali https://.
+nube-llave-mala = Kunci diawali pxn_ (diberikan web saat mendaftarkan perangkat ini).
+nube-probado = Terhubung: ruang { $espacio }.
+nube-no-contesta = Cloud tidak menjawab:
+nube-que-va = Hanya perubahan yang diunggah: pada denah beranotasi, goresan baru dan bukan seluruh denah.
+nube-en-linea = Daring
+nube-sin-conexion = Luring
+nube-cerrar-titulo = Perubahan luring
+nube-cerrar-pregunta =
+    Kamu menganotasi dokumen ini secara luring.
+    Ya: buang perubahan itu (milik orang lain tetap).
+    Tidak: kembali daring dan unggah.
+    Batal: biarkan luring untuk lain kali.

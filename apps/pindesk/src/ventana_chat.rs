@@ -1187,7 +1187,9 @@ pub fn abrir(
                     // «Proyecto 3» para poner el de verdad. Compartido, nace
                     // ya en `compartidos.json` conmigo dentro, y al ponerle
                     // nombre se abren sus personas para invitar.
-                    Some(Accion::NuevoChat(compartido)) => {
+                    Some(a @ (Accion::NuevoChat(_) | Accion::NuevoChatEnLaNube)) => {
+                        let en_la_nube = a == Accion::NuevoChatEnLaNube;
+                        let compartido = en_la_nube || a == Accion::NuevoChat(true);
                         let cuando = pindesk_shell::entorno::ahora_utc_ms();
                         let mut indice = pindesk_proyecto::almacen::Indice::leer(ubicacion.raiz());
                         let ficha = pindesk_proyecto::almacen::Ficha::nueva("", cuando, &identidad);
@@ -1209,7 +1211,18 @@ pub fn abrir(
                                         &chat,
                                         "",
                                     ) {
-                                        Ok(()) => invitar = true,
+                                        Ok(()) => {
+                                            invitar = true;
+                                            if en_la_nube
+                                                && let Err(e) = crate::sincronizar::nube::poner_modo(
+                                                    ubicacion.raiz(),
+                                                    &chat,
+                                                    pindesk_sincro::nube::estado::Modo::Nube,
+                                                )
+                                            {
+                                                tracing::warn!(?e, "no se pudo poner el chat en la nube");
+                                            }
+                                        }
                                         Err(e) => {
                                             tracing::warn!(
                                                 ?e,
@@ -5793,6 +5806,40 @@ fn pintar_chapa_compartido(p: &Pintor, avatar: RectF, aro: Color) -> RectF {
     caja
 }
 
+/// **La chapa de la nube** (1-nov-2026): arriba a la derecha del avatar de
+/// un chat compartido que va por la nube, la nubecita del color de como va:
+/// azul subiendo, verde al dia, gris sin red, rojo si la llave no vale.
+fn pintar_chapa_nube(
+    p: &Pintor,
+    avatar: RectF,
+    aro: Color,
+    est: crate::sincronizar::nube::EstadoNube,
+) {
+    use crate::sincronizar::nube::EstadoNube;
+    let lado = (avatar.ancho * 0.46).max(10.0);
+    let caja = RectF {
+        x: avatar.x + avatar.ancho - lado * 0.8,
+        y: avatar.y - lado * 0.2,
+        ancho: lado,
+        alto: lado,
+    };
+    p.rellenar_redondeado(caja, lado / 2.0, aro);
+    let color = match est {
+        EstadoNube::Subiendo => hex(0x3b82f6),
+        EstadoNube::AlDia => hex(VERDE_COMPARTIDO),
+        EstadoNube::SinRed => hex(0x8a8f98),
+        EstadoNube::Llave => hex(0xe0453a),
+    };
+    let dentro = encoger(caja, (lado * 0.12).max(1.0));
+    p.rellenar_redondeado(dentro, dentro.ancho / 2.0, color);
+    let icono = match est {
+        EstadoNube::Subiendo => &mi::CLOUD_UPLOAD,
+        EstadoNube::AlDia => &mi::CLOUD_DONE,
+        EstadoNube::SinRed | EstadoNube::Llave => &mi::CLOUD_OFF,
+    };
+    p.icono(icono, encoger(dentro, dentro.ancho * 0.16), Color::BLANCO);
+}
+
 /// **La insignia de chat compartido**, sin aro: el circulito verde con las
 /// dos personas en `caja`. La misma en la lista de chats y en lo que viene
 /// de un chat compartido fuera de el (las listas de Tareas, checklist 26).
@@ -6210,6 +6257,10 @@ fn pintar_filas(p: &Pintor, d: &Disposicion, tema: &Tema, escala: u32, lista: &L
                 tema.lista
             };
             pintar_chapa_compartido(p, a, aro);
+            // Y si va por la nube, la nubecita arriba con su estado.
+            if let Some(est) = crate::sincronizar::nube::estado_de_ficha(lista.raiz, &ficha.id) {
+                pintar_chapa_nube(p, a, aro, est);
+            }
         }
         if partes.ancho_texto == 0 {
             continue;
@@ -17495,6 +17546,9 @@ enum Accion {
     /// El «+» de la lista (25-oct-2026): un chat nuevo, normal (`false`) o
     /// compartido con otras personas (`true`).
     NuevoChat(bool),
+    /// Un chat compartido que va por la nube (1-nov-2026): lo que se sube
+    /// lo bajan las demas personas desde donde esten.
+    NuevoChatEnLaNube,
     /// Los puntitos del estado de las IA (1-nov-2026): ir a las claves en
     /// Ajustes → Asistente, o comprobarlas ya.
     ClavesIa,
@@ -18652,6 +18706,14 @@ fn menu_de_chat_nuevo(textos: &Catalogo) -> Vec<EntradaMenu> {
             Accion::NuevoChat(true),
         )
         .con_detalle(textos.t("chat-nuevo-compartido-detalle")),
+        // Compartido por la nube (1-nov-2026): el mismo chat compartido,
+        // pero lo que se sube lo bajan los demas desde donde esten.
+        entrada(
+            Some(&mi::CLOUD),
+            textos.t("chat-nuevo-nube"),
+            Accion::NuevoChatEnLaNube,
+        )
+        .con_detalle(textos.t("chat-nuevo-nube-detalle")),
     ]
 }
 
@@ -19973,6 +20035,7 @@ fn ejecutar(accion: Accion, a: &mut Abierto, cx: &Contexto) -> Efecto {
         | Accion::AdjDelMovil
         | Accion::Fondos
         | Accion::NuevoChat(_)
+        | Accion::NuevoChatEnLaNube
         | Accion::ClavesIa
         | Accion::ComprobarIa
         | Accion::Fondo(_) => Efecto::Nada,

@@ -3664,3 +3664,37 @@ tareas-exportar-creada = { $fecha } tarihinde oluşturuldu
 tareas-exportar-de = { $total } görevden { $hechas }
 tareas-exportar-foto = Fotoğraf
 compartir-tipo-tareas = Görev listesi
+
+## La nube de los chats compartidos (1-nov-2026, sincronizar::nube)
+chat-nuevo-nube = Bulutta paylaşılan sohbet
+chat-nuevo-nube-detalle = Yüklediğini diğerleri nerede olurlarsa olsunlar indirir
+nube-modo-titulo = Nasıl eşitlenir
+nube-modo-local = Yerel ağ
+nube-modo-nube = Bulut
+nube-modo-local-detalle = Aynı Wi-Fi'deyken eşitlenir; ücretsiz ve sunucusuz.
+nube-modo-nube-detalle = Bulutun üzerinden gider: yüklediğini diğerleri nerede olurlarsa olsunlar indirir ve web'de görünür. Yalnızca değişiklikler yüklenir.
+nube-falta-configurar = Bulut ayarlanmadı: adresini ve anahtarını Eşitle → Bulut'a gir.
+nube-titulo = Bulut
+nube-portada-como = «Bulut» olarak ayarlanan paylaşılan sohbetler sunucun üzerinden gider. Kendi sohbetlerin yerel ağda kalır.
+nube-ajustes = Bulut ayarları
+nube-explica = Sunucun, bulut üzerinden giden paylaşılan sohbetleri saklar ve web'de gösterir. Kişisel sohbetler sunucusuz, yerel ağda kalır.
+nube-direccion = Web adresi
+nube-llave = Cihaz anahtarı (pxn_…)
+nube-llave-guardada = Kayıtlı anahtar:
+nube-olvidar = Unut
+nube-guardar = Kaydet
+nube-probar = Dene
+nube-guardado = Kaydedildi.
+nube-direccion-mala = Adres https:// ile başlamalı.
+nube-llave-mala = Anahtar pxn_ ile başlar (bu cihazı kaydederken web sitesi verir).
+nube-probado = Bağlandı: alan { $espacio }.
+nube-no-contesta = Bulut yanıt vermiyor:
+nube-que-va = Yalnızca değişiklikler yüklenir: notlu bir planda tüm plan değil, yeni çizgi.
+nube-en-linea = Çevrimiçi
+nube-sin-conexion = Çevrimdışı
+nube-cerrar-titulo = Çevrimdışı değişiklikler
+nube-cerrar-pregunta =
+    Bu belgeye çevrimdışıyken not ekledin.
+    Evet: bu değişiklikleri at (diğerlerininkiler kalır).
+    Hayır: çevrimiçine dön ve yükle.
+    İptal: bir dahaki sefere kadar çevrimdışı bırak.

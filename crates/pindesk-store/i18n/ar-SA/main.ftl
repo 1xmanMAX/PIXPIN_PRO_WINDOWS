@@ -3909,3 +3909,37 @@ tareas-exportar-creada = أُنشئت في { $fecha }
 tareas-exportar-de = { $hechas } من { $total }
 tareas-exportar-foto = صورة
 compartir-tipo-tareas = قائمة مهام
+
+## La nube de los chats compartidos (1-nov-2026, sincronizar::nube)
+chat-nuevo-nube = محادثة مشتركة في السحابة
+chat-nuevo-nube-detalle = ما ترفعه ينزّله الآخرون أينما كانوا
+nube-modo-titulo = طريقة المزامنة
+nube-modo-local = الشبكة المحلية
+nube-modo-nube = السحابة
+nube-modo-local-detalle = تتم المزامنة عندما تكونون على شبكة Wi-Fi نفسها، مجانًا ودون خوادم.
+nube-modo-nube-detalle = تمر عبر سحابتك: ما ترفعه ينزّله الآخرون أينما كانوا ويظهر على الويب. يُرفع ما تغيّر فقط.
+nube-falta-configurar = لم تُضبط السحابة بعد: أدخل عنوانها ومفتاحك في المزامنة ← السحابة.
+nube-titulo = السحابة
+nube-portada-como = المحادثات المشتركة المضبوطة على «السحابة» تمر عبر خادمك. محادثاتك الخاصة تبقى على الشبكة المحلية.
+nube-ajustes = إعدادات السحابة
+nube-explica = يحتفظ خادمك بالمحادثات المشتركة التي تمر عبر السحابة ويعرضها على الويب. تبقى المحادثات الشخصية على الشبكة المحلية دون خوادم.
+nube-direccion = عنوان الويب
+nube-llave = مفتاح الجهاز (pxn_…)
+nube-llave-guardada = المفتاح المحفوظ:
+nube-olvidar = نسيان
+nube-guardar = حفظ
+nube-probar = اختبار
+nube-guardado = تم الحفظ.
+nube-direccion-mala = يجب أن يبدأ العنوان بـ https://.
+nube-llave-mala = يبدأ المفتاح بـ pxn_ (يعطيك إياه الموقع عند تسجيل هذا الجهاز).
+nube-probado = متصل: المساحة { $espacio }.
+nube-no-contesta = السحابة لا تستجيب:
+nube-que-va = يُرفع ما تغيّر فقط: في مخطط عليه تعليقات، الخط الجديد وليس المخطط كله.
+nube-en-linea = متصل
+nube-sin-conexion = غير متصل
+nube-cerrar-titulo = تغييرات دون اتصال
+nube-cerrar-pregunta =
+    علّقت على هذا المستند دون اتصال.
+    نعم: تجاهل هذه التغييرات (تبقى تغييرات الآخرين).
+    لا: العودة للاتصال ورفعها.
+    إلغاء: إبقاؤه دون اتصال للمرة القادمة.

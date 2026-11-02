@@ -3677,3 +3677,37 @@ tareas-exportar-creada = Creada el { $fecha }
 tareas-exportar-de = { $hechas } de { $total }
 tareas-exportar-foto = Foto
 compartir-tipo-tareas = Lista de tareas
+
+## La nube de los chats compartidos (1-nov-2026, sincronizar::nube)
+chat-nuevo-nube = Chat compartido en la nube
+chat-nuevo-nube-detalle = Lo que subes lo bajan los demás desde donde estén
+nube-modo-titulo = Por dónde va
+nube-modo-local = Red local
+nube-modo-nube = Nube
+nube-modo-local-detalle = Se sincroniza cuando estáis en la misma Wi-Fi, gratis y sin servidores.
+nube-modo-nube-detalle = Va por tu nube: lo que subes lo bajan los demás desde donde estén, y se ve en la web. Solo sube lo que cambia.
+nube-falta-configurar = Falta la nube: pon su dirección y tu llave en Sincronizar → Nube.
+nube-titulo = Nube
+nube-portada-como = Los chats compartidos que eliges «Nube» van por tu servidor. Los tuyos siguen por la red local.
+nube-ajustes = Ajustes de la nube
+nube-explica = Tu servidor guarda los chats compartidos que van por la nube y los enseña en la web. Los chats personales siguen por la red local, sin servidores.
+nube-direccion = Dirección de la web
+nube-llave = Llave del aparato (pxn_…)
+nube-llave-guardada = Llave guardada:
+nube-olvidar = Olvidar
+nube-guardar = Guardar
+nube-probar = Probar
+nube-guardado = Guardado.
+nube-direccion-mala = La dirección tiene que empezar por https://.
+nube-llave-mala = La llave empieza por pxn_ (te la da la web al dar de alta este aparato).
+nube-probado = Conectado: espacio { $espacio }.
+nube-no-contesta = La nube no contesta:
+nube-que-va = Solo sube lo que cambia: de un plano anotado, la raya nueva y no el plano entero.
+nube-en-linea = En línea
+nube-sin-conexion = Sin conexión
+nube-cerrar-titulo = Cambios sin conexión
+nube-cerrar-pregunta =
+    Anotaste este documento sin conexión.
+    Sí: descartar esos cambios (se queda lo de los demás).
+    No: volver a en línea y subirlos.
+    Cancelar: dejarlo sin conexión para la próxima vez.

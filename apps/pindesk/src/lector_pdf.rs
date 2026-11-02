@@ -1115,6 +1115,8 @@ fn abrir_con(
     }
     let mut hay_que_pintar = true;
     let mut vivo = true;
+    // «En línea / Sin conexión», si el PDF es de un chat de la nube.
+    let en_linea = crate::en_linea::EnLinea::de(ruta);
     // La ruta cambia si se renombra un PDF suelto (D5).
     let mut ruta_viva = ruta.to_path_buf();
     let mut ruta_nueva: Option<PathBuf> = None;
@@ -1225,6 +1227,12 @@ fn abrir_con(
             }
             hay_que_pintar = true;
             let local = |p: pindesk_geom::Punto| ((p.x - area.x) as f32, (p.y - area.y) as f32);
+            if let EventoOverlay::BotonPulsado(q) = &evento {
+                let (x, y) = local(*q);
+                if en_linea.pulsar(x, y) {
+                    continue;
+                }
+            }
             // **Anotando, la tinta primero**: las herramientas del lienzo
             // (`lector_tinta::Tinta`), cada evento a la capa de su hoja. El
             // clic mira antes el riel y los botones del lector; Escape solo es
@@ -1659,8 +1667,10 @@ fn abrir_con(
             al_dia::apuntar_turnos(&mut e);
             if let Ok(destino) = superficie.empezar(&motor) {
                 let t = std::time::Instant::now();
-                let dibujado =
-                    motor.dibujar(&destino, |p: &Pintor| pintar(&mut e, p, marco, textos));
+                let dibujado = motor.dibujar(&destino, |p: &Pintor| {
+                    pintar(&mut e, p, marco, textos);
+                    en_linea.pintar(p, 14.0 * marco.e, 14.0 * marco.e, marco.e, textos);
+                });
                 let _ = superficie.presentar();
                 // Office se pinta en vectores en cada fotograma: si uno
                 // tarda o falla, que quede escrito.
@@ -1703,6 +1713,7 @@ fn abrir_con(
     }
     e.ajustes.zoom = e.zoom;
     guardar_ajustes(&mut e, ruta);
+    en_linea.al_cerrar(textos);
     // La voz sigue con el lector cerrado (es de la app): solo se suelta, ya
     // guardado lo de aqui, y desde ahora el verde lo apunta ella.
     e.voz = None;

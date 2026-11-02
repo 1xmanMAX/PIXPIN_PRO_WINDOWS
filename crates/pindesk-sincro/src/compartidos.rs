@@ -937,7 +937,7 @@ impl<D: Disco + ?Sized> Valla<'_, D> {
 /// `guardados/pc/<carpeta>/…` es, en el PC, la carpeta de un proyecto: de
 /// una persona solo vale la del chat que comparte. (En el movil no existe
 /// esa ruta y nunca salta.)
-fn salta_de_carpeta(chat: &str, rel: &str) -> bool {
+pub(crate) fn salta_de_carpeta(chat: &str, rel: &str) -> bool {
     match rel
         .strip_prefix("guardados/pc/")
         .and_then(|x| x.split_once('/'))

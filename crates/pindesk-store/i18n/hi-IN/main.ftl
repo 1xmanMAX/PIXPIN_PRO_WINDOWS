@@ -3665,3 +3665,37 @@ tareas-exportar-creada = { $fecha } को बनाया
 tareas-exportar-de = { $total } में से { $hechas }
 tareas-exportar-foto = फ़ोटो
 compartir-tipo-tareas = कार्य सूची
+
+## La nube de los chats compartidos (1-nov-2026, sincronizar::nube)
+chat-nuevo-nube = क्लाउड में साझा चैट
+chat-nuevo-nube-detalle = आप जो अपलोड करते हैं, बाकी लोग कहीं से भी डाउनलोड करते हैं
+nube-modo-titulo = सिंक कैसे होता है
+nube-modo-local = लोकल नेटवर्क
+nube-modo-nube = क्लाउड
+nube-modo-local-detalle = जब आप एक ही Wi-Fi पर हों तब सिंक होता है, मुफ़्त और बिना सर्वर के।
+nube-modo-nube-detalle = आपके क्लाउड से जाता है: आप जो अपलोड करते हैं उसे बाकी लोग कहीं से भी डाउनलोड करते हैं, और वह वेब पर दिखता है। सिर्फ़ बदलाव अपलोड होते हैं।
+nube-falta-configurar = क्लाउड सेट नहीं है: सिंक → क्लाउड में उसका पता और अपनी कुंजी डालें।
+nube-titulo = क्लाउड
+nube-portada-como = «क्लाउड» वाली साझा चैट आपके सर्वर से जाती हैं। आपकी अपनी चैट लोकल नेटवर्क पर ही रहती हैं।
+nube-ajustes = क्लाउड सेटिंग
+nube-explica = आपका सर्वर क्लाउड से जाने वाली साझा चैट रखता है और उन्हें वेब पर दिखाता है। निजी चैट बिना सर्वर के लोकल नेटवर्क पर रहती हैं।
+nube-direccion = वेब पता
+nube-llave = डिवाइस कुंजी (pxn_…)
+nube-llave-guardada = सहेजी गई कुंजी:
+nube-olvidar = भूलें
+nube-guardar = सहेजें
+nube-probar = जाँचें
+nube-guardado = सहेज लिया।
+nube-direccion-mala = पता https:// से शुरू होना चाहिए।
+nube-llave-mala = कुंजी pxn_ से शुरू होती है (यह डिवाइस जोड़ने पर वेब देता है)।
+nube-probado = जुड़ गया: स्पेस { $espacio }।
+nube-no-contesta = क्लाउड जवाब नहीं दे रहा:
+nube-que-va = सिर्फ़ बदलाव अपलोड होते हैं: एनोटेट किए नक्शे पर नई रेखा, पूरा नक्शा नहीं।
+nube-en-linea = ऑनलाइन
+nube-sin-conexion = ऑफ़लाइन
+nube-cerrar-titulo = ऑफ़लाइन बदलाव
+nube-cerrar-pregunta =
+    आपने यह दस्तावेज़ ऑफ़लाइन एनोटेट किया।
+    हाँ: ये बदलाव छोड़ दें (दूसरों के बदलाव रहेंगे)।
+    नहीं: फिर से ऑनलाइन होकर इन्हें अपलोड करें।
+    रद्द करें: अगली बार के लिए ऑफ़लाइन रखें।

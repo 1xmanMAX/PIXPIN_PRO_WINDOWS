@@ -58,6 +58,8 @@ mod elegir;
 pub(crate) mod en_fondo;
 mod enviar_wifi;
 mod galeria;
+pub(crate) mod nube;
+mod nube_ui;
 pub(crate) mod por_su_hora;
 pub(crate) mod presencia;
 mod recibir_wifi;
@@ -397,6 +399,8 @@ enum Sub {
     /// Las personas de un chat compartido, o entrar en uno con un codigo
     /// (`sincro/ChatCompartidoActivity.kt`).
     Compartidos(Box<compartidos_ui::Personas>),
+    /// «Nube»: la direccion y la llave de la nube de los chats compartidos.
+    Nube(Box<nube_ui::Ajustes>),
 }
 
 /// Que se esta escribiendo.
@@ -477,6 +481,9 @@ enum Accion {
     Compartidos(compartidos_ui::Toque),
     /// «Entrar en un chat compartido», desde la portada.
     AbrirEntrarChat,
+    /// «Nube», desde la portada.
+    AbrirNube,
+    Nube(nube_ui::Toque),
     Enviar(enviar_wifi::Toque),
     /// La flecha de una sub-pantalla: a la portada.
     Volver,
@@ -540,6 +547,7 @@ impl Pantalla {
         }
         match &self.sub {
             Sub::Portada | Sub::Elegir(_) | Sub::Copias(_) => false,
+            Sub::Nube(n) => n.animando(),
             Sub::Compartidos(c) => c.animando(),
             Sub::Recibir(r) => r.animando(),
             Sub::Enviar(e) => e.animando(),
@@ -578,6 +586,7 @@ impl Pantalla {
             Sub::Recibir(r) => recibir_wifi::caja_visible(r),
             Sub::Enviar(e) => enviar_wifi::caja_visible(e),
             Sub::Compartidos(c) => compartidos_ui::caja_visible(c),
+            Sub::Nube(n) => nube_ui::caja_visible(n),
             Sub::Portada | Sub::Elegir(_) | Sub::Copias(_) => None,
         };
         caja.into_iter().collect()
@@ -622,6 +631,7 @@ impl Pantalla {
             Sub::Recibir(r) => recibir_wifi::tecla(r, t, &cx),
             Sub::Enviar(e) => enviar_wifi::tecla(e, t, &cx),
             Sub::Compartidos(c) => compartidos_ui::tecla(c, t, &cx),
+            Sub::Nube(n) => nube_ui::tecla(n, t),
         }
     }
 }
@@ -1075,6 +1085,15 @@ fn atender(
             }
         }
         Accion::AbrirEnviar => s.entrar(|t| Sub::Enviar(Box::new(enviar_wifi::Enviar::nuevo(t)))),
+        Accion::AbrirNube => {
+            let raiz = s.raiz.clone();
+            s.entrar(|_| Sub::Nube(Box::new(nube_ui::Ajustes::nuevo(raiz))));
+        }
+        Accion::Nube(toque) => {
+            if let Sub::Nube(n) = &mut s.sub {
+                nube_ui::tocar(n, toque);
+            }
+        }
         Accion::AbrirCopias => {
             let raiz = s.raiz.clone();
             s.entrar(|_| Sub::Copias(Box::new(copias_ui::Copias::nuevo(raiz))));
@@ -2651,6 +2670,9 @@ fn pintar(
         Sub::Copias(c) => {
             y = copias_ui::pintar(&mut l, textos, c, 20.0 * e, ancho - 40.0 * e, y);
         }
+        Sub::Nube(n) => {
+            y = nube_ui::pintar(&mut l, textos, n, 20.0 * e, ancho - 40.0 * e, y);
+        }
         Sub::Portada => y = pintar_portada(&mut l, textos, s, ancho, y),
     }
     y += 40.0 * e + pie;
@@ -2678,6 +2700,7 @@ fn pintar(
             Accion::Elegir(elegir::Toque::Cancelar),
         ),
         Sub::Copias(_) => (textos.t("cop-titulo"), Accion::Volver),
+        Sub::Nube(_) => (textos.t("nube-titulo"), Accion::Volver),
         Sub::Compartidos(c) => (c.titulo(textos), Accion::Volver),
     };
     l.icono(&VOLVER, 28.0 * e, barra / 2.0, TEXTO, vuelta);
@@ -2848,6 +2871,22 @@ fn pintar_portada(
         Accion::AbrirEntrarChat,
     );
     y += hbc;
+
+    // La nube de los chats compartidos (1-nov-2026): la direccion y la llave.
+    l.titulo(&textos.t("nube-titulo"), x0, &mut y);
+    let nc = textos.t("nube-portada-como");
+    let hnc = l.alto_de(&nc, 14.0 * e, wi);
+    let hbn = 16.0 * e + hnc + 12.0 * e + 48.0 * e + 16.0 * e;
+    caja(p, rect(x0, y, w, hbn), e);
+    l.parrafo(&nc, xi, y + 16.0 * e, wi, 14.0 * e, TEXTO);
+    l.boton(
+        rect(xi, y + 28.0 * e + hnc, wi, 48.0 * e),
+        &textos.t("nube-ajustes"),
+        Some(&pindesk_render::icono::material::CLOUD),
+        false,
+        Accion::AbrirNube,
+    );
+    y += hbn;
 
     // Copias de seguridad (`CopiasActivity` del movil): el sitio al que ir
     // cuando un envio o una vuelta ha pisado algo.
