@@ -105,6 +105,10 @@ Lo mínimo, en este orden:
    escribir (se avisará aquí, con fecha).
 5. Lectura Veloz: aceptar `lecturaveloz://pindesk/abrir` además de `lecturaveloz://pixpin/abrir`
    y mandar de vuelta `pindesk://lectura-veloz?…` (el PC entiende también los de antes).
+6. **La nube de los chats compartidos** (1-nov-2026, `docs/nube.md`): un chat compartido puede
+   ir por la red local o por la nube (`deltas1`: solo los trazos nuevos de un lienzo). El protocolo
+   sigue llamándose `pixpin-nube` (llaves `pxn_`, `/nube/api/v1`, `pixpin-nube|yo|…`); el modo de
+   cada chat va en `sincro/nube/chats.json`, **no** en `compartidos.json`.
 
 ## Cuándo se pueden quitar los viejos
 
