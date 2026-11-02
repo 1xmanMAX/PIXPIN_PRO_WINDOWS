@@ -19,6 +19,8 @@
 
 #![forbid(unsafe_code)]
 
+/// Las marcas de texto de las paginas que se reajustan (2-nov-2026).
+pub mod ancla_texto;
 pub mod auto_desplazar;
 pub mod buscar;
 pub mod capa_de_texto;
