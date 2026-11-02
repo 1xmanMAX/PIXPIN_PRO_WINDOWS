@@ -329,6 +329,8 @@ struct Estado {
     elegida: Option<usize>,
     /// El interruptor ☀/☾: de noche, las gemelas «(noche)».
     noche: bool,
+    /// El boton redondo que lo dice, con el giro de su icono al cambiar.
+    boton: pindesk_ui::dia_noche::DiaNoche,
     /// Las del modo puesto, en su orden ([`del_modo`]).
     modo: Vec<usize>,
     lista: Vec<usize>,
@@ -365,6 +367,7 @@ impl Estado {
             campos: HashMap::new(),
             elegida: None,
             noche: false,
+            boton: pindesk_ui::dia_noche::DiaNoche::nuevo(false),
             modo: Vec::new(),
             lista: Vec::new(),
             disp: Disposicion::default(),
@@ -414,6 +417,7 @@ impl Estado {
             return;
         }
         self.noche = noche;
+        self.boton.poner(noche, crate::boton_dia_noche::ahora_ms());
         if let Some(i) = self.elegida
             && let Some(j) = serie::pareja(&pares(&self.figuras), i)
         {
@@ -631,6 +635,7 @@ pub(in crate::ventana_editor) fn elegir(
         t.t("figuras-mis-figuras"),
     );
     e.noche = crate::biblioteca_figuras::de_noche();
+    e.boton = pindesk_ui::dia_noche::DiaNoche::nuevo(e.noche);
     // Solo para probar: `PINDESK_MENU_FIGURAS_AL_ABRIR=<categoria>` abre la
     // ventana ya en esa categoria.
     let de_prueba = std::env::var("PINDESK_MENU_FIGURAS_AL_ABRIR").ok();
@@ -716,6 +721,9 @@ pub(in crate::ventana_editor) fn elegir(
             if !vivo || e.pedido.is_some() {
                 break;
             }
+            // Mientras gira el icono del ☀/☾, un fotograma tras otro.
+            let girando = e.boton.animando(crate::boton_dia_noche::ahora_ms());
+            pintar |= girando;
             if pintar {
                 subir_miniaturas(&mut e, motor, lado);
                 e.scroll = e.scroll.clamp(0.0, (e.disp.alto - alto_rejilla).max(0.0));
@@ -725,7 +733,9 @@ pub(in crate::ventana_editor) fn elegir(
                 }
                 pintar = false;
             }
-            pindesk_shell::overlay::esperar_eventos(Some(if e.foco.is_some() || e.buscando {
+            pindesk_shell::overlay::esperar_eventos(Some(if girando {
+                16
+            } else if e.foco.is_some() || e.buscando {
                 250
             } else {
                 1000
@@ -962,23 +972,7 @@ fn pintar_cabecera(e: &mut Estado, p: &Pintor, w: f32, s: f32, t: &Catalogo) {
     let pista = t.t("figuras-ventana-buscar");
     let guardar = t.t("figuras-ventana-guardar-seleccion");
     let texto = e.consulta.texto().to_string();
-    // ☀/☾: el boton dice el modo puesto y, de noche, va encendido.
-    let modo = t.t(if e.noche {
-        "figuras-noche"
-    } else {
-        "figuras-dia"
-    });
-    let mut botones = vec![crate::cabecera::Boton {
-        icono: Some(if e.noche {
-            &mi::DARK_MODE
-        } else {
-            &mi::LIGHT_MODE
-        }),
-        rotulo: &modo,
-        chapa: None,
-        activo: e.noche,
-        accion: Accion::DiaNoche,
-    }];
+    let mut botones = Vec::new();
     if e.hay_seleccion {
         botones.push(crate::cabecera::Boton {
             icono: Some(&mi::LIBRARY_ADD),
@@ -1000,6 +994,11 @@ fn pintar_cabecera(e: &mut Estado, p: &Pintor, w: f32, s: f32, t: &Catalogo) {
             vaciar: Accion::LimpiarBusqueda,
         }),
         botones,
+        // ☀/☾ redondo, como el del movil: dice el modo puesto.
+        dia_noche: Some(crate::cabecera::DiaNoche {
+            paso: e.boton.paso(crate::boton_dia_noche::ahora_ms()),
+            accion: Accion::DiaNoche,
+        }),
         mover: Accion::Mover,
         cerrar: Accion::Cerrar,
     };

@@ -2377,6 +2377,7 @@ fn pintar_todo(e: &mut Estado, p: &Pintor, marco: Rect, s: f32, textos: &Catalog
                 vaciar: Accion::VaciarBusqueda,
             }),
             botones,
+            dia_noche: None,
             mover: Accion::Mover,
             cerrar: Accion::Cerrar,
         },

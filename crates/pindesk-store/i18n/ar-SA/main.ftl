@@ -1408,8 +1408,6 @@ chat-figura-vacia = تلك اللوحة فارغة: لا شيء لحفظه
 figuras-titulo = الأشكال
 figuras-buscar = ابحث عن شكل…
 # The ☀/☾ switch of the shape panels: day templates or their «(night)» twins.
-figuras-dia = نهاري
-figuras-noche = ليلي
 figuras-sin-resultados = لا يوجد شكل يحتوي على ذلك في اسمه أو نصوصه.
 figuras-de-serie = مدمج
 figuras-tuya = لك
@@ -1694,6 +1692,7 @@ v2menus-adj-captura = لقطة شاشة
 v2menus-adj-pagina = صفحة من مشروع
 v2menus-adj-proyecto = المشروع كاملًا
 v2menus-adj-movil = جلب من الهاتف
+v2menus-adj-pegar-copiado = لصق ما نسخته
 v2menus-envio-enviar = إرسال
 v2menus-envio-anadir = إضافة
 v2menus-envio-fotos = { $cuantos ->

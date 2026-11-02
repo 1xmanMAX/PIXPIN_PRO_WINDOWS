@@ -1353,8 +1353,6 @@ chat-figura-vacia = Kanvas itu kosong: tidak ada yang bisa disimpan
 figuras-titulo = Bentuk
 figuras-buscar = Cari bentuk…
 # The ☀/☾ switch of the shape panels: day templates or their «(night)» twins.
-figuras-dia = Siang
-figuras-noche = Malam
 figuras-sin-resultados = Tidak ada bentuk dengan itu di nama atau teksnya.
 figuras-de-serie = bawaan
 figuras-tuya = milik Anda
@@ -1635,6 +1633,7 @@ v2menus-adj-captura = Tangkapan layar
 v2menus-adj-pagina = Halaman proyek
 v2menus-adj-proyecto = Seluruh proyek
 v2menus-adj-movil = Ambil dari ponsel
+v2menus-adj-pegar-copiado = Tempel yang disalin
 v2menus-envio-enviar = Kirim
 v2menus-envio-anadir = Tambah
 v2menus-envio-fotos = { $cuantos ->

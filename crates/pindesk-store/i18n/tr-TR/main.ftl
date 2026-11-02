@@ -1363,8 +1363,6 @@ chat-figura-vacia = O tuval boş: kaydedilecek bir şey yok
 figuras-titulo = Şekiller
 figuras-buscar = Şekil ara…
 # The ☀/☾ switch of the shape panels: day templates or their «(night)» twins.
-figuras-dia = Gündüz
-figuras-noche = Gece
 figuras-sin-resultados = Adında veya metinlerinde bu geçen bir şekil yok.
 figuras-de-serie = yerleşik
 figuras-tuya = sizin
@@ -1645,6 +1643,7 @@ v2menus-adj-captura = Ekran görüntüsü
 v2menus-adj-pagina = Bir proje sayfası
 v2menus-adj-proyecto = Bütün proje
 v2menus-adj-movil = Telefondan getir
+v2menus-adj-pegar-copiado = Kopyalananı yapıştır
 v2menus-envio-enviar = Gönder
 v2menus-envio-anadir = Ekle
 v2menus-envio-fotos = { $cuantos ->

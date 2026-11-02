@@ -1300,8 +1300,6 @@ chat-figura-vacia = Essa tela está vazia: não há nada para salvar
 figuras-titulo = Formas
 figuras-buscar = Pesquisar uma forma…
 # El interruptor ☀/☾ de los paneles de figuras: las plantillas de día o sus gemelas «(noche)».
-figuras-dia = Dia
-figuras-noche = Noite
 figuras-sin-resultados = Nenhuma forma tem isso no nome nem nos textos.
 figuras-de-serie = padrão
 figuras-tuya = sua
@@ -1563,6 +1561,7 @@ v2menus-adj-captura = Captura
 v2menus-adj-pagina = Página de um projeto
 v2menus-adj-proyecto = Projeto inteiro
 v2menus-adj-movil = Trazer do celular
+v2menus-adj-pegar-copiado = Colar o que foi copiado
 v2menus-envio-enviar = Enviar
 v2menus-envio-anadir = Adicionar
 v2menus-envio-fotos = { $cuantos ->

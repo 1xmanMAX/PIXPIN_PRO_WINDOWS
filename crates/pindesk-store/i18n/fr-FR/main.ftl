@@ -1364,8 +1364,6 @@ chat-figura-vacia = Ce canevas est vide : rien à enregistrer
 figuras-titulo = Formes
 figuras-buscar = Rechercher une forme…
 # The ☀/☾ switch of the shape panels: day templates or their «(night)» twins.
-figuras-dia = Jour
-figuras-noche = Nuit
 figuras-sin-resultados = Aucune forme ne contient cela dans son nom ou ses textes.
 figuras-de-serie = intégrée
 figuras-tuya = la vôtre
@@ -1646,6 +1644,7 @@ v2menus-adj-captura = Capture d’écran
 v2menus-adj-pagina = Une page de projet
 v2menus-adj-proyecto = Projet entier
 v2menus-adj-movil = Importer du téléphone
+v2menus-adj-pegar-copiado = Coller ce qui a été copié
 v2menus-envio-enviar = Envoyer
 v2menus-envio-anadir = Ajouter
 v2menus-envio-fotos = { $cuantos ->

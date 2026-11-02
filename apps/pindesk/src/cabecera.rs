@@ -81,12 +81,22 @@ pub struct SegmentoIcono<'a, A> {
 /// no cabe del subtitulo se corta con puntos suspensivos.
 pub const ANCHO_TITULO: f32 = 200.0;
 
+/// **El ☀/☾ redondo** (2-nov-2026, como el del movil): va pegado a la
+/// izquierda de la ✕, antes que los botones propios.
+pub struct DiaNoche<A> {
+    /// Los iconos en este momento (`pindesk_ui::dia_noche::DiaNoche::paso`).
+    pub paso: pindesk_ui::dia_noche::Paso,
+    pub accion: A,
+}
+
 pub struct Cabecera<'a, A> {
     pub titulo: &'a str,
     pub subtitulo: &'a str,
     pub buscador: Option<Buscador<'a, A>>,
     /// De izquierda a derecha, como se leen.
     pub botones: Vec<Boton<'a, A>>,
+    /// El ☀/☾ redondo, si la ventana lo tiene.
+    pub dia_noche: Option<DiaNoche<A>>,
     pub mover: A,
     pub cerrar: A,
 }
@@ -186,6 +196,24 @@ fn pintar_todo<A: Copy>(
     p.icono(&mi::CLOSE, encoger(cerrar, 10.0 * s), GRIS);
     botones.zona(cerrar, c.cerrar);
     let mut x = cerrar.x;
+    if let Some(d) = &c.dia_noche {
+        let lado_dn = pindesk_ui::dia_noche::LADO as f32 * s;
+        x -= 10.0 * s + lado_dn;
+        let r = RectF {
+            x,
+            y: (alto - lado_dn) / 2.0,
+            ancho: lado_dn,
+            alto: lado_dn,
+        };
+        crate::boton_dia_noche::pintar(
+            p,
+            r,
+            d.paso,
+            dentro(r, botones.raton),
+            &crate::boton_dia_noche::Colores::OSCURO,
+        );
+        botones.zona(r, d.accion);
+    }
     for b in c.botones.iter().rev() {
         let ancho =
             crate::lecciones::ui::ancho_de_boton(p, b.icono.is_some(), b.rotulo, b.chapa, s);

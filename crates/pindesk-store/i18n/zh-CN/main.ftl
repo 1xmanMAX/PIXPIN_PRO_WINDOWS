@@ -1353,8 +1353,6 @@ chat-figura-vacia = 该画布为空：没有可保存的内容
 figuras-titulo = 形状
 figuras-buscar = 搜索形状…
 # The ☀/☾ switch of the shape panels: day templates or their «(night)» twins.
-figuras-dia = 日间
-figuras-noche = 夜间
 figuras-sin-resultados = 没有形状的名称或文字中包含该内容。
 figuras-de-serie = 内置
 figuras-tuya = 你的
@@ -1635,6 +1633,7 @@ v2menus-adj-captura = 截图
 v2menus-adj-pagina = 项目页面
 v2menus-adj-proyecto = 整个项目
 v2menus-adj-movil = 从手机获取
+v2menus-adj-pegar-copiado = 粘贴已复制的内容
 v2menus-envio-enviar = 发送
 v2menus-envio-anadir = 添加
 v2menus-envio-fotos = { $cuantos ->

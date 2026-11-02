@@ -78,6 +78,8 @@ mod biblioteca_audio;
 /// La biblioteca de figuras del lienzo, en el chat «Asistente» para que viaje
 /// con los aparatos propios (como las automatizaciones).
 mod biblioteca_figuras;
+/// El boton ☀/☾ redondo de las cabeceras, como el del movil.
+mod boton_dia_noche;
 mod buscador;
 mod buscar_todo;
 mod cabecera;

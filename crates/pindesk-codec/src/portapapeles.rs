@@ -279,6 +279,14 @@ pub fn secuencia() -> u32 {
     unsafe { windows::Win32::System::DataExchange::GetClipboardSequenceNumber() }
 }
 
+/// **Si hay algo copiado** (`CountClipboardFormats`), sin abrir el
+/// portapapeles: el boton «Pegar» de la hoja del «+» del chat va apagado
+/// cuando no hay nada, como el del iPhone.
+pub fn hay_algo() -> bool {
+    // SAFETY: sin argumentos; solo cuenta los formatos que hay puestos.
+    unsafe { windows::Win32::System::DataExchange::CountClipboardFormats() > 0 }
+}
+
 /// Copia texto plano como `CF_UNICODETEXT`. La pareja de `copiar_imagen`
 /// para las notas.
 pub fn copiar_texto(texto: &str) -> Result<(), ErrorCodec> {

@@ -1364,8 +1364,6 @@ chat-figura-vacia = Diese Leinwand ist leer: nichts zu speichern
 figuras-titulo = Formen
 figuras-buscar = Form suchen…
 # The ☀/☾ switch of the shape panels: day templates or their «(night)» twins.
-figuras-dia = Tag
-figuras-noche = Nacht
 figuras-sin-resultados = Keine Form enthält das in Name oder Texten.
 figuras-de-serie = integriert
 figuras-tuya = eigene
@@ -1646,6 +1644,7 @@ v2menus-adj-captura = Screenshot
 v2menus-adj-pagina = Eine Projektseite
 v2menus-adj-proyecto = Ganzes Projekt
 v2menus-adj-movil = Vom Handy holen
+v2menus-adj-pegar-copiado = Kopiertes einfügen
 v2menus-envio-enviar = Senden
 v2menus-envio-anadir = Hinzufügen
 v2menus-envio-fotos = { $cuantos ->

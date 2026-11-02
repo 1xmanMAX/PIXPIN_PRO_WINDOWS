@@ -1609,16 +1609,9 @@ fn pastilla(e: &Estado, p: &Pintor, m: Marco, botones: &mut Vec<(RectF, Accion)>
         // **Que suba sola** (`KeyboardDoubleArrowDown` de la pastilla del movil).
         Some((&lector::DOBLE_FLECHA_ABAJO, e.auto.is_some(), Accion::Auto)),
         Some((&material::MORE_VERT, false, Accion::Engranaje)),
-        // Luna/sol: el modo oscuro de los visores (en pin, en su barra).
-        (!e.en_pin).then_some((
-            if e.oscuro {
-                &material::LIGHT_MODE
-            } else {
-                &material::DARK_MODE
-            },
-            false,
-            Accion::Oscuro,
-        )),
+        // Sol/luna: el modo oscuro de los visores (en pin, en su barra). Lo
+        // pinta el boton redondo de `boton_dia_noche`.
+        (!e.en_pin).then_some((&material::LIGHT_MODE, false, Accion::Oscuro)),
         // De pantalla completa, de vuelta a pin.
         (!e.en_pin).then_some((&material::FULLSCREEN_EXIT, false, Accion::PantallaCompleta)),
     ]
@@ -1661,6 +1654,24 @@ fn pastilla(e: &Estado, p: &Pintor, m: Marco, botones: &mut Vec<(RectF, Accion)>
             ancho: lado,
             alto: caja.alto,
         };
+        // El ☀/☾ redondo del movil (2-nov-2026): dice el modo puesto.
+        if matches!(que, Accion::Oscuro) {
+            let d = (zona.alto - 4.0 * m.e).min(lado - 4.0 * m.e);
+            crate::boton_dia_noche::pintar_quieto(
+                p,
+                RectF {
+                    x: zona.x + (lado - d) / 2.0,
+                    y: zona.y + (zona.alto - d) / 2.0,
+                    ancho: d,
+                    alto: d,
+                },
+                e.oscuro,
+                false,
+                &crate::boton_dia_noche::Colores::OSCURO,
+            );
+            botones.push((zona, que));
+            continue;
+        }
         p.icono(
             icono,
             RectF {

@@ -10,12 +10,21 @@
 //! menu de la bandeja y desde «Figura» de la hoja del «+» de un chat. Una sola a la vez, en su hilo, como la galeria
 //! de capturas:
 //!
-//! - **A la izquierda, los grupos** con su cuenta: «Todas», «Mis figuras» y
-//!   las categorias (la categoria va en el nombre, «Diario · Gratitud», ver
-//!   `figuras_de_serie::categoria_de`).
-//! - **En el centro, cada grupo con su titulo** y sus figuras en rejilla,
-//!   dibujadas de verdad (las mismas ordenes que la vista previa de un lienzo
-//!   en el chat), con su nombre. Arriba, un buscador: se escribe y filtra.
+//! Desde el 2-nov-2026 va como la «Figuras» del iPhone (el usuario: «el
+//! boton de dia/noche deberia ser mas como el del telefono, tambien en la
+//! opcion Figuras»):
+//!
+//! - **La cabecera del movil**: «Cerrar» en una pastilla a la izquierda, el
+//!   titulo y cuantas hay en medio y, a la derecha, el ☀/☾ redondo
+//!   (`pindesk_ui::dia_noche`), cuyo icono gira al cambiar.
+//! - **Debajo, las categorias en una fila de pastillas** («Todas», «Mis
+//!   figuras» y las de serie; la categoria va en el nombre, «Diario ·
+//!   Gratitud», ver `figuras_de_serie::categoria_de`), la elegida en azul.
+//!   Si no caben, la rueda encima las corre de lado.
+//! - **Cada grupo con su titulo y su cuenta** («Planificación 13») y sus
+//!   figuras en rejilla, dibujadas de verdad (las mismas ordenes que la
+//!   vista previa de un lienzo en el chat), con su nombre. Abajo, flotando,
+//!   el buscador: se escribe y filtra.
 //! - **A la derecha, el previsualizador** de la elegida: en grande, con su
 //!   grupo, lo que mide, de que piezas esta hecha y los textos que lleva. Las
 //!   del usuario se pueden borrar (dos clics).
@@ -54,7 +63,7 @@ use pindesk_render::{Color, Pintor, RectF, Superficie};
 use pindesk_shell::overlay::{EventoOverlay, VentanaOverlay};
 use pindesk_store::{Catalogo, Idioma};
 
-use super::{CLARO, LienzoVisto, OSCURO, Tema, con_alfa, mi, pintar_lienzo, rf};
+use super::{CLARO, LienzoVisto, OSCURO, Tema, con_alfa, encoger, mi, pintar_lienzo, rf};
 use crate::overlay::Recursos;
 
 /// Lo que mide una ficha de la rejilla (logicos): el dibujo y su nombre.
@@ -63,11 +72,17 @@ const CELDA_DIBUJO: u32 = 112;
 const CELDA_NOMBRE: u32 = 30;
 const HUECO: u32 = 12;
 const MARGEN: u32 = 18;
-const BARRA: u32 = 48;
-const GRUPOS: u32 = 210;
-const FILA_GRUPO: u32 = 36;
+/// La cabecera del movil: «Cerrar», el titulo con su cuenta y el ☀/☾.
+const BARRA: u32 = 64;
+/// Lo alto de «Cerrar» y de la fila de las categorias, y de cada una.
+const PASTILLA: u32 = 32;
+const FILA_CHIPS: u32 = 50;
+const CHIP: u32 = 32;
+/// El buscador flotante de abajo.
+const BUSCADOR: u32 = 46;
+const BUSCADOR_ANCHO: u32 = 440;
 const PREVIA: u32 = 380;
-const ALTO_TITULO: u32 = 32;
+const ALTO_TITULO: u32 = 36;
 /// El grupo de lo que no lleva categoria: lo del usuario.
 pub(super) const MIS_FIGURAS: &str = "";
 
@@ -143,8 +158,10 @@ fn lanzar(idioma: Idioma) {
         .spawn(move || {
             let _com = pindesk_shell::ComDelHilo::iniciar();
             let textos = Catalogo::nuevo(idioma);
+            let noche = crate::biblioteca_figuras::de_noche();
             let mut g = Galeria {
-                noche: crate::biblioteca_figuras::de_noche(),
+                noche,
+                boton: pindesk_ui::dia_noche::DiaNoche::nuevo(noche),
                 ..Galeria::default()
             };
             g.leer();
@@ -316,9 +333,12 @@ enum Zona {
     Borrar,
     /// El boton grande «Adjuntar a …» (solo eligiendo para un chat).
     Adjuntar,
-    /// El interruptor ☀/☾ de la barra.
+    /// El boton ☀/☾ redondo de la cabecera.
     DiaNoche,
     Cerrar,
+    /// El buscador flotante: lo escrito va siempre a el, pulsarlo no hace
+    /// nada (pero no deja pasar el clic a la figura de debajo).
+    Buscador,
     Barra,
 }
 
@@ -326,6 +346,12 @@ struct Galeria {
     figuras: Vec<Vista>,
     /// El interruptor ☀/☾: de noche, las gemelas «(noche)».
     noche: bool,
+    /// El boton redondo que lo dice, con el giro de su icono al cambiar.
+    boton: pindesk_ui::dia_noche::DiaNoche,
+    /// Lo corrida que va la fila de las categorias (pixeles) y lo mas que
+    /// se puede correr (lo mide el pintor).
+    scroll_chips: i32,
+    ancho_chips: Cell<i32>,
     /// Las del modo puesto, en su orden (`segun_el_modo`).
     modo: Vec<usize>,
     /// El grupo elegido a la izquierda; `None`, todas.
@@ -353,6 +379,9 @@ impl Default for Galeria {
         Galeria {
             figuras: Vec::new(),
             noche: false,
+            boton: pindesk_ui::dia_noche::DiaNoche::nuevo(false),
+            scroll_chips: 0,
+            ancho_chips: Cell::new(0),
             modo: Vec::new(),
             filtro: None,
             consulta: String::new(),
@@ -378,6 +407,12 @@ impl Galeria {
             .and_then(|i| self.figuras.get(i))
             .map(|f| f.id.clone());
         let figuras = biblioteca::cargar(&crate::biblioteca_figuras::ruta());
+        self.poner_figuras(&figuras, elegida);
+    }
+
+    /// Las figuras que se ensenan (ya leidas), conservando la elegida si
+    /// sigue.
+    fn poner_figuras(&mut self, figuras: &[FiguraGuardada], elegida: Option<String>) {
         self.figuras = figuras.iter().map(vista_de).collect();
         // Las del usuario primero y despues las categorias en su orden.
         self.figuras.sort_by_key(|f| orden_del_grupo(&f.grupo));
@@ -408,6 +443,7 @@ impl Galeria {
             return;
         }
         self.noche = noche;
+        self.boton.poner(noche, crate::boton_dia_noche::ahora_ms());
         self.modo = segun_el_modo(&self.pares(), noche);
         let pareja = self.elegida.and_then(|i| pareja(&self.pares(), i));
         self.elegida = pareja
@@ -456,6 +492,7 @@ impl Galeria {
                 self.filtro = g.clone();
                 self.scroll = 0;
             }
+            Some(Zona::Buscador) => {}
             Some(Zona::Figura(i)) => {
                 self.elegida = Some(*i);
                 let doble = self
@@ -629,6 +666,18 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, g: &mut Galeria) -> Result<()> 
                         ventana.soltar_raton();
                     }
                 }
+                // La rueda encima de las categorias las corre de lado.
+                EventoOverlay::Rueda(delta)
+                    if (BARRA * escala / 100) as i32 <= g.raton.y
+                        && g.raton.y < ((BARRA + FILA_CHIPS) * escala / 100) as i32 =>
+                {
+                    let nuevo = (g.scroll_chips - delta * (CHIP * escala / 100) as i32 / 120 * 2)
+                        .clamp(0, g.ancho_chips.get().max(0));
+                    if nuevo != g.scroll_chips {
+                        g.scroll_chips = nuevo;
+                        pintar = true;
+                    }
+                }
                 EventoOverlay::Rueda(delta) => {
                     let paso = (CELDA_DIBUJO * escala / 100) as i32;
                     let nuevo = (g.scroll - delta * paso / 120 * 6 / 10)
@@ -696,6 +745,11 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, g: &mut Galeria) -> Result<()> 
                 pintar = true;
             }
         }
+        // Mientras gira el icono del ☀/☾, un fotograma tras otro.
+        let girando = g.boton.animando(crate::boton_dia_noche::ahora_ms());
+        if girando {
+            pintar = true;
+        }
         if pintar {
             pintar = false;
             let tema = if pindesk_shell::entorno::tema_claro() {
@@ -711,7 +765,13 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, g: &mut Galeria) -> Result<()> 
             }
         }
         // Con el aviso a la vista se despierta antes, para quitarlo a tiempo.
-        let espera = if g.aviso.is_some() { 200 } else { 1_000 };
+        let espera = if girando {
+            16
+        } else if g.aviso.is_some() {
+            200
+        } else {
+            1_000
+        };
         pindesk_shell::overlay::esperar_eventos(Some(espera));
     }
     poner_destino(None);
@@ -742,15 +802,66 @@ fn pintar_todo(
         ancho,
         alto,
     };
-    p.rellenar(rf(todo), tema.chat);
+    let claro = es_claro(tema);
+    p.rellenar(rf(todo), tema.lista);
 
-    // La barra: titulo, buscador y cerrar. Lo que no es boton la arrastra.
+    // --- La cabecera del movil: «Cerrar» a la izquierda, el titulo con su
+    // cuenta en medio y el ☀/☾ redondo a la derecha. Lo que no es boton la
+    // arrastra.
     let barra = Rect {
         alto: ei(BARRA),
         ..todo
     };
-    p.rellenar(rf(barra), tema.barra);
     zonas.push((barra, Zona::Barra));
+    let tam = 13.5 * e;
+    let gris = if claro {
+        crate::caja_dibujo::hex(0xf2f2f7)
+    } else {
+        tema.buscador
+    };
+    let gris_sobre = if claro {
+        crate::caja_dibujo::hex(0xe5e5ea)
+    } else {
+        tema.fila_sobre
+    };
+    let rotulo_cerrar = textos.t("pin-cerrar");
+    let (cw, ch) = p.medir_texto(&rotulo_cerrar, tam);
+    let alto_pastilla = ei(PASTILLA);
+    let cerrar = Rect {
+        x: ei(MARGEN) as i32,
+        y: (barra.alto as i32 - alto_pastilla as i32) / 2,
+        ancho: (cw + 32.0 * e) as u32,
+        alto: alto_pastilla,
+    };
+    p.rellenar_redondeado(
+        rf(cerrar),
+        cerrar.alto as f32 / 2.0,
+        if cerrar.contiene(g.raton) {
+            gris_sobre
+        } else {
+            gris
+        },
+    );
+    p.texto(
+        &rotulo_cerrar,
+        cerrar.x as f32 + (cerrar.ancho as f32 - cw) / 2.0,
+        cerrar.y as f32 + (cerrar.alto as f32 - ch) / 2.0,
+        tam,
+        tema.texto,
+    );
+    zonas.push((cerrar, Zona::Cerrar));
+
+    let centro_y = barra.alto as i32 / 2;
+    let modo = pindesk_ui::dia_noche::caja(ancho as i32 - ei(MARGEN) as i32, centro_y, escala);
+    crate::boton_dia_noche::pintar(
+        p,
+        rf(modo),
+        g.boton.paso(crate::boton_dia_noche::ahora_ms()),
+        modo.contiene(g.raton),
+        &crate::boton_dia_noche::Colores::de(claro),
+    );
+    zonas.push((modo, Zona::DiaNoche));
+
     // Eligiendo para un chat, el titulo dice para cual.
     let titulo = match &g.destino {
         Some(d) => {
@@ -758,209 +869,116 @@ fn pintar_todo(
             args.set("chat", d.chat.clone());
             textos.t_args("figuras-elegir-para", &args)
         }
-        None => format!("{} · {}", textos.t("figuras-titulo"), g.modo.len()),
+        None => textos.t("figuras-titulo"),
     };
-    let (_, th) = p.medir_texto(&titulo, 16.0 * e);
-    p.texto(
+    let mut args = fluent_bundle::FluentArgs::new();
+    args.set("n", g.modo.len());
+    let subtitulo = textos.t_args("figuras-ventana-subtitulo", &args);
+    // El titulo va centrado en la ventana, sin pisar los botones.
+    let libre = (ancho as f32 / 2.0 - cerrar.derecha() as f32 - 16.0 * e)
+        .min(ancho as f32 / 2.0 - (ancho as i32 - modo.x) as f32 - 16.0 * e)
+        .max(40.0 * e)
+        * 2.0;
+    let tam_t = 17.0 * e;
+    let (tw, th) = crate::lecciones::ui::medir_negrita(p, &titulo, tam_t, libre);
+    let tw = tw.min(libre);
+    let (sw, sh) = p.medir_texto(&subtitulo, 12.0 * e);
+    let sw = sw.min(libre);
+    let y0 = (barra.alto as f32 - th - sh - 2.0 * e) / 2.0;
+    crate::lecciones::ui::negrita(
+        p,
         &titulo,
-        ei(MARGEN) as f32,
-        (barra.alto as f32 - th) / 2.0,
-        16.0 * e,
+        (ancho as f32 - tw) / 2.0,
+        y0,
+        tam_t,
+        libre,
         tema.texto,
     );
-    // El buscador, despues del titulo (que eligiendo es mas largo).
-    let (tw, _) = p.medir_texto(&titulo, 16.0 * e);
-    let buscador = Rect {
-        x: (ei(GRUPOS + MARGEN) as i32).max((ei(MARGEN) as f32 * 2.0 + tw) as i32),
-        y: ei(9) as i32,
-        ancho: ei(360),
-        alto: ei(BARRA - 18),
-    };
-    p.rellenar_redondeado(rf(buscador), buscador.alto as f32 / 2.0, tema.buscador);
-    p.icono(
-        &mi::SEARCH,
-        RectF {
-            x: buscador.x as f32 + 10.0 * e,
-            y: buscador.y as f32 + (buscador.alto as f32 - 18.0 * e) / 2.0,
-            ancho: 18.0 * e,
-            alto: 18.0 * e,
-        },
+    p.texto_linea(
+        &subtitulo,
+        (ancho as f32 - sw) / 2.0,
+        y0 + th + 2.0 * e,
+        12.0 * e,
+        libre,
         tema.apagado,
     );
-    let (buscado, color) = if g.consulta.is_empty() {
-        (textos.t("figuras-buscar"), tema.apagado)
-    } else {
-        (format!("{}▏", g.consulta), tema.texto)
-    };
-    let (_, bh) = p.medir_texto(&buscado, 13.5 * e);
-    p.texto_linea(
-        &buscado,
-        buscador.x as f32 + 36.0 * e,
-        buscador.y as f32 + (buscador.alto as f32 - bh) / 2.0,
-        13.5 * e,
-        buscador.ancho as f32 - 44.0 * e,
-        color,
-    );
-    let cerrar = Rect {
-        x: ancho as i32 - ei(BARRA) as i32,
-        y: 0,
-        ancho: ei(BARRA),
-        alto: ei(BARRA),
-    };
-    if cerrar.contiene(g.raton) {
-        p.rellenar(rf(cerrar), tema.cerrar_sobre);
-    }
-    p.icono(
-        &mi::CLOSE,
-        RectF {
-            x: cerrar.x as f32 + (cerrar.ancho as f32 - 20.0 * e) / 2.0,
-            y: (cerrar.alto as f32 - 20.0 * e) / 2.0,
-            ancho: 20.0 * e,
-            alto: 20.0 * e,
-        },
-        tema.texto,
-    );
-    zonas.push((cerrar, Zona::Cerrar));
 
-    // ☀/☾, a la izquierda de cerrar: dice el modo puesto y, de noche, va
-    // encendido.
-    let rotulo_modo = textos.t(if g.noche {
-        "figuras-noche"
-    } else {
-        "figuras-dia"
-    });
-    let (mw, mh) = p.medir_texto(&rotulo_modo, 13.0 * e);
-    let modo = Rect {
-        x: cerrar.x - ei(10) as i32 - (mw + 46.0 * e) as i32,
-        y: ei(9) as i32,
-        ancho: (mw + 46.0 * e) as u32,
-        alto: ei(BARRA - 18),
-    };
-    let sobre = modo.contiene(g.raton);
-    p.rellenar_redondeado(
-        rf(modo),
-        modo.alto as f32 / 2.0,
-        if g.noche {
-            tema.fila_elegida
-        } else if sobre {
-            tema.fila_sobre
-        } else {
-            tema.buscador
-        },
-    );
-    let tinta_modo = if g.noche {
-        tema.texto_elegido
-    } else {
-        tema.texto
-    };
-    p.icono(
-        if g.noche {
-            &mi::DARK_MODE
-        } else {
-            &mi::LIGHT_MODE
-        },
-        RectF {
-            x: modo.x as f32 + 12.0 * e,
-            y: modo.y as f32 + (modo.alto as f32 - 16.0 * e) / 2.0,
-            ancho: 16.0 * e,
-            alto: 16.0 * e,
-        },
-        tinta_modo,
-    );
-    p.texto(
-        &rotulo_modo,
-        modo.x as f32 + 34.0 * e,
-        modo.y as f32 + (modo.alto as f32 - mh) / 2.0,
-        13.0 * e,
-        tinta_modo,
-    );
-    zonas.push((modo, Zona::DiaNoche));
-
-    // Los grupos, a la izquierda.
-    let lista = Rect {
+    // --- Las categorias en una fila de pastillas que se corre con la rueda:
+    // «Todas» y cada grupo; la elegida en azul lleno.
+    let fila_chips = Rect {
         x: 0,
         y: barra.abajo(),
-        ancho: ei(GRUPOS),
-        alto: alto.saturating_sub(barra.alto),
+        ancho,
+        alto: ei(FILA_CHIPS),
     };
-    p.rellenar(rf(lista), tema.lista);
     let grupos = g.grupos();
-    let mut filas: Vec<(Option<String>, String, usize)> =
-        vec![(None, textos.t("figuras-todas"), g.modo.len())];
-    filas.extend(
+    let mut chips: Vec<(Option<String>, String)> = vec![(None, textos.t("figuras-todas"))];
+    chips.extend(
         grupos
             .iter()
-            .map(|(gr, n)| (Some(gr.clone()), rotulo_del_grupo(gr, textos), *n)),
+            .map(|(gr, _)| (Some(gr.clone()), rotulo_del_grupo(gr, textos))),
     );
-    // Las filas se encogen para que entren todos los grupos (hay 18 de serie).
-    let paso_fila = (lista.alto.saturating_sub(ei(20)) / filas.len().max(1) as u32)
-        .clamp(ei(22), ei(FILA_GRUPO));
-    let mut y = lista.y + ei(10) as i32;
-    for (gr, rotulo, n) in filas {
-        let fila = Rect {
-            x: ei(8) as i32,
-            y,
-            ancho: lista.ancho - ei(16),
-            alto: paso_fila - ei(4),
+    p.empujar_recorte(rf(fila_chips));
+    let azul = crate::caja_dibujo::hex(0x0a84ff);
+    let mut x = ei(MARGEN) as i32 - g.scroll_chips;
+    let alto_chip = ei(CHIP);
+    let y_chip = fila_chips.y + (fila_chips.alto as i32 - alto_chip as i32) / 2;
+    for (gr, rotulo) in chips {
+        let (w, h) = p.medir_texto(&rotulo, tam);
+        let chip = Rect {
+            x,
+            y: y_chip,
+            ancho: (w + 30.0 * e) as u32,
+            alto: alto_chip,
         };
-        if fila.abajo() > lista.abajo() {
-            break;
-        }
-        let elegida = g.filtro == gr;
-        if elegida || fila.contiene(g.raton) {
-            p.rellenar_redondeado(
-                rf(fila),
-                8.0 * e,
-                if elegida {
-                    tema.fila_elegida
-                } else {
-                    tema.fila_sobre
-                },
-            );
-        }
-        let tinta = if elegida {
-            tema.texto_elegido
+        let elegido = g.filtro == gr;
+        let fondo = if elegido {
+            azul
+        } else if chip.contiene(g.raton) {
+            gris_sobre
         } else {
-            tema.texto
+            gris
         };
-        let cuenta = n.to_string();
-        let (cw, ch) = p.medir_texto(&cuenta, 12.0 * e);
-        p.texto_linea(
-            &rotulo,
-            fila.x as f32 + 12.0 * e,
-            fila.y as f32 + (fila.alto as f32 - ch) / 2.0,
-            13.5 * e,
-            fila.ancho as f32 - cw - 32.0 * e,
-            tinta,
-        );
+        p.rellenar_redondeado(rf(chip), chip.alto as f32 / 2.0, fondo);
         p.texto(
-            &cuenta,
-            fila.derecha() as f32 - cw - 12.0 * e,
-            fila.y as f32 + (fila.alto as f32 - ch) / 2.0,
-            12.0 * e,
-            if elegida { tinta } else { tema.apagado },
+            &rotulo,
+            chip.x as f32 + 15.0 * e,
+            chip.y as f32 + (chip.alto as f32 - h) / 2.0,
+            tam,
+            if elegido { Color::BLANCO } else { tema.texto },
         );
-        zonas.push((fila, Zona::Grupo(gr)));
-        y += paso_fila as i32;
+        if let Some(vista) = chip.interseccion(fila_chips) {
+            zonas.push((vista, Zona::Grupo(gr)));
+        }
+        x = chip.derecha() + ei(8) as i32;
     }
+    p.soltar_recorte();
+    g.ancho_chips
+        .set((x + g.scroll_chips + ei(MARGEN) as i32 - ancho as i32).max(0));
 
-    // La rejilla, por grupos.
-    let previa_ancho = ei(PREVIA);
+    // --- La rejilla, por grupos, y el previsualizador a la derecha.
+    let arriba = fila_chips.abajo();
+    let cuerpo_alto = (alto as i32 - arriba).max(0) as u32;
+    let previa_ancho = ei(PREVIA).min(ancho / 2);
     let rejilla = Rect {
-        x: lista.derecha(),
-        y: barra.abajo(),
-        ancho: ancho.saturating_sub(lista.ancho + previa_ancho),
-        alto: lista.alto,
+        x: 0,
+        y: arriba,
+        ancho: ancho.saturating_sub(previa_ancho),
+        alto: cuerpo_alto,
     };
     let margen = ei(MARGEN) as i32;
     let ancho_util = rejilla.ancho.saturating_sub(2 * ei(MARGEN));
     let paso = ei(CELDA_ANCHO + HUECO);
     let columnas = ((ancho_util + ei(HUECO)) / paso.max(1)).max(1) as usize;
     g.columnas.set(columnas);
-    let alto_celda = ei(CELDA_DIBUJO + CELDA_NOMBRE);
+    // Las fichas se estiran para llenar la fila, como en el movil.
+    let ancho_celda =
+        (ancho_util.saturating_sub((columnas as u32 - 1) * ei(HUECO)) / columnas as u32).max(1);
+    let alto_dibujo = ancho_celda * CELDA_DIBUJO / CELDA_ANCHO;
+    let alto_celda = alto_dibujo + ei(CELDA_NOMBRE);
     let mut visibles = Vec::new();
     p.empujar_recorte(rf(rejilla));
-    let mut y = rejilla.y - g.scroll + ei(6) as i32;
+    let mut y = rejilla.y - g.scroll + ei(4) as i32;
     for (gr, _) in grupos
         .iter()
         .filter(|(gr, _)| g.filtro.as_ref().is_none_or(|f| f == gr))
@@ -974,21 +992,36 @@ fn pintar_todo(
         if de_este.is_empty() {
             continue;
         }
-        y += ei(8) as i32;
-        p.texto(
-            &format!("{}  ({})", rotulo_del_grupo(gr, textos), de_este.len()),
+        // «Planificación 13»: el nombre en negrita y la cuenta en gris.
+        y += ei(6) as i32;
+        let nombre = rotulo_del_grupo(gr, textos);
+        let tam_g = 17.0 * e;
+        let (gw, gh) = crate::lecciones::ui::medir_negrita(p, &nombre, tam_g, ancho_util as f32);
+        crate::lecciones::ui::negrita(
+            p,
+            &nombre,
             (rejilla.x + margen) as f32,
             y as f32 + 4.0 * e,
-            15.0 * e,
+            tam_g,
+            ancho_util as f32,
             tema.texto,
+        );
+        let cuenta = de_este.len().to_string();
+        let (_, nh) = p.medir_texto(&cuenta, 14.0 * e);
+        p.texto(
+            &cuenta,
+            (rejilla.x + margen) as f32 + gw + 8.0 * e,
+            y as f32 + 4.0 * e + (gh - nh).max(0.0) / 2.0 + 1.0 * e,
+            14.0 * e,
+            tema.apagado,
         );
         y += ei(ALTO_TITULO) as i32;
         for (k, i) in de_este.iter().enumerate() {
             let (col, fila) = (k % columnas, k / columnas);
             let celda = Rect {
-                x: rejilla.x + margen + (col as u32 * paso) as i32,
+                x: rejilla.x + margen + (col as u32 * (ancho_celda + ei(HUECO))) as i32,
                 y: y + (fila as u32 * (alto_celda + ei(HUECO))) as i32,
-                ancho: ei(CELDA_ANCHO),
+                ancho: ancho_celda,
                 alto: alto_celda,
             };
             visibles.push(*i);
@@ -999,6 +1032,7 @@ fn pintar_todo(
                 p,
                 &g.figuras[*i],
                 celda,
+                alto_dibujo,
                 tema,
                 e,
                 celda.contiene(g.raton),
@@ -1029,28 +1063,102 @@ fn pintar_todo(
     }
     p.soltar_recorte();
     *g.visibles.borrow_mut() = visibles;
-    g.alto_total
-        .set((y + g.scroll - rejilla.y - rejilla.alto as i32 + ei(MARGEN) as i32).max(0));
+    // Al final sobra lo que tapa el buscador flotante, para que la ultima
+    // fila se pueda ver entera.
+    g.alto_total.set(
+        (y + g.scroll - rejilla.y - rejilla.alto as i32 + ei(MARGEN + BUSCADOR + 24) as i32).max(0),
+    );
 
-    // El previsualizador, a la derecha.
+    // --- El buscador flotante, abajo en medio de la rejilla (lo que se
+    // escribe va siempre a el).
+    let ancho_b = ei(BUSCADOR_ANCHO).min(rejilla.ancho.saturating_sub(2 * ei(MARGEN)));
+    let buscador = Rect {
+        x: rejilla.x + (rejilla.ancho as i32 - ancho_b as i32) / 2,
+        y: rejilla.abajo() - ei(BUSCADOR + 18) as i32,
+        ancho: ancho_b,
+        alto: ei(BUSCADOR),
+    };
+    let b = rf(buscador);
+    let radio = b.alto / 2.0;
+    p.rellenar_redondeado(
+        RectF {
+            y: b.y + 5.0 * e,
+            ..encoger(b, -3.0 * e)
+        },
+        radio + 3.0 * e,
+        con_alfa(Color::NEGRO, if claro { 0.10 } else { 0.35 }),
+    );
+    p.rellenar_redondeado(b, radio, tema.pildora_borde);
+    p.rellenar_redondeado(
+        encoger(b, 1.0),
+        radio - 1.0,
+        if claro { tema.cabecera } else { tema.barra },
+    );
+    let lupa = 18.0 * e;
+    p.icono(
+        &mi::SEARCH,
+        RectF {
+            x: b.x + 16.0 * e,
+            y: b.y + (b.alto - lupa) / 2.0,
+            ancho: lupa,
+            alto: lupa,
+        },
+        tema.apagado,
+    );
+    let (buscado, color) = if g.consulta.is_empty() {
+        (textos.t("figuras-buscar"), tema.apagado)
+    } else {
+        (format!("{}▏", g.consulta), tema.texto)
+    };
+    let (_, bh) = p.medir_texto(&buscado, 14.0 * e);
+    p.texto_linea(
+        &buscado,
+        b.x + 44.0 * e,
+        b.y + (b.alto - bh) / 2.0,
+        14.0 * e,
+        b.ancho - 60.0 * e,
+        color,
+    );
+    zonas.push((buscador, Zona::Buscador));
+
+    // El previsualizador, a la derecha, con su raya.
     let previa = Rect {
         x: rejilla.derecha(),
-        y: barra.abajo(),
+        y: arriba,
         ancho: previa_ancho,
-        alto: lista.alto,
+        alto: cuerpo_alto,
     };
-    p.rellenar(rf(previa), tema.lista);
+    p.rellenar(rf(previa), tema.barra);
+    p.rellenar(
+        RectF {
+            x: previa.x as f32,
+            y: previa.y as f32,
+            ancho: e.max(1.0),
+            alto: previa.alto as f32,
+        },
+        con_alfa(tema.texto, 0.08),
+    );
+    // La raya de debajo de las categorias.
+    p.rellenar(
+        RectF {
+            x: 0.0,
+            y: arriba as f32,
+            ancho: ancho as f32,
+            alto: e.max(1.0),
+        },
+        con_alfa(tema.texto, 0.08),
+    );
     if let Some(f) = g.elegida.and_then(|i| g.figuras.get(i)) {
         pintar_previa(p, f, previa, tema, e, textos, g, &mut zonas);
     }
 
-    // «Adjuntada a … ✓», una pastilla abajo en el centro de la rejilla.
+    // «Adjuntada a … ✓», una pastilla encima del buscador.
     if let Some((texto, _)) = &g.aviso {
         let tam = 14.0 * e;
         let (w, h) = p.medir_texto(texto, tam);
         let pastilla = RectF {
             x: rejilla.x as f32 + (rejilla.ancho as f32 - w - 36.0 * e) / 2.0,
-            y: rejilla.abajo() as f32 - h - 40.0 * e,
+            y: buscador.y as f32 - h - 32.0 * e,
             ancho: w + 36.0 * e,
             alto: h + 18.0 * e,
         };
@@ -1067,6 +1175,12 @@ fn pintar_todo(
             Color::BLANCO,
         );
     }
+}
+
+/// Si el tema es el de dia.
+fn es_claro(tema: &Tema) -> bool {
+    let c = tema.lista;
+    c.r + c.g + c.b > 1.5
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1266,10 +1380,15 @@ fn resumen_de_piezas(p: &Piezas, textos: &Catalogo) -> String {
     }
 }
 
+/// Una ficha de la rejilla, como las del movil: la hoja con la figura en
+/// una tarjeta redondeada con su filete y el nombre debajo. La elegida lleva
+/// el anillo azul; con el raton encima, el filete mas marcado.
+#[allow(clippy::too_many_arguments)]
 fn pintar_celda(
     p: &Pintor,
     f: &Vista,
     celda: Rect,
+    alto_dibujo: u32,
     tema: &Tema,
     e: f32,
     encima: bool,
@@ -1279,49 +1398,42 @@ fn pintar_celda(
         x: celda.x as f32,
         y: celda.y as f32,
         ancho: celda.ancho as f32,
-        alto: CELDA_DIBUJO as f32 * e,
+        alto: alto_dibujo as f32,
     };
-    if encima || elegida {
+    let radio = 14.0 * e;
+    if elegida {
         p.rellenar_redondeado(
-            RectF {
-                x: dibujo.x - 5.0 * e,
-                y: dibujo.y - 5.0 * e,
-                ancho: dibujo.ancho + 10.0 * e,
-                alto: celda.alto as f32 + 6.0 * e,
-            },
-            12.0 * e,
-            if elegida {
-                tema.fila_elegida
-            } else {
-                tema.fila_sobre
-            },
+            encoger(dibujo, -3.0 * e),
+            radio + 3.0 * e,
+            crate::caja_dibujo::hex(0x0a84ff),
         );
     }
-    p.rellenar_redondeado(dibujo, 10.0 * e, tema.papel);
+    p.rellenar_redondeado(
+        dibujo,
+        radio,
+        con_alfa(tema.texto, if encima { 0.22 } else { 0.10 }),
+    );
+    p.rellenar_redondeado(encoger(dibujo, 1.0), radio - 1.0, tema.papel);
     if let Some(d) = &f.dibujo {
         pintar_lienzo(
             p,
             d,
             RectF {
-                x: dibujo.x + 9.0 * e,
-                y: dibujo.y + 9.0 * e,
-                ancho: dibujo.ancho - 18.0 * e,
-                alto: dibujo.alto - 18.0 * e,
+                x: dibujo.x + 12.0 * e,
+                y: dibujo.y + 12.0 * e,
+                ancho: dibujo.ancho - 24.0 * e,
+                alto: dibujo.alto - 24.0 * e,
             },
             None,
         );
     }
     p.texto_linea(
         &f.nombre,
-        dibujo.x + 2.0 * e,
-        dibujo.y + dibujo.alto + 7.0 * e,
-        12.5 * e,
-        dibujo.ancho - 4.0 * e,
-        if elegida {
-            tema.texto_elegido
-        } else {
-            tema.texto
-        },
+        dibujo.x + 4.0 * e,
+        dibujo.y + dibujo.alto + 8.0 * e,
+        13.0 * e,
+        dibujo.ancho - 8.0 * e,
+        tema.texto,
     );
 }
 
@@ -1367,6 +1479,11 @@ pub(super) fn guardar_lienzo(escena: &pindesk_motor2d::Escena, nombre: &str) -> 
         Err("no se pudo escribir".into())
     }
 }
+
+/// Muestras en PNG de la ventana, de dia y de noche (2-nov-2026).
+#[cfg(test)]
+#[path = "muestra_figuras.rs"]
+mod muestra;
 
 #[cfg(test)]
 mod pruebas {

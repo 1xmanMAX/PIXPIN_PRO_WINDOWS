@@ -2441,6 +2441,7 @@ fn pintar_horario(e: &mut Estado, p: &Pintor, marco: Rect, s: f32, textos: &Cata
                 accion: Accion::HorarioComoTexto,
             },
         ],
+        dia_noche: None,
         mover: Accion::Mover,
         cerrar: Accion::Cerrar,
     };
@@ -2766,6 +2767,7 @@ fn pintar_todo(e: &mut Estado, p: &Pintor, marco: Rect, s: f32, textos: &Catalog
             vaciar: Accion::VaciarBusqueda,
         }),
         botones: Vec::new(),
+        dia_noche: None,
         mover: Accion::Mover,
         cerrar: Accion::Cerrar,
     };
