@@ -79,7 +79,7 @@ pub(super) struct ElegirPdf {
 
 /// **La palabra de la letra `k`**: las letras y cifras seguidas a su
 /// alrededor; una letra suelta (un signo) es ella sola.
-pub(super) fn palabra_en(texto: &[char], k: usize) -> Range<usize> {
+pub(crate) fn palabra_en(texto: &[char], k: usize) -> Range<usize> {
     if k >= texto.len() {
         return texto.len()..texto.len();
     }
@@ -101,7 +101,7 @@ pub(super) fn palabra_en(texto: &[char], k: usize) -> Range<usize> {
 /// **El renglon de la letra `k`**: las letras a su alrededor que caen a su
 /// altura, sin pasar de un salto de renglon. Los blancos sin caja (los que
 /// se anaden entre palabras) cuentan si los rodean letras del renglon.
-pub(super) fn renglon_en(t: &PaginaDeTexto, k: usize) -> Range<usize> {
+pub(crate) fn renglon_en(t: &PaginaDeTexto, k: usize) -> Range<usize> {
     let texto: Vec<char> = t.texto.chars().collect();
     let Some(Some(c)) = t.cajas.get(k) else {
         return k.min(texto.len())..(k + 1).min(texto.len());

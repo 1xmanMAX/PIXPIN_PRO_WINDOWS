@@ -479,6 +479,49 @@ impl Pintor<'_> {
         }
         v
     }
+
+    /// **La caja de cada letra** de un parrafo (una por unidad UTF-16 de
+    /// `texto`, con el origen en la esquina del parrafo), preguntada a los
+    /// MISMOS renglones que se pintan: es la capa de texto que se elige con
+    /// el raton para copiar o marcar (`visor::marcar`, 1-nov-2026). `None`
+    /// en lo que no cae en ningun renglon.
+    #[allow(clippy::too_many_arguments)] // texto, tamano, ancho, tramos, letra y renglones
+    pub fn letras_de_lectura(
+        &self,
+        texto: &str,
+        tam: f32,
+        ancho_max: f32,
+        tramos: &[Tramo],
+        letra: &LetraDeLectura,
+        renglones: &[(u32, u32)],
+    ) -> Vec<Option<RectF>> {
+        let largo = texto.encode_utf16().count();
+        let mut v = vec![None; largo];
+        let Some(lineas) = disposiciones(
+            self.motor.dwrite(),
+            texto,
+            tam,
+            ancho_max,
+            tramos,
+            letra,
+            renglones,
+        ) else {
+            return v;
+        };
+        for (k, (d, a, dy)) in lineas.iter().enumerate() {
+            let b = renglones
+                .get(k)
+                .map_or(largo as u32, |r| r.1)
+                .max(*a)
+                .min(largo as u32);
+            for u in *a..b {
+                if let Some(r) = crate::lienzo::cajas_de_disposicion(d, u - a, 1).first() {
+                    v[u as usize] = Some(RectF { y: r.y + dy, ..*r });
+                }
+            }
+        }
+        v
+    }
 }
 
 impl MotorRender {

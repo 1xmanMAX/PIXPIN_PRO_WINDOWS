@@ -100,7 +100,7 @@ use crate::overlay::Recursos;
 /// Lo que otro escribe en las capas con el lector abierto, a la vista.
 mod al_dia;
 mod cola;
-mod elegir;
+pub(crate) mod elegir;
 /// Imprimir el PDF entero (el clic derecho en el boton del marco).
 mod entero;
 /// Marcar el texto leyendo: resaltar, subrayar, tachar, tapar.

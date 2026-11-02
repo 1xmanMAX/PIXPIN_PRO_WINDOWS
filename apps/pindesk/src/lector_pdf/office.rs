@@ -66,9 +66,9 @@ pub(crate) struct DeOffice {
 /// Lo elegido con el raton: desde donde se pulso (`ancla`) hasta donde va
 /// (`punta`), cada uno como (hoja, letra) en el texto de su hoja.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(super) struct Seleccion {
-    pub(super) ancla: (usize, usize),
-    pub(super) punta: (usize, usize),
+pub(crate) struct Seleccion {
+    pub(crate) ancla: (usize, usize),
+    pub(crate) punta: (usize, usize),
 }
 
 impl Seleccion {
@@ -82,7 +82,7 @@ impl Seleccion {
     }
 
     /// Las letras elegidas de la hoja `i`, que tiene `largo` letras.
-    pub(super) fn rango_en(&self, i: usize, largo: usize) -> Option<Range<usize>> {
+    pub(crate) fn rango_en(&self, i: usize, largo: usize) -> Option<Range<usize>> {
         let (a, b) = self.ordenada();
         if i < a.0 || i > b.0 {
             return None;
@@ -92,7 +92,7 @@ impl Seleccion {
         (hasta > desde).then_some(desde..hasta)
     }
 
-    pub(super) fn vacia(&self) -> bool {
+    pub(crate) fn vacia(&self) -> bool {
         self.ancla == self.punta
     }
 }
@@ -376,7 +376,7 @@ fn avances_de(t: &Texto, medidor: &dyn Medidor, salida: &mut Vec<f32>) {
 /// busca el renglon mas cercano en vertical y en el la letra mas cercana en
 /// horizontal; pasada su mitad, el cursor va detras. `None` si la hoja no
 /// tiene texto.
-pub(super) fn letra_cercana(t: &PaginaDeTexto, x: f32, y: f32) -> Option<usize> {
+pub(crate) fn letra_cercana(t: &PaginaDeTexto, x: f32, y: f32) -> Option<usize> {
     let distancia = |a: f32, b0: f32, b1: f32| {
         if a < b0 {
             b0 - a
@@ -404,7 +404,7 @@ pub(super) fn letra_cercana(t: &PaginaDeTexto, x: f32, y: f32) -> Option<usize> 
 }
 
 /// La letra que hay justo debajo de un punto (en fracciones de la hoja).
-pub(super) fn letra_debajo(t: &PaginaDeTexto, x: f32, y: f32) -> bool {
+pub(crate) fn letra_debajo(t: &PaginaDeTexto, x: f32, y: f32) -> bool {
     t.cajas
         .iter()
         .flatten()
