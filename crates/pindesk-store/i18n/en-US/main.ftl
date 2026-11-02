@@ -3657,3 +3657,37 @@ reportar-ia-comentario = (If you like, tell us here what is wrong.)
 
 ## Review aloud: if Jev fails, why (1-Nov-2026, like the phone)
 repaso-jev-fallo-red = No connection.
+
+## La nube de los chats compartidos (1-nov-2026, sincronizar::nube)
+chat-nuevo-nube = Shared chat in the cloud
+chat-nuevo-nube-detalle = What you upload, the others download wherever they are
+nube-modo-titulo = How it syncs
+nube-modo-local = Local network
+nube-modo-nube = Cloud
+nube-modo-local-detalle = Syncs when you are on the same Wi-Fi, free and without servers.
+nube-modo-nube-detalle = Goes through your cloud: what you upload the others download wherever they are, and it shows on the web. Only changes are uploaded.
+nube-falta-configurar = No cloud yet: set its address and your key in Sync → Cloud.
+nube-titulo = Cloud
+nube-portada-como = Shared chats set to «Cloud» go through your server. Your own chats stay on the local network.
+nube-ajustes = Cloud settings
+nube-explica = Your server keeps the shared chats that go through the cloud and shows them on the web. Personal chats stay on the local network, without servers.
+nube-direccion = Web address
+nube-llave = Device key (pxn_…)
+nube-llave-guardada = Key saved:
+nube-olvidar = Forget
+nube-guardar = Save
+nube-probar = Test
+nube-guardado = Saved.
+nube-direccion-mala = The address must start with https://.
+nube-llave-mala = The key starts with pxn_ (the web gives it to you when you register this device).
+nube-probado = Connected: space { $espacio }.
+nube-no-contesta = The cloud does not answer:
+nube-que-va = Only changes are uploaded: on an annotated plan, the new stroke and not the whole plan.
+nube-en-linea = Online
+nube-sin-conexion = Offline
+nube-cerrar-titulo = Offline changes
+nube-cerrar-pregunta =
+    You annotated this document offline.
+    Yes: discard those changes (the others' stay).
+    No: go back online and upload them.
+    Cancel: keep it offline for next time.

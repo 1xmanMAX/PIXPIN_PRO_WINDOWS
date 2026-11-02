@@ -3585,3 +3585,37 @@ reportar-ia-campo-version = 版本
 reportar-ia-campo-contenido = AI 所写的内容
 reportar-ia-comentario = （如果愿意，请在这里说明哪里有问题。）
 repaso-jev-fallo-red = 无网络连接。
+
+## La nube de los chats compartidos (1-nov-2026, sincronizar::nube)
+chat-nuevo-nube = 云端共享聊天
+chat-nuevo-nube-detalle = 你上传的内容，其他人在任何地方都能下载
+nube-modo-titulo = 同步方式
+nube-modo-local = 局域网
+nube-modo-nube = 云端
+nube-modo-local-detalle = 在同一 Wi-Fi 下同步，免费且无需服务器。
+nube-modo-nube-detalle = 通过你的云端：你上传的内容其他人在任何地方都能下载，并可在网页上查看。只上传变化的部分。
+nube-falta-configurar = 尚未设置云端：请在 同步 → 云端 中填写地址和密钥。
+nube-titulo = 云端
+nube-portada-como = 设为「云端」的共享聊天通过你的服务器同步。你自己的聊天仍走局域网。
+nube-ajustes = 云端设置
+nube-explica = 你的服务器保存通过云端同步的共享聊天，并在网页上显示。个人聊天仍走局域网，无需服务器。
+nube-direccion = 网址
+nube-llave = 设备密钥（pxn_…）
+nube-llave-guardada = 已保存的密钥：
+nube-olvidar = 忘记
+nube-guardar = 保存
+nube-probar = 测试
+nube-guardado = 已保存。
+nube-direccion-mala = 网址必须以 https:// 开头。
+nube-llave-mala = 密钥以 pxn_ 开头（注册此设备时网页会给你）。
+nube-probado = 已连接：空间 { $espacio }。
+nube-no-contesta = 云端没有响应：
+nube-que-va = 只上传变化的部分：在已标注的图纸上，只上传新的笔画，而不是整张图纸。
+nube-en-linea = 在线
+nube-sin-conexion = 离线
+nube-cerrar-titulo = 离线修改
+nube-cerrar-pregunta =
+    你在离线状态下标注了此文档。
+    是：放弃这些修改（保留其他人的）。
+    否：恢复在线并上传。
+    取消：下次仍保持离线。

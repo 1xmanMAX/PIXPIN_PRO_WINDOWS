@@ -26,6 +26,7 @@ use crate::caja_texto::CajaLinea;
 use pindesk_render::icono::material;
 use pindesk_sincro::compartidos::{self, ChatCompartido, CompartidosEnDisco, Persona};
 use pindesk_sincro::invitacion::{self, AvisoDePuerta, Puerta};
+use pindesk_sincro::nube::estado::Modo;
 use pindesk_sincro::protocolo::ErrorSincro;
 use pindesk_store::Catalogo;
 
@@ -98,6 +99,8 @@ pub(super) enum Toque {
     /// Ya dentro: llevar el chat de PinDesk al chat recien traido.
     AbrirChat,
     Cerrar,
+    /// Por donde va el chat: la red local o la nube (1-nov-2026).
+    Modo(Modo),
 }
 
 /// La invitacion abierta: su puerta, su anuncio en la red y su QR.
@@ -125,6 +128,9 @@ pub(super) struct Personas {
     trabajando: Arc<AtomicBool>,
     quitando: Option<String>,
     dentro_de: Option<ChatCompartido>,
+    /// Por donde va el chat (red local o nube) y si hay nube configurada.
+    modo: Modo,
+    hay_nube: bool,
 }
 
 impl Personas {
@@ -160,6 +166,8 @@ impl Personas {
             trabajando: Arc::new(AtomicBool::new(false)),
             quitando: None,
             dentro_de: None,
+            modo: Modo::Local,
+            hay_nube: false,
         }
     }
 
@@ -177,6 +185,11 @@ impl Personas {
         }
         self.nombre = nombre;
         self.lista = self.chat.as_ref().and_then(|(c, _)| cd.de(c));
+        self.modo = self
+            .chat
+            .as_ref()
+            .map_or(Modo::Local, |(c, _)| super::nube::modo(&cx.raiz, c));
+        self.hay_nube = super::nube::configurada(&cx.raiz);
     }
 
     pub(super) fn titulo(&self, textos: &Catalogo) -> String {
@@ -391,6 +404,18 @@ pub(super) fn tocar(p: &mut Personas, t: Toque, cx: &Contexto) -> bool {
             }
         }
         Toque::Cerrar => return true,
+        Toque::Modo(m) => {
+            if let Some((chat, _)) = p.chat.clone() {
+                p.aviso = match super::nube::poner_modo(&cx.raiz, &chat, m) {
+                    Ok(()) if m == Modo::Nube && !p.hay_nube => {
+                        Some(Dicho::de("nube-falta-configurar"))
+                    }
+                    Ok(()) => None,
+                    Err(e) => Some(Dicho::con("cc-se-corto", "motivo", e.to_string())),
+                };
+                p.releer(cx);
+            }
+        }
     }
     false
 }
@@ -968,7 +993,7 @@ pub(crate) fn autor_aqui(aparato: &str) -> Option<String> {
 // ------------------------------------------------------------------ pintar
 
 /// Un campo de una linea con su rotulo encima (`OutlinedTextField`).
-fn campo_linea(
+pub(super) fn campo_linea(
     l: &mut Lienzo<'_>,
     r: pindesk_render::RectF,
     caja: &CajaLinea,
@@ -1127,6 +1152,33 @@ fn pintar_personas(
     if !estoy {
         y += caja_texto(l, x, y, w, None, &textos.t("cc-ya-no-estas"));
         y += 16.0 * e;
+    }
+    // Por donde va: la red local (lo de siempre) o la nube (1-nov-2026).
+    if estoy {
+        p.texto(&textos.t("nube-modo-titulo"), x, y, 12.0 * e, SUAVE);
+        y += 20.0 * e;
+        let mitad = (w - 8.0 * e) / 2.0;
+        l.boton(
+            rect(x, y, mitad, 44.0 * e),
+            &textos.t("nube-modo-local"),
+            Some(&pindesk_render::icono::material::WIFI),
+            s.modo == Modo::Local,
+            t(Toque::Modo(Modo::Local)),
+        );
+        l.boton(
+            rect(x + mitad + 8.0 * e, y, mitad, 44.0 * e),
+            &textos.t("nube-modo-nube"),
+            Some(&pindesk_render::icono::material::CLOUD),
+            s.modo == Modo::Nube,
+            t(Toque::Modo(Modo::Nube)),
+        );
+        y += 44.0 * e + 8.0 * e;
+        let explica = textos.t(if s.modo == Modo::Nube {
+            "nube-modo-nube-detalle"
+        } else {
+            "nube-modo-local-detalle"
+        });
+        y += l.parrafo(&explica, x, y, w, 12.0 * e, SUAVE) + 16.0 * e;
     }
     // Una fila por aparato: cada uno firma sus mensajes con su codigo.
     let mut filas: Vec<&Persona> = c.personas.iter().collect();

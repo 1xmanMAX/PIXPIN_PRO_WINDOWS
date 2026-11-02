@@ -3621,3 +3621,37 @@ reportar-ia-campo-version = Version
 reportar-ia-campo-contenido = Was die KI geschrieben hat
 reportar-ia-comentario = (Wenn Sie möchten, schreiben Sie hier, was falsch ist.)
 repaso-jev-fallo-red = Keine Verbindung.
+
+## La nube de los chats compartidos (1-nov-2026, sincronizar::nube)
+chat-nuevo-nube = Geteilter Chat in der Cloud
+chat-nuevo-nube-detalle = Was du hochlädst, laden die anderen herunter, wo immer sie sind
+nube-modo-titulo = Synchronisierung
+nube-modo-local = Lokales Netz
+nube-modo-nube = Cloud
+nube-modo-local-detalle = Synchronisiert, wenn ihr im selben WLAN seid – kostenlos und ohne Server.
+nube-modo-nube-detalle = Läuft über deine Cloud: Was du hochlädst, laden die anderen herunter, wo immer sie sind, und es ist im Web sichtbar. Nur Änderungen werden hochgeladen.
+nube-falta-configurar = Noch keine Cloud: Adresse und Schlüssel unter Synchronisieren → Cloud eintragen.
+nube-titulo = Cloud
+nube-portada-como = Geteilte Chats mit «Cloud» laufen über deinen Server. Deine eigenen Chats bleiben im lokalen Netz.
+nube-ajustes = Cloud-Einstellungen
+nube-explica = Dein Server speichert die geteilten Chats, die über die Cloud laufen, und zeigt sie im Web. Persönliche Chats bleiben im lokalen Netz, ohne Server.
+nube-direccion = Webadresse
+nube-llave = Geräteschlüssel (pxn_…)
+nube-llave-guardada = Schlüssel gespeichert:
+nube-olvidar = Vergessen
+nube-guardar = Speichern
+nube-probar = Testen
+nube-guardado = Gespeichert.
+nube-direccion-mala = Die Adresse muss mit https:// beginnen.
+nube-llave-mala = Der Schlüssel beginnt mit pxn_ (die Website gibt ihn dir, wenn du dieses Gerät anmeldest).
+nube-probado = Verbunden: Bereich { $espacio }.
+nube-no-contesta = Die Cloud antwortet nicht:
+nube-que-va = Nur Änderungen werden hochgeladen: bei einem kommentierten Plan der neue Strich, nicht der ganze Plan.
+nube-en-linea = Online
+nube-sin-conexion = Offline
+nube-cerrar-titulo = Offline-Änderungen
+nube-cerrar-pregunta =
+    Du hast dieses Dokument offline kommentiert.
+    Ja: diese Änderungen verwerfen (die der anderen bleiben).
+    Nein: wieder online gehen und sie hochladen.
+    Abbrechen: für das nächste Mal offline lassen.

@@ -3722,3 +3722,37 @@ reportar-ia-campo-version = Версия
 reportar-ia-campo-contenido = Что написал ИИ
 reportar-ia-comentario = (Если хотите, расскажите здесь, что не так.)
 repaso-jev-fallo-red = Нет подключения.
+
+## La nube de los chats compartidos (1-nov-2026, sincronizar::nube)
+chat-nuevo-nube = Общий чат в облаке
+chat-nuevo-nube-detalle = То, что вы загружаете, другие получают где угодно
+nube-modo-titulo = Как синхронизируется
+nube-modo-local = Локальная сеть
+nube-modo-nube = Облако
+nube-modo-local-detalle = Синхронизируется, когда вы в одной сети Wi-Fi, бесплатно и без серверов.
+nube-modo-nube-detalle = Идёт через ваше облако: то, что вы загружаете, другие получают где угодно, и это видно в вебе. Загружаются только изменения.
+nube-falta-configurar = Облако не настроено: укажите адрес и ключ в Синхронизация → Облако.
+nube-titulo = Облако
+nube-portada-como = Общие чаты с режимом «Облако» идут через ваш сервер. Ваши личные остаются в локальной сети.
+nube-ajustes = Настройки облака
+nube-explica = Ваш сервер хранит общие чаты, которые идут через облако, и показывает их в вебе. Личные чаты остаются в локальной сети, без серверов.
+nube-direccion = Веб-адрес
+nube-llave = Ключ устройства (pxn_…)
+nube-llave-guardada = Ключ сохранён:
+nube-olvidar = Забыть
+nube-guardar = Сохранить
+nube-probar = Проверить
+nube-guardado = Сохранено.
+nube-direccion-mala = Адрес должен начинаться с https://.
+nube-llave-mala = Ключ начинается с pxn_ (его выдаёт сайт при регистрации устройства).
+nube-probado = Подключено: пространство { $espacio }.
+nube-no-contesta = Облако не отвечает:
+nube-que-va = Загружаются только изменения: на размеченном плане — новый штрих, а не весь план.
+nube-en-linea = В сети
+nube-sin-conexion = Не в сети
+nube-cerrar-titulo = Изменения без сети
+nube-cerrar-pregunta =
+    Вы размечали этот документ без сети.
+    Да: отменить эти изменения (изменения других останутся).
+    Нет: вернуться в сеть и загрузить их.
+    Отмена: оставить без сети до следующего раза.

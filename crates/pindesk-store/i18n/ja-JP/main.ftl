@@ -3585,3 +3585,37 @@ reportar-ia-campo-version = バージョン
 reportar-ia-campo-contenido = AI が書いた内容
 reportar-ia-comentario = （よろしければ、どこがおかしいかここに書いてください。）
 repaso-jev-fallo-red = 接続がありません。
+
+## La nube de los chats compartidos (1-nov-2026, sincronizar::nube)
+chat-nuevo-nube = クラウドの共有チャット
+chat-nuevo-nube-detalle = あなたがアップロードしたものを、ほかの人はどこからでもダウンロードできます
+nube-modo-titulo = 同期の方法
+nube-modo-local = ローカルネットワーク
+nube-modo-nube = クラウド
+nube-modo-local-detalle = 同じ Wi-Fi にいるときに同期します。無料でサーバー不要です。
+nube-modo-nube-detalle = あなたのクラウドを通ります。アップロードしたものはほかの人がどこからでもダウンロードでき、ウェブでも見られます。変更点だけをアップロードします。
+nube-falta-configurar = クラウドが未設定です。同期 → クラウド でアドレスとキーを入力してください。
+nube-titulo = クラウド
+nube-portada-como = 「クラウド」にした共有チャットはあなたのサーバーを通ります。自分のチャットはローカルネットワークのままです。
+nube-ajustes = クラウドの設定
+nube-explica = あなたのサーバーはクラウドを通る共有チャットを保存し、ウェブに表示します。個人のチャットはサーバーなしでローカルネットワークのままです。
+nube-direccion = ウェブのアドレス
+nube-llave = デバイスキー（pxn_…）
+nube-llave-guardada = 保存済みのキー：
+nube-olvidar = 削除
+nube-guardar = 保存
+nube-probar = テスト
+nube-guardado = 保存しました。
+nube-direccion-mala = アドレスは https:// で始めてください。
+nube-llave-mala = キーは pxn_ で始まります（このデバイスを登録するとウェブで発行されます）。
+nube-probado = 接続しました：スペース { $espacio }。
+nube-no-contesta = クラウドが応答しません：
+nube-que-va = 変更点だけをアップロードします。注釈付きの図面なら、図面全体ではなく新しい線だけです。
+nube-en-linea = オンライン
+nube-sin-conexion = オフライン
+nube-cerrar-titulo = オフラインでの変更
+nube-cerrar-pregunta =
+    この文書にオフラインで注釈を付けました。
+    はい：その変更を破棄します（ほかの人の変更は残ります）。
+    いいえ：オンラインに戻してアップロードします。
+    キャンセル：次回までオフラインのままにします。

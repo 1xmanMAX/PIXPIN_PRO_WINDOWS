@@ -112,6 +112,7 @@ mod jev;
 // Solo para desarrollar: `PINDESK_INSTANCIA` (ver el modulo).
 /// Google Calendar, solo para ver: sus eventos en el horario y en los avisos.
 mod calendario_google;
+mod en_linea;
 mod horario;
 mod instancia_de_prueba;
 mod lecciones;
@@ -722,6 +723,9 @@ fn arrancar(
     // esperar para que me aparezca». Se puede apagar con `[sincro] presencia
     // = false`.
     sincronizar::presencia::instalar(ubicacion.raiz().to_path_buf(), config.sincro.presencia);
+    // Y la nube de los chats compartidos que van por ella (`sincronizar::nube`):
+    // sin direccion ni llave no hace nada.
+    sincronizar::nube::instalar(ubicacion.raiz().to_path_buf());
     // Y con ella, sincronizar solo con los que contesten (8-oct-2026).
     sincronizar::automatica::instalar(ubicacion.raiz().to_path_buf(), config.sincro.automatica);
     // 7d. El marco de la tinta de lo ya anotado (K21): una vez por almacen,

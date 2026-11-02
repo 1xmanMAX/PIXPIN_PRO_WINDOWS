@@ -3509,3 +3509,37 @@ reportar-ia-campo-version = Versão
 reportar-ia-campo-contenido = O que a IA escreveu
 reportar-ia-comentario = (Se quiser, conte aqui o que está errado.)
 repaso-jev-fallo-red = Sem conexão.
+
+## La nube de los chats compartidos (1-nov-2026, sincronizar::nube)
+chat-nuevo-nube = Chat compartilhado na nuvem
+chat-nuevo-nube-detalle = O que você envia, os outros baixam de onde estiverem
+nube-modo-titulo = Como sincroniza
+nube-modo-local = Rede local
+nube-modo-nube = Nuvem
+nube-modo-local-detalle = Sincroniza quando vocês estão no mesmo Wi-Fi, grátis e sem servidores.
+nube-modo-nube-detalle = Vai pela sua nuvem: o que você envia os outros baixam de onde estiverem, e aparece na web. Só envia o que muda.
+nube-falta-configurar = Falta a nuvem: coloque o endereço e sua chave em Sincronizar → Nuvem.
+nube-titulo = Nuvem
+nube-portada-como = Os chats compartilhados marcados como «Nuvem» passam pelo seu servidor. Os seus continuam pela rede local.
+nube-ajustes = Ajustes da nuvem
+nube-explica = Seu servidor guarda os chats compartilhados que vão pela nuvem e os mostra na web. Os chats pessoais continuam pela rede local, sem servidores.
+nube-direccion = Endereço da web
+nube-llave = Chave do aparelho (pxn_…)
+nube-llave-guardada = Chave salva:
+nube-olvidar = Esquecer
+nube-guardar = Salvar
+nube-probar = Testar
+nube-guardado = Salvo.
+nube-direccion-mala = O endereço tem que começar com https://.
+nube-llave-mala = A chave começa com pxn_ (a web a fornece ao cadastrar este aparelho).
+nube-probado = Conectado: espaço { $espacio }.
+nube-no-contesta = A nuvem não responde:
+nube-que-va = Só envia o que muda: de uma planta anotada, o traço novo e não a planta inteira.
+nube-en-linea = On-line
+nube-sin-conexion = Off-line
+nube-cerrar-titulo = Alterações off-line
+nube-cerrar-pregunta =
+    Você anotou este documento off-line.
+    Sim: descartar essas alterações (as dos outros ficam).
+    Não: voltar a ficar on-line e enviá-las.
+    Cancelar: deixá-lo off-line para a próxima vez.

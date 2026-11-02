@@ -3585,3 +3585,37 @@ reportar-ia-campo-version = 버전
 reportar-ia-campo-contenido = AI가 쓴 내용
 reportar-ia-comentario = (원하면 무엇이 잘못되었는지 여기에 적어 주세요.)
 repaso-jev-fallo-red = 연결 없음.
+
+## La nube de los chats compartidos (1-nov-2026, sincronizar::nube)
+chat-nuevo-nube = 클라우드 공유 채팅
+chat-nuevo-nube-detalle = 내가 올린 것을 다른 사람들이 어디서든 내려받습니다
+nube-modo-titulo = 동기화 방식
+nube-modo-local = 로컬 네트워크
+nube-modo-nube = 클라우드
+nube-modo-local-detalle = 같은 Wi-Fi에 있을 때 동기화합니다. 무료이며 서버가 필요 없습니다.
+nube-modo-nube-detalle = 내 클라우드를 거칩니다. 올린 것은 다른 사람들이 어디서든 내려받고 웹에서도 볼 수 있습니다. 바뀐 것만 올립니다.
+nube-falta-configurar = 클라우드가 설정되지 않았습니다. 동기화 → 클라우드에서 주소와 키를 입력하세요.
+nube-titulo = 클라우드
+nube-portada-como = 「클라우드」로 설정한 공유 채팅은 내 서버를 거칩니다. 내 채팅은 계속 로컬 네트워크로 동기화됩니다.
+nube-ajustes = 클라우드 설정
+nube-explica = 내 서버는 클라우드를 거치는 공유 채팅을 보관하고 웹에 보여 줍니다. 개인 채팅은 서버 없이 로컬 네트워크로 동기화됩니다.
+nube-direccion = 웹 주소
+nube-llave = 기기 키(pxn_…)
+nube-llave-guardada = 저장된 키:
+nube-olvidar = 지우기
+nube-guardar = 저장
+nube-probar = 테스트
+nube-guardado = 저장했습니다.
+nube-direccion-mala = 주소는 https://로 시작해야 합니다.
+nube-llave-mala = 키는 pxn_로 시작합니다(이 기기를 등록할 때 웹에서 발급).
+nube-probado = 연결됨: 공간 { $espacio }.
+nube-no-contesta = 클라우드가 응답하지 않습니다:
+nube-que-va = 바뀐 것만 올립니다. 주석을 단 도면이라면 도면 전체가 아니라 새 획만 올립니다.
+nube-en-linea = 온라인
+nube-sin-conexion = 오프라인
+nube-cerrar-titulo = 오프라인 변경
+nube-cerrar-pregunta =
+    이 문서에 오프라인으로 주석을 달았습니다.
+    예: 그 변경을 버립니다(다른 사람의 변경은 남습니다).
+    아니요: 온라인으로 돌아가 올립니다.
+    취소: 다음번까지 오프라인으로 둡니다.

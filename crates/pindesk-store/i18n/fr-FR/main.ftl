@@ -3621,3 +3621,37 @@ reportar-ia-campo-version = Version
 reportar-ia-campo-contenido = Ce que l’IA a écrit
 reportar-ia-comentario = (Si vous voulez, dites-nous ici ce qui ne va pas.)
 repaso-jev-fallo-red = Pas de connexion.
+
+## La nube de los chats compartidos (1-nov-2026, sincronizar::nube)
+chat-nuevo-nube = Discussion partagée dans le cloud
+chat-nuevo-nube-detalle = Ce que vous envoyez, les autres le récupèrent où qu'ils soient
+nube-modo-titulo = Mode de synchronisation
+nube-modo-local = Réseau local
+nube-modo-nube = Cloud
+nube-modo-local-detalle = Se synchronise quand vous êtes sur le même Wi-Fi, gratuitement et sans serveur.
+nube-modo-nube-detalle = Passe par votre cloud : ce que vous envoyez, les autres le récupèrent où qu'ils soient, et c'est visible sur le web. Seules les modifications sont envoyées.
+nube-falta-configurar = Pas encore de cloud : indiquez son adresse et votre clé dans Synchroniser → Cloud.
+nube-titulo = Cloud
+nube-portada-como = Les discussions partagées réglées sur « Cloud » passent par votre serveur. Les vôtres restent sur le réseau local.
+nube-ajustes = Réglages du cloud
+nube-explica = Votre serveur conserve les discussions partagées qui passent par le cloud et les affiche sur le web. Les discussions personnelles restent sur le réseau local, sans serveur.
+nube-direccion = Adresse web
+nube-llave = Clé de l'appareil (pxn_…)
+nube-llave-guardada = Clé enregistrée :
+nube-olvidar = Oublier
+nube-guardar = Enregistrer
+nube-probar = Tester
+nube-guardado = Enregistré.
+nube-direccion-mala = L'adresse doit commencer par https://.
+nube-llave-mala = La clé commence par pxn_ (le site vous la donne quand vous enregistrez cet appareil).
+nube-probado = Connecté : espace { $espacio }.
+nube-no-contesta = Le cloud ne répond pas :
+nube-que-va = Seules les modifications sont envoyées : sur un plan annoté, le nouveau trait et non tout le plan.
+nube-en-linea = En ligne
+nube-sin-conexion = Hors ligne
+nube-cerrar-titulo = Modifications hors ligne
+nube-cerrar-pregunta =
+    Vous avez annoté ce document hors ligne.
+    Oui : abandonner ces modifications (celles des autres restent).
+    Non : repasser en ligne et les envoyer.
+    Annuler : le laisser hors ligne pour la prochaine fois.
