@@ -421,6 +421,7 @@ pub(crate) fn nombres_de_botones(
         fijar: t.t("cad-encima"),
         cerrar: t.t("cad-cerrar"),
         guardar: t.t("cad-boton-guardar"),
+        nube: format!("{} / {}", t.t("nube-en-linea"), t.t("nube-sin-conexion")),
     }
 }
 
@@ -565,6 +566,8 @@ pub fn lanzar(idioma: Idioma, ubicacion: Ubicacion, ruta: &Path) {
                     crate::compartir::Cosa::Visor(exportar::exportable(p, idioma)),
                 );
             });
+            // «En línea / Sin conexión» si el plano es de un chat de la nube.
+            let (en_linea, boton) = crate::en_linea::para_cad(&ruta);
             let acciones = pindesk_cad::ventana::Acciones {
                 abrir_3d: Some(abrir_3d),
                 imprimir: Some(imprimir),
@@ -576,11 +579,13 @@ pub fn lanzar(idioma: Idioma, ubicacion: Ubicacion, ruta: &Path) {
                 marcadores: Some(SitioDeMarcadores::abrir(&raiz, &ruta).vistas()),
                 globo: Some(globo_de_la_barra()),
                 guardar: guardar_de_paso(idioma, &raiz, &ruta),
+                en_linea: boton,
             };
             if let Err(e) = pindesk_cad::ventana::ver(&titulo, rx, textos(idioma), acciones) {
                 tracing::warn!(%e, "no se pudo abrir el visor de planos");
                 let _ = pindesk_shell::abrir(&ruta);
             }
+            en_linea.al_cerrar(&pindesk_store::Catalogo::nuevo(idioma));
         });
     if let Err(e) = lanzado {
         tracing::warn!(?e, "no se pudo lanzar el visor de planos");
@@ -623,6 +628,8 @@ mod pruebas {
                 "CLOSE" => &m::CLOSE,
                 "BOOKMARK_ADD" => &m::BOOKMARK_ADD,
                 "SAVE" => &m::SAVE,
+                "CLOUD_DONE" => &m::CLOUD_DONE,
+                "CLOUD_OFF" => &m::CLOUD_OFF,
                 otro => panic!("{otro} no esta en la lista: anadelo aqui"),
             }
         };
@@ -651,6 +658,8 @@ mod pruebas {
         mismo("marcos", false, &m::CROP_FREE);
         mismo("marcador", false, &m::BOOKMARK_ADD);
         mismo("guardar", false, &m::SAVE);
+        mismo("nube", false, &m::CLOUD_DONE);
+        mismo("nube-sin", false, &m::CLOUD_OFF);
         // En oscuro, el sol para volver a claro (como el lector); en claro, la luna.
         mismo("tema", false, &m::LIGHT_MODE);
         mismo("tema", true, &m::DARK_MODE);

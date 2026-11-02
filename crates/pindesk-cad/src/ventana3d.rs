@@ -50,8 +50,8 @@ use crate::texto::Textos;
 use crate::ventana::{
     ALTO_BARRA, Aspecto, CAPA_ENCIMA, Cabecera, De, ESTADO, Ev, TipoDeArchivo,
     alternar_pantalla_completa, ancho_barra, aviso, barra, botones_barra, colocar_barra,
-    con_guardar, crear_barra, crear_ventana, poner_encima, raya, rect, riel, riel_a_la_vista,
-    riel_cajas, riel_en, seguir_barra, tecla_de_pantalla_completa, vista_pantalla,
+    con_guardar, con_nube, crear_barra, crear_ventana, poner_encima, raya, rect, riel,
+    riel_a_la_vista, riel_cajas, riel_en, seguir_barra, tecla_de_pantalla_completa, vista_pantalla,
 };
 use crate::ventana::{
     Globo, NombresDeBotones, Unificada, ficha_en, globo_de_la_barra, globo_izquierda,
@@ -868,6 +868,9 @@ pub struct Barra3d {
     /// con el, la barra lleva su boton, como la del plano.
     #[allow(clippy::type_complexity)]
     pub guardar: Option<Box<dyn Fn(isize)>>,
+    /// «En línea / Sin conexión» (un modelo de un chat de la nube), como en
+    /// la barra del plano.
+    pub en_linea: Option<crate::ventana::EnLinea>,
 }
 
 /// Los textos de los marcadores y los marcos del modelo.
@@ -1132,8 +1135,12 @@ pub fn ver_con_barra(
         textos: tm,
         globo: globo_barra,
         guardar: al_guardar,
+        en_linea,
     } = barra_app;
-    let botones = con_guardar(&BOTONES, al_guardar.is_some());
+    let botones = con_nube(
+        con_guardar(&BOTONES, al_guardar.is_some()),
+        en_linea.is_some(),
+    );
     // El boton de la barra cuyo globo se ensena ahora.
     let mut globo_puesto: Option<usize> = None;
     let cabecera = Cabecera::nueva(&mut textos, titulo, tipo, e);
@@ -1367,6 +1374,7 @@ pub fn ver_con_barra(
         let mut refiltrar = false;
         let mut cambiar_panel = false;
         let mut guardar = false;
+        let mut cambiar_nube = false;
         // Aislar lo elegido (Some(e)) o volver a todo (None).
         let mut aislar: Option<Option<u32>> = None;
         // Una vista guardada del croquis, pedida por el menu o su tecla.
@@ -1653,6 +1661,7 @@ pub fn ver_con_barra(
                     Some("corte") => cambiar_corte = true,
                     Some("capas") => cambiar_panel = true,
                     Some("guardar") => guardar = true,
+                    Some("nube") => cambiar_nube = true,
                     Some("pantalla") => cambiar_pantalla = true,
                     Some("fijar") => cambiar_encima = true,
                     Some("cerrar") => break 'bucle,
@@ -2301,6 +2310,10 @@ pub fn ver_con_barra(
         if guardar && let Some(f) = &al_guardar {
             f(hwnd.0 as isize);
         }
+        if cambiar_nube && let Some(n) = &en_linea {
+            (n.cambiar)();
+            barra_sucia = true;
+        }
         if cambiar_panel {
             panel = !panel;
             barra_sucia = true;
@@ -2426,12 +2439,16 @@ pub fn ver_con_barra(
                     _ => false,
                 })
                 .collect();
+            let avisos: Vec<bool> = botones
+                .iter()
+                .map(|b| *b == "nube" && en_linea.as_ref().is_some_and(|n| (n.sin_conexion)()))
+                .collect();
             let aspecto = Aspecto {
                 encima: boton_encima,
                 claro,
                 pantalla_completa: antes_de_pantalla_completa.is_some(),
                 activos: &activos,
-                ..Aspecto::default()
+                avisos: &avisos,
             };
             let m = barra(&mut textos, e, &botones, &cabecera, aspecto);
             if let Ok(p) = gpu_barra.subir(&m) {

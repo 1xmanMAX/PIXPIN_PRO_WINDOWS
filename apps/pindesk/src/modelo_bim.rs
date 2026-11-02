@@ -154,6 +154,7 @@ fn barra_del_modelo(
     raiz: &Path,
     ruta: &Path,
     nombre: &str,
+    en_linea: Option<pindesk_cad::ventana::EnLinea>,
 ) -> pindesk_cad::ventana3d::Barra3d {
     use pindesk_cad::ventana3d::Foto;
     let sitio = crate::plano_cad::SitioDeMarcadores::abrir(raiz, ruta);
@@ -198,6 +199,7 @@ fn barra_del_modelo(
         textos: textos_marcos(idioma),
         globo: Some(crate::plano_cad::globo_de_la_barra()),
         guardar: crate::plano_cad::guardar_de_paso(idioma, raiz, ruta),
+        en_linea,
     }
 }
 
@@ -230,13 +232,16 @@ pub fn lanzar(idioma: Idioma, ubicacion: Ubicacion, ruta: &Path) {
             };
             // En la barra, el tipo y el nombre, como en los demas pines.
             let nombre = crate::plano_cad::nombre_para_la_barra(&ruta);
-            let barra = barra_del_modelo(idioma, &raiz, &ruta, &nombre);
+            // «En línea / Sin conexión» si el modelo es de un chat de la nube.
+            let (en_linea, boton) = crate::en_linea::para_cad(&ruta);
+            let barra = barra_del_modelo(idioma, &raiz, &ruta, &nombre, boton);
             if let Err(e) =
                 pindesk_cad::ventana3d::ver_con_barra(&nombre, barra, rx, textos(idioma), extras)
             {
                 tracing::warn!(%e, "no se pudo abrir el visor de modelos");
                 let _ = pindesk_shell::abrir(&ruta);
             }
+            en_linea.al_cerrar(&pindesk_store::Catalogo::nuevo(idioma));
         });
     if let Err(e) = lanzado {
         tracing::warn!(?e, "no se pudo lanzar el visor de modelos");
