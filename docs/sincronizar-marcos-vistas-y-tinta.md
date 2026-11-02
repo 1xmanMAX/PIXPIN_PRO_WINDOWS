@@ -274,11 +274,19 @@ ya las ve y las puede borrar como dibujo.
   - `roughness` 0 en todas.
 - **Colores** (los de la barra del pin): `#F47286`, `#B99CF5`, `#5BA4F5`,
   `#3FC88C`, `#F5C218` (el amarillo de serie).
+- **El lector de Word, libros y páginas** (el que reajusta el texto: Word en
+  modo lectura, EPUB, Markdown, HTML, texto): lo mismo, en su capa
+  (`capa.excalidraw` junto al fichero o `anot-<uid>.excalidraw.gz`, §3.6), en
+  las unidades del documento. La primera marca **fija la columna y la letra**
+  como la primera vez que se anota, así que el texto ya no se vuelve a partir
+  y la marca queda sobre su palabra; con la maqueta del móvil cae en la misma
+  palabra allí.
 - **Hojas escaneadas**: el texto lo pone el OCR del aparato la primera vez que
   se pasa el ratón (o con **T**); no se guarda ni viaja, solo las marcas.
 - **Código**: `crates/pindesk-motor2d/src/marcas_texto.rs` (formas, colores,
   grupo), `crates/pindesk-ui/src/barra_marcar.rs` (la barrita),
-  `apps/pindesk/src/lector_pdf/marcar.rs` (el lector).
+  `apps/pindesk/src/lector_pdf/marcar.rs` (el lector de PDF y Office),
+  `apps/pindesk/src/visor/marcar.rs` (el de Word, libros y páginas).
 
 ## 4. Lo que NO viaja (a propósito)
 
