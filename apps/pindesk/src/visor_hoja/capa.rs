@@ -367,6 +367,87 @@ impl Anotado {
         t.forma_rapida(vista, zoom)
     }
 
+    /// **Marca celdas enteras** (2-nov-2026, `super::marcar`): `cajas` en las
+    /// unidades de la capa (`[x0, y0, x1, y1]`, la rejilla de
+    /// `rejilla_de_la_capa`), una por fila o una para todo el rango. Con
+    /// `que` se ponen esas marcas; sin, se quitan las que caen ahi. Es un
+    /// paso de deshacer de la capa; devuelve cuantos pasos tiene su historia
+    /// despues (para que Ctrl+Z sepa si sigue arriba) o `None` si no cambio.
+    pub(super) fn marcar(
+        &mut self,
+        (libro, hoja, i): (&Libro, &Hoja, usize),
+        real: &Rejilla,
+        cajas: &[[f32; 4]],
+        que: Option<(pindesk_motor2d::marcas_texto::Marca, (u8, u8, u8))>,
+        grupo: &str,
+    ) -> Option<usize> {
+        use pindesk_motor2d::marcas_texto as mt;
+        self.preparar(libro, hoja, i, real);
+        let capa = self.capa.as_mut()?;
+        let quitar = if que.is_none() {
+            mt::las_que_tocan(&capa.escena, cajas)
+        } else {
+            Vec::new()
+        };
+        let antes = capa.escena.pasos_cerrados();
+        capa.escena.abrir_paso();
+        for id in quitar {
+            capa.escena.borrar_apuntando(id);
+        }
+        if let Some((m, rgb)) = que {
+            for el in mt::elementos_en(m, rgb, cajas, grupo) {
+                capa.escena.anadir(el);
+            }
+        }
+        capa.escena.cerrar_paso();
+        if capa.escena.pasos_cerrados() == antes {
+            return None;
+        }
+        let pasos = capa.escena.pasos_en_historial().0;
+        if self.ruta.as_os_str().is_empty() {
+            // Sin libro (una tabla del chat): solo mientras este abierta.
+            self.vista = None;
+        } else {
+            capa.sucia = true;
+            self.guardar();
+        }
+        Some(pasos)
+    }
+
+    /// **Ctrl+Z / Ctrl+Y de una marca de celdas**: si lo ultimo de la capa
+    /// es el paso que dejo su historia en `pasos` (deshacer) o justo uno
+    /// menos (rehacer).
+    pub(super) fn deshacer_marca(&mut self, pasos: usize, rehacer: bool) -> bool {
+        let Some(c) = self.capa.as_mut() else {
+            return false;
+        };
+        let (d, r) = c.escena.pasos_en_historial();
+        let hecho = if rehacer {
+            d + 1 == pasos && r >= 1 && c.rehacer()
+        } else {
+            d == pasos && c.deshacer()
+        };
+        if hecho {
+            if self.ruta.as_os_str().is_empty() {
+                self.vista = None;
+            } else {
+                self.guardar();
+            }
+        }
+        hecho
+    }
+
+    /// Cuantos elementos de marcas de texto se ven en la capa (pruebas).
+    #[cfg(test)]
+    pub(super) fn elementos_de_marcas(&self) -> usize {
+        self.capa.as_ref().map_or(0, |c| {
+            c.escena
+                .visibles()
+                .filter(|e| pindesk_motor2d::marcas_texto::es_marca(e))
+                .count()
+        })
+    }
+
     /// La tinta, si ya se uso (para saber si quiere Escape o esta trazando).
     pub(super) fn tinta(&self) -> Option<&Tinta> {
         self.tinta.as_ref()
