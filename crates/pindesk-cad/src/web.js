@@ -310,33 +310,14 @@ function zoom(f, mx, my){
   vista.cx = x - (mx - W / 2) * vista.px; vista.cy = y + (my - H / 2) * vista.px;
   redibujar();
 }
-lienzo.addEventListener('wheel', function(e){
-  e.preventDefault();
-  var r = lienzo.getBoundingClientRect();
-  var d = e.deltaMode === 1 ? e.deltaY * 33 : e.deltaY;
-  zoom(Math.pow(1.0015, d), e.clientX - r.left, e.clientY - r.top);
-}, { passive: false });
-var dedos = new Map(), antes = null;
-lienzo.addEventListener('pointerdown', function(e){
-  lienzo.setPointerCapture(e.pointerId); dedos.set(e.pointerId, [e.clientX, e.clientY]); antes = null;
-  lienzo.classList.add('moviendo');
+// Trackpad, ratón y dedos: los mismos gestos que el resto de páginas (`gestos_vista.js`).
+// Dos dedos en el trackpad o la rueda mueven, pellizcar o Ctrl+rueda acercan hacia el cursor.
+GestosVista.conectar(lienzo, {
+  dedos: true,
+  mover: function(dx, dy){ vista.cx -= dx * vista.px; vista.cy += dy * vista.px; redibujar(); },
+  ampliar: function(f, x, y){ var r = lienzo.getBoundingClientRect(); zoom(1 / f, x - r.left, y - r.top); },
+  agarrado: function(b){ lienzo.classList.toggle('moviendo', b); }
 });
-lienzo.addEventListener('pointermove', function(e){
-  if (!dedos.has(e.pointerId)) return;
-  var p = dedos.get(e.pointerId), dx = e.clientX - p[0], dy = e.clientY - p[1];
-  dedos.set(e.pointerId, [e.clientX, e.clientY]);
-  if (dedos.size === 2) {
-    var v = Array.from(dedos.values()), dist = Math.hypot(v[0][0] - v[1][0], v[0][1] - v[1][1]);
-    var r = lienzo.getBoundingClientRect();
-    if (antes) zoom(antes / Math.max(dist, 1), (v[0][0] + v[1][0]) / 2 - r.left, (v[0][1] + v[1][1]) / 2 - r.top);
-    antes = dist;
-    return;
-  }
-  vista.cx -= dx * vista.px; vista.cy += dy * vista.px; redibujar();
-});
-function soltar(e){ dedos.delete(e.pointerId); antes = null; if (!dedos.size) lienzo.classList.remove('moviendo'); }
-lienzo.addEventListener('pointerup', soltar);
-lienzo.addEventListener('pointercancel', soltar);
 lienzo.addEventListener('dblclick', verTodo);
 window.addEventListener('resize', function(){ medir(); redibujar(); });
 
@@ -374,7 +355,7 @@ function hacerPanel(){
 document.addEventListener('keydown', function(e){
   if (e.ctrlKey || e.metaKey || e.altKey) return;
   var k = e.key.toLowerCase();
-  if (k === 'f' || k === 'home') verTodo();
+  if (k === 'f' || k === 'home' || k === '0') verTodo();
   else if (k === 'b') tema();
   else if (k === 'l' && bCapas) bCapas.click();
   else if (k === 'w' && bGrosor) bGrosor.click();

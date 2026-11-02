@@ -39,8 +39,8 @@ pindesk ayuda
 | `mensajes` | | `abrir` Mensajes guardados |
 | `proyectos` | | `ventana_principal` |
 | `proyecto` | `proyecto <id\|nombre>` | `abrir {tipo:"proyecto"}` |
-| `tarea` (`task`, `todo`) | `tarea "<texto>" [--proyecto P] [--lista <id>]` | `anadir_tarea` (sin nada, al Inbox); sin texto, la ventana de tareas |
-| `tareas` | | `ventana {cual:"tareas"}` |
+| `tarea` (`task`, `todo`) | `tarea "<texto>" [--proyecto P] [--lista <id>] [--asignatura <nombre>]` | `anadir_tarea` (sin nada, al Inbox; con `--asignatura`, a la lista de esa asignatura del horario); sin texto, la ventana de tareas |
+| `tareas` | `tareas [--asignatura <nombre>]` | `ventana {cual:"tareas"}`; con `--asignatura`, `abrir_lista` (la ventana en la lista de esa asignatura) |
 | `capturas` (`galeria`) | | `ventana {cual:"galeria"}` |
 | `nota` | `nota [texto] [imagen…] [--proyecto P]` | `nota_nueva` |
 | `lienzo` | `lienzo [nombre] [--proyecto P]` | `lienzo_nuevo` |
@@ -169,7 +169,7 @@ Un enlace lo puede lanzar cualquier página web (el navegador pregunta antes, pe
 
 | | Qué | Cómo |
 |---|---|---|
-| **Directa** | `abrir` (proyecto, mensaje, hoja, nota), `chat`, `nota_nueva`, `lienzo_nuevo`, `lista_nueva`, `anadir_tarea`, `ventana_principal`, `ventana`, `capturar`, `lecciones`, `leccion_nueva`, `soltar`, `pinear` de un mensaje del chat, `pinear_ultima`, `marcar_tarea`, `posponer`, `conservar_captura` (los botones de los avisos), `asistente` sin pedido (abre su chat) | Se hace sin preguntar |
+| **Directa** | `abrir` (proyecto, mensaje, hoja, nota), `chat`, `nota_nueva`, `lienzo_nuevo`, `lista_nueva`, `anadir_tarea`, `abrir_lista`, `ventana_principal`, `ventana`, `capturar`, `lecciones`, `leccion_nueva`, `soltar`, `pinear` de un mensaje del chat, `pinear_ultima`, `marcar_tarea`, `posponer`, `conservar_captura` (los botones de los avisos), `asistente` sin pedido (abre su chat) | Se hace sin preguntar |
 | **Pregunta** | Todo lo que lleva una ruta del disco (`abrir` un fichero, `pinear` una ruta, imágenes…), `asistente` con un pedido (puede hacer cosas), `grabar` (el micrófono), `sincronizar` y `enviar_al_movil`, `automatizacion` (activar, apagar, correr, borrar), lo que borra o quita, y cualquier acción que no esté en la lista | Un cuadro por encima de todo con lo que se pide, por qué pregunta y «No» por defecto |
 | **Nunca** | Una ruta que no es de una unidad de este equipo (`\\servidor\…`, `//…`, `\\?\…`, `file:`, relativa): Windows le daría las credenciales del usuario al servidor solo por mirarla. Crear una automatización | Un cuadro que dice que no se hizo nada (6) |
 

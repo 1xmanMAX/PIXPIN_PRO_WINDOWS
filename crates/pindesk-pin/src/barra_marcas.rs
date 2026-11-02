@@ -9,44 +9,15 @@
 //! aparece y desaparece. Asi que aqui solo quedan los colores, las marcas y
 //! sus dibujitos: la disposicion es la de `barra` y la ventana la de
 //! `barra_flotante`. Android no tiene nada parecido en sus pines.
+//!
+//! Los dibujitos y los colores son tambien los de la barra de marcar de los
+//! lectores (`lector_pdf::marcar`, 1-nov-2026).
 
 use pindesk_render::{Color, Pintor, RectF};
 
-/// Como se marca el texto.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Marca {
-    /// Un fondo translucido detras de cada renglon.
-    Resaltar,
-    /// Una raya ondulada debajo.
-    Ondulada,
-    /// Una raya recta debajo.
-    Subrayar,
-    /// Una raya por el medio.
-    Tachar,
-    /// Un bloque macizo que no deja leer lo de debajo.
-    Tapar,
-}
-
-/// Las marcas, en el orden de la barra.
-pub const MARCAS: [Marca; 5] = [
-    Marca::Resaltar,
-    Marca::Ondulada,
-    Marca::Subrayar,
-    Marca::Tachar,
-    Marca::Tapar,
-];
-
-/// Rosa, lila, azul, verde y amarillo: los de la captura del usuario.
-pub const COLORES: [(u8, u8, u8); 5] = [
-    (0xF4, 0x72, 0x86),
-    (0xB9, 0x9C, 0xF5),
-    (0x5B, 0xA4, 0xF5),
-    (0x3F, 0xC8, 0x8C),
-    (0xF5, 0xC2, 0x18),
-];
-
-/// El amarillo, el de un rotulador fluorescente de los de siempre.
-pub const COLOR_INICIAL: u8 = 4;
+// El modelo (las marcas, sus colores, la onda) es el componente comun de
+// todos los visores, en el motor: aqui solo se pinta.
+pub use pindesk_motor2d::marcas_texto::{COLOR_INICIAL, COLORES, MARCAS, Marca, onda};
 
 /// El color `k` de [`COLORES`], para pintar.
 pub fn color(k: u8) -> Color {
@@ -59,23 +30,9 @@ pub fn color(k: u8) -> Color {
     }
 }
 
-/// La onda de la raya ondulada, de `x0` a `x1` alrededor de `y`.
-pub fn onda(x0: f32, x1: f32, y: f32, amplitud: f32, paso: f32) -> Vec<(f32, f32)> {
-    let paso = paso.max(0.5);
-    let n = (((x1 - x0) / paso).ceil() as usize).max(1);
-    (0..=n)
-        .map(|k| {
-            let x = (x0 + k as f32 * paso).min(x1);
-            // Una ola cada 4 pasos.
-            let fase = k as f32 / 4.0 * std::f32::consts::TAU;
-            (x, y + amplitud * fase.sin())
-        })
-        .collect()
-}
-
 /// El dibujito de una marca en su boton: una «A» con la marca puesta, del
 /// color elegido. `fondo` es el de la barra (la «A» tapada se recorta con el).
-pub(crate) fn pintar_icono(
+pub fn pintar_icono(
     p: &Pintor,
     marca: Option<Marca>,
     r: RectF,
@@ -151,14 +108,6 @@ pub(crate) fn pintar_icono(
 #[cfg(test)]
 mod pruebas {
     use super::*;
-
-    #[test]
-    fn la_onda_sube_y_baja_y_acaba_justo_en_el_final() {
-        let v = onda(0.0, 20.0, 10.0, 2.0, 1.0);
-        assert_eq!(v.first().unwrap().0, 0.0);
-        assert_eq!(v.last().unwrap().0, 20.0);
-        assert!(v.iter().any(|p| p.1 > 11.5) && v.iter().any(|p| p.1 < 8.5));
-    }
 
     #[test]
     fn caso_negativo_un_color_fuera_de_rango_no_revienta() {

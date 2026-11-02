@@ -487,7 +487,7 @@ caja.addEventListener('pointerdown',function(e){
       if(tocaMedir.cogida) cancelarArrastreDeCota();
       cotaConElDedo=null; tocaMedir=null;
     }
-    pellizco={d:Math.hypot(dd[0].x-dd[1].x,dd[0].y-dd[1].y)};
+    pellizco={a:{x:dd[0].x,y:dd[0].y},b:{x:dd[1].x,y:dd[1].y}};
   }
 });
 caja.addEventListener('pointermove',function(e){
@@ -495,18 +495,22 @@ caja.addEventListener('pointermove',function(e){
   var d0=dedos.get(e.pointerId); d0.x=e.clientX; d0.y=e.clientY;
   var dd=losDedos();
   if(pellizco&&dd.length===2&&e.pointerType!=='pen'){
-    var dist=Math.hypot(dd[0].x-dd[1].x,dd[0].y-dd[1].y);
     // **La pinza no puede dar saltos** (16-sep-2026). Con la mano apoyada —presentando con la
     // mano o con el borrador, que es cuando el dedo no dibuja— el navegador manda dos puntos
     // que aparecen, desaparecen y saltan de un lado a otro de la pantalla: la razón entre dos
     // medidas seguidas se iba a cien, el encuadre salía disparado a kilómetros del dibujo y la
     // pantalla se quedaba vacía. Un pellizco de verdad, entre dos avisos, no dobla ni parte por
-    // la mitad la distancia; lo que pase de ahí es la palma y se ignora.
-    if(dist>0&&pellizco.d>0){
-      var f=pellizco.d/dist;
-      if(f>=0.5&&f<=2) zoom(f,(dd[0].x+dd[1].x)/2,(dd[0].y+dd[1].y)/2);
+    // la mitad la distancia; lo que pase de ahí es la palma y se ignora ([GestosVista.pellizco]).
+    // **Y los dos dedos también arrastran**: el papel sigue al punto medio mientras se acerca.
+    var ahora={a:{x:dd[0].x,y:dd[0].y},b:{x:dd[1].x,y:dd[1].y}};
+    var pz=GestosVista.pellizco(pellizco.a,pellizco.b,ahora.a,ahora.b);
+    if(pz){
+      var kp=aEscena(0,0).k;
+      v.x-=pz.dx*kp; v.y-=pz.dy*kp;
+      zoom(1/pz.f,pz.cx,pz.cy);
+      aplicar();
     }
-    pellizco.d=dist;
+    pellizco=ahora;
   } else if(trazo&&trazo.puntero===e.pointerId){
     var lote=muestras(e);
     for(var i=0;i<lote.length;i++) seguirTrazo(lote[i].clientX,lote[i].clientY);
@@ -557,10 +561,13 @@ function soltar(e){
 }
 caja.addEventListener('pointerup',soltar);
 caja.addEventListener('pointercancel',soltar);
-caja.addEventListener('wheel',function(e){
-  e.preventDefault();
-  zoom(e.deltaY>0?1.12:1/1.12,e.clientX,e.clientY);
-},{passive:false});
+// **El trackpad**: dos dedos mueven el papel en cualquier dirección y pellizcar acerca; la
+// rueda del ratón mueve y con Ctrl acerca; Safari pellizca con sus `gesture*`. Ver
+// `gestos_vista.js`. Antes la rueda solo acercaba, y en un portátil no había forma de pasear.
+GestosVista.conectar(caja,{
+  mover:function(dx,dy){ var k=aEscena(0,0).k; v.x-=dx*k; v.y-=dy*k; aplicar(); },
+  ampliar:function(f,x,y){ zoom(1/f,x,y); }
+});
 // El doble toque encaja solo con la mano: con el lápiz, dos toques seguidos son dos puntos.
 caja.addEventListener('dblclick',function(e){e.preventDefault();if(modo==='mano')encajar();});
 function encajar(){v={x:casa.x,y:casa.y,w:casa.w,h:casa.h};aplicar();}

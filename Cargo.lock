@@ -1855,6 +1855,7 @@ name = "pindesk-proyecto"
 version = "0.1.0"
 dependencies = [
  "flate2",
+ "pindesk-frase",
  "pindesk-motor2d",
  "pindesk-sincro",
  "pindesk-sistema",

@@ -170,7 +170,8 @@ impl Default for TextosWeb {
             todas: "Todas".into(),
             ninguna: "Ninguna".into(),
             sin_soporte: "Este navegador no sabe descomprimir el plano: ábrelo con Edge, Chrome, Firefox o Safari recientes.".into(),
-            pista: "Rueda: acercar · Arrastrar: mover · Doble clic: ver todo · F, B, L".into(),
+            pista: "Rueda o dos dedos: mover · Ctrl+rueda o pellizcar: acercar · Doble clic: ver todo · F, B, L"
+                .into(),
         }
     }
 }
@@ -546,6 +547,9 @@ pub fn base64(b: &[u8]) -> String {
 
 /// El JavaScript de la pagina: el visor en un lienzo 2D.
 const GUION: &str = include_str!("web.js");
+/// Los gestos de la vista (trackpad, rueda, pellizco y dedos): el mismo fichero que el de las
+/// paginas del lienzo (`pindesk-motor2d/src/exportar_html/gestos_vista.js`), copiado.
+const GESTOS: &str = include_str!("gestos_vista.js");
 
 /// **La pagina web del plano.** `grupos` es el plano por capas (o el del
 /// visor entero como un solo grupo, si no se pudo leer por capas).
@@ -672,7 +676,7 @@ pub fn pagina(grupos: &[Grupo], o: &OpcionesWeb) -> String {
     let svg = o.anotado.as_ref().map(|a| a.svg.as_str()).unwrap_or("");
     let titulo = html(&o.titulo);
     let mut s = String::with_capacity(
-        comprimido.len() * 4 / 3 + datos.len() + svg.len() + GUION.len() + 4096,
+        comprimido.len() * 4 / 3 + datos.len() + svg.len() + GESTOS.len() + GUION.len() + 4096,
     );
     s.push_str("<!DOCTYPE html>\n<html lang=\"es\"><head><meta charset=\"utf-8\">\n");
     s.push_str("<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">\n");
@@ -713,6 +717,7 @@ pub fn pagina(grupos: &[Grupo], o: &OpcionesWeb) -> String {
     s.push_str("</script>\n<script id=\"plano-gz\" type=\"application/octet-stream\">");
     s.push_str(&base64(&comprimido));
     s.push_str("</script>\n<script>\n");
+    s.push_str(GESTOS);
     s.push_str(GUION);
     s.push_str("\n</script>\n</body></html>\n");
     s
@@ -854,6 +859,34 @@ mod pruebas {
         let ini = h.find("type=\"application/octet-stream\">").unwrap() + 32;
         let fin = ini + h[ini..].find("</script>").unwrap();
         assert!(h[ini..fin].starts_with("H4sI"), "{}", &h[ini..ini + 8]);
+    }
+
+    #[test]
+    fn el_plano_lleva_los_gestos_del_trackpad() {
+        let h = pagina(&[], &OpcionesWeb::default());
+        // El modulo va antes que el visor, que lo usa.
+        let modulo = h
+            .find("var GestosVista=")
+            .expect("lleva el modulo de gestos");
+        let uso = h
+            .find("GestosVista.conectar(lienzo")
+            .expect("el visor lo engancha");
+        assert!(modulo < uso);
+        // La rueda no puede ser pasiva: si lo fuera, el pellizco ampliaria la pagina entera.
+        assert!(h.contains("caja.addEventListener('wheel'") && h.contains("{passive:false}"));
+        assert!(h.contains("gesturechange") && h.contains("e.deltaX"));
+        assert!(h.contains("touch-action:none"));
+        // Y la rueda vieja, que solo acercaba, ya no esta.
+        assert!(!h.contains("lienzo.addEventListener('wheel'"));
+    }
+
+    #[test]
+    fn los_gestos_son_los_mismos_que_los_del_lienzo() {
+        assert_eq!(
+            GESTOS,
+            include_str!("../../pindesk-motor2d/src/exportar_html/gestos_vista.js"),
+            "copia otra vez pindesk-motor2d/src/exportar_html/gestos_vista.js en pindesk-cad/src"
+        );
     }
 
     #[test]

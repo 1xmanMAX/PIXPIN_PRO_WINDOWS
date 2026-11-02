@@ -21,6 +21,7 @@
 
 pub mod auto_desplazar;
 pub mod buscar;
+pub mod capa_de_texto;
 pub mod documento;
 pub mod docx;
 pub mod epub;

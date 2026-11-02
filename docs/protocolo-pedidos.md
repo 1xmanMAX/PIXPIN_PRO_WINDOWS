@@ -46,7 +46,8 @@ el plugin de Flow Launcher (`apps/pindesk-lanzador`), y sirve igual para un scri
 | `grabar` | `nombre`, `proyecto?` | Saca el micrófono flotante y graba una nota de voz; un clic la guarda con ese nombre (`<nombre>.m4a`) en ese chat |
 | `lista_nueva` | `titulo`, `proyecto?` | Una lista de tareas nueva (mini-app `tareas`) |
 | `tabla_nueva` | `nombre`, `proyecto?`, `filas?`, `cabecera?`, `abrir?` | Una **tabla del chat** (mini-app `tabla`, la del pin de hoja, que viaja al móvil) ya rellena: `filas[f][c]` en texto va a la celda de la columna `c` y la fila `f` (A1 arriba a la izquierda). Los números escritos como en papel («1 250,50», «1.250») se guardan como número. `cabecera: true` pone la primera fila en negrita. `abrir: true` la saca ya como pin de hoja; si no, se avisa. Lo usa el asistente al pasar una tabla escaneada (14-oct) |
-| `anadir_tarea` | `texto`, `proyecto?`, `codigo?`, `imagenes?` | Añade `- [ ] texto` (con la fecha de hoy). **Sin `proyecto` ni `codigo`**: a la lista **«Inbox»** de «Mensajes guardados» (se crea si no esta), como la caja de la ventana de tareas. Con `codigo`: a esa lista. Con `proyecto` y sin `codigo`: a la ultima lista de tareas de ese chat, o a una nueva «Tareas». Con `imagenes` (ver abajo), la tarea lleva esas imagenes |
+| `anadir_tarea` | `texto`, `proyecto?`, `codigo?`, `imagenes?`, `asignatura?` | Añade `- [ ] texto` (con la fecha de hoy). **Sin `proyecto` ni `codigo`**: a la lista **«Inbox»** de «Mensajes guardados» (se crea si no esta), como la caja de la ventana de tareas. Con `codigo`: a esa lista. Con `proyecto` y sin `codigo`: a la ultima lista de tareas de ese chat, o a una nueva «Tareas». Con `imagenes` (ver abajo), la tarea lleva esas imagenes. Con `asignatura` (1-nov-2026, el nombre de una asignatura del horario, sin mirar mayusculas ni tildes): a la lista de esa asignatura en el chat «Asignaturas» (la de su enlace `lista:<id>`; se crea si aun no esta) y no se miran `proyecto` ni `codigo` |
+| `abrir_lista` | `asignatura?`, `proyecto?`, `codigo?` | (1-nov-2026) Abre la ventana de Tareas en esa lista, como pulsarla en el chat: la de la `asignatura` (por su nombre; se crea vacia si aun no tiene) o la `codigo` del chat `proyecto`. Sin ninguna, la ventana como `ventana {cual:"tareas"}`. Por enlace no pregunta (`orden::SEGURAS`) |
 | `marcar_tarea` | `proyecto?`, `codigo`, `indice`, `hecha` | Marca (o desmarca) la tarea numero `indice` (desde 0, en el orden del documento) de la lista `codigo` |
 | `mover_tarea` | `proyecto?`, `codigo`, `indice`, `a_proyecto?`, `a_codigo` | Pasa la tarea numero `indice` (desde 0, en el orden del documento) de la lista `codigo` (del chat `proyecto`) al final de la lista `a_codigo` (del chat `a_proyecto`; ausente = «Mensajes guardados»), con su fecha y su estado, como «Mover a…» de la ventana de tareas. Si la tarea cambio entre medias no se toca nada y se avisa |
 | `corregir_tarea` | `proyecto?`, `codigo`, `indice`, `texto` | Cambia lo que se lee de la tarea numero `indice` (desde 0) de la lista `codigo` por `texto`, como «Editar» de la ventana de tareas (`tareas::corregir`, `Tareas.renombrar` del móvil): conserva su fecha de creacion y sus imagenes. Una fecha va en `texto` como su marca de recordatorio (`⏰ AAAA-MM-DD HH:MM`, hora local). Un `texto` vacio no borra la tarea (eso es `quitar_tarea`): se avisa |
@@ -289,6 +290,12 @@ es `%APPDATA%\PinDesk` (o la carpeta del exe si al lado hay un `pindesk.toml`):
   referencias, causas, repeticiones, caja, repasar, adjuntos…`, ver `crates/pindesk-lecciones`).
   `adjuntos` son ids de mensajes `IMAGEN`/`VOZ` del mismo chat con `respondeA: "lec-<id>"`.
   Toca repasarla cuando `repasar <= ahora` (ms).
+- `cache/asignaturas.json` (1-nov-2026): las **asignaturas del horario**, como las deja la
+  app cada vez que `horario.md` cambia (`horario::asignaturas::para_flow`), para no tener que
+  entender `horario.md`: `{"version":1,"asignaturas":[{nombre, aula?, color:"#RRGGBB",
+  proyecto?, codigo?, clases:[{dia, inicio, fin, aula?}]}]}`. `proyecto`/`codigo` son el chat
+  y el mensaje de su lista de tareas (`null` si aun no tiene); `dia` va de 0 (lunes) a 6 y
+  `inicio`/`fin` son minutos del dia, hora local. Lo usa el plugin de Flow (`p geometría`).
 - Nunca escribir en esos ficheros desde fuera: la app los protege con un cerrojo que solo
   existe dentro de ella. Para cambiar algo, un pedido.
 

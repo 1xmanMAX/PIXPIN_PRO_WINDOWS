@@ -1,9 +1,14 @@
 //! **La prioridad de cada tarea segun su contexto** (`docs/jev.md`): por
 //! cada tarea pendiente, Jev juzga lo que pasa si se hace tarde, si otro la
 //! espera, si el plazo lo puso otro y si en su chat la piden ya
-//! (`pindesk_typesafe::urgencia`); cuanto falta para su hora (`⏰`) lo cuenta
-//! el codigo, y la tabla de alli da urgente, alta, normal o baja. Lo que el
+//! (`pindesk_typesafe::urgencia`); cuanto falta para su hora (`⏰` o, si no
+//! tiene, la fecha del titulo de su lista: «HOY SÁBADO») lo cuenta el
+//! codigo, y la tabla de alli da urgente, alta, normal o baja. Lo que el
 //! usuario marco (⏫, 🔼) manda.
+//!
+//! **Las listas de temas de una reunion** («Temas · Clase…», las que una
+//! nota de voz enlaza en `temasLista`) no se preguntan: son puntos de una
+//! agenda, no tareas con plazo.
 //!
 //! Va en segundo plano: al leer las listas ([`aplicar`]) se pone lo ya
 //! sabido y se pregunta por lo que falta en un hilo; al acabar, la ventana
@@ -33,6 +38,8 @@ use crate::tareas::frase::{self, Urgencia};
 enum Sabido {
     Senales(Senales),
     Fallo(Instant),
+    /// Un tema de una reunion: sin prioridad.
+    Tema,
 }
 
 static SABIDO: Mutex<Option<HashMap<String, Sabido>>> = Mutex::new(None);
@@ -105,6 +112,18 @@ fn texto_para_jev(f: &frase::Frase) -> String {
     }
 }
 
+/// Una tarea por preguntar: su clave, su lista (proyecto y mensaje) y lo
+/// que se manda.
+type Falta = (String, (String, String), Contexto);
+
+/// Los dias que faltan para la fecha del titulo de la lista (dicha el dia
+/// en que se creo), contados desde `hoy` (dia local).
+fn dias_de_la_lista(l: &Lista, hoy: i64) -> Option<i64> {
+    use pindesk_typesafe::fechas::Fecha;
+    let creada = pindesk_shell::entorno::a_local(l.cuando).div_euclid(86_400_000);
+    ju::dias_de_la_lista(&l.titulo, Fecha::de_dias(creada), Fecha::de_dias(hoy))
+}
+
 /// **Pone la prioridad de cada tarea pendiente** con lo ya sabido, y lanza
 /// en su hilo las preguntas de lo que falta.
 pub fn aplicar(u: &Ubicacion, listas: &mut [Lista]) {
@@ -112,31 +131,36 @@ pub fn aplicar(u: &Ubicacion, listas: &mut [Lista]) {
         return;
     };
     let hoy = frase::ahora().dia;
-    let mut faltan: Vec<(String, String, Contexto)> = Vec::new();
+    let mut faltan: Vec<Falta> = Vec::new();
     for l in listas.iter_mut() {
         let lista = l.clone();
+        let dias_lista = dias_de_la_lista(&lista, hoy);
         for f in l.filas.iter_mut().filter(|f| !f.hecha) {
             let m = frase::marcas(&f.texto);
             let texto = texto_para_jev(&m);
             if texto.is_empty() {
                 continue;
             }
-            let dias = m.hora.map(|h| h.dia - hoy);
+            let dias = m.hora.map(|h| h.dia - hoy).or(dias_lista);
             let clave = clave_de(&lista, &texto);
             let sabido = con_sabido(|s| match s.get(&clave) {
                 Some(Sabido::Senales(x)) => Some(Some(x.clone())),
                 Some(Sabido::Fallo(t)) if t.elapsed() < TRAS_UN_FALLO => Some(None),
+                Some(Sabido::Tema) => Some(None),
                 _ => None,
             });
             match sabido {
                 Some(Some(s)) => {
-                    f.prioridad = Some(ju::decidir(marca_de(m.urgencia), Some(&s), dias));
+                    let marca = marca_de(m.urgencia);
+                    f.prioridad = Some(ju::decidir(marca, Some(&s), dias));
+                    f.motivo = (marca == Marca::Ninguna)
+                        .then(|| ju::Motivo::de(&s, dias, m.hora.is_none()));
                 }
-                // Fallo reciente: lo de siempre.
+                // Fallo reciente o tema de reunion: lo de siempre.
                 Some(None) => {}
                 None => faltan.push((
                     clave,
-                    lista.proyecto.clone(),
+                    (lista.proyecto.clone(), lista.codigo.clone()),
                     Contexto {
                         tarea: texto,
                         lista: lista.titulo.clone(),
@@ -166,18 +190,28 @@ pub fn aplicar(u: &Ubicacion, listas: &mut [Lista]) {
 
 /// Lo de [`aplicar`], en el hilo: los mensajes recientes de cada chat y las
 /// preguntas.
-fn preguntar(
-    cliente: &pindesk_typesafe::Cliente,
-    raiz: &Path,
-    mut faltan: Vec<(String, String, Contexto)>,
-) {
-    let mut recientes: HashMap<String, Vec<String>> = HashMap::new();
-    for (_, proyecto, c) in &mut faltan {
-        let r = recientes
-            .entry(proyecto.clone())
-            .or_insert_with(|| recientes_del_chat(raiz, proyecto));
-        c.recientes = r.clone();
-    }
+fn preguntar(cliente: &pindesk_typesafe::Cliente, raiz: &Path, faltan: Vec<Falta>) {
+    let mut chats: HashMap<String, Chat> = HashMap::new();
+    let mut temas = Vec::new();
+    let faltan: Vec<Falta> = faltan
+        .into_iter()
+        .filter_map(|(clave, (proyecto, codigo), mut c)| {
+            let chat = chats
+                .entry(proyecto.clone())
+                .or_insert_with(|| leer_chat(raiz, &proyecto));
+            if chat.temas.contains(&(proyecto.clone(), codigo.clone())) {
+                temas.push(clave);
+                return None;
+            }
+            c.recientes = chat.recientes.clone();
+            Some((clave, (proyecto, codigo), c))
+        })
+        .collect();
+    con_sabido(|s| {
+        for clave in temas {
+            s.insert(clave, Sabido::Tema);
+        }
+    });
     let contextos: Vec<Contexto> = faltan.iter().map(|(_, _, c)| c.clone()).collect();
     let empezo = Instant::now();
     let respuestas = ju::preguntar_varias(cliente, &contextos, A_LA_VEZ);
@@ -206,12 +240,31 @@ fn preguntar(
     );
 }
 
-/// Los ultimos mensajes escritos del chat (notas con texto, no las listas
-/// de tareas), del mas viejo al mas nuevo.
-fn recientes_del_chat(raiz: &Path, proyecto: &str) -> Vec<String> {
+/// Lo que se lee de un chat para sus tareas.
+#[derive(Default)]
+struct Chat {
+    /// Los ultimos mensajes escritos (notas con texto, no las listas de
+    /// tareas), del mas viejo al mas nuevo.
+    recientes: Vec<String>,
+    /// Las listas de temas de sus reuniones, `(proyecto, mensaje)`.
+    temas: Vec<(String, String)>,
+}
+
+fn leer_chat(raiz: &Path, proyecto: &str) -> Chat {
     let Ok(c) = cuaderno::Cuaderno::leer_de(&almacen::carpeta(raiz, proyecto)) else {
-        return Vec::new();
+        return Chat::default();
     };
+    Chat {
+        recientes: recientes_de(&c),
+        temas: c
+            .mensajes
+            .iter()
+            .filter_map(|m| pindesk_proyecto::temas::lista_de(&m.resto))
+            .collect(),
+    }
+}
+
+fn recientes_de(c: &cuaderno::Cuaderno) -> Vec<String> {
     let mut v: Vec<String> = c
         .mensajes
         .iter()
@@ -243,6 +296,7 @@ mod pruebas {
             cuando: 0,
             filas: crate::tareas::filas_de("- [ ] pagar la matrícula ⏫\n- [ ] pan"),
             aparato: None,
+            asignatura: None,
         }];
         aplicar(&u, &mut listas);
         assert!(listas[0].filas.iter().all(|f| f.prioridad.is_none()));

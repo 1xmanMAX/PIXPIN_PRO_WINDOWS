@@ -132,18 +132,21 @@ pub fn coincide(l: &Lista, f: &Fila, palabras: &[String], hoy: mini::Fecha) -> b
 pub struct Grupo {
     /// El sitio de la lista en las listas de la ventana.
     pub lista: usize,
-    /// Lo pendiente (y lo recien tachado, que se queda en su sitio unos
-    /// segundos), como lo ordena `Lista::a_la_vista`.
+    /// Lo pendiente (y lo recien tachado, que se queda en su sitio hasta
+    /// salir de Tareas, `pindesk_ui::tareas_quietas`), como lo ordena
+    /// `Lista::a_la_vista`.
     pub arriba: Vec<usize>,
     /// Lo hecho, plegable, en el orden del documento.
     pub hechas: Vec<usize>,
 }
 
 impl Grupo {
-    /// Cuantas de arriba siguen pendientes (lo recien tachado no cuenta).
+    /// Cuantas siguen pendientes: lo recien tachado no cuenta, y lo recien
+    /// destachado que se quedo en «Hechas» si.
     pub fn pendientes(&self, l: &Lista) -> usize {
         self.arriba
             .iter()
+            .chain(&self.hechas)
             .filter(|&&i| l.filas.get(i).is_some_and(|f| !f.hecha))
             .count()
     }
@@ -153,6 +156,10 @@ impl Grupo {
 /// ver `ordenar_listas`). Sin buscar, todas las listas con alguna tarea;
 /// buscando, solo lo que coincide, y una lista sin nada que coincida no
 /// sale.
+///
+/// La lista de una asignatura (`Lista::asignatura`, 1-nov-2026) sale
+/// siempre, aunque este vacia: es el sitio adonde se apuntan sus tareas
+/// (con el «＋» de su encabezado). Buscando, si su nombre coincide.
 pub fn agrupar(
     listas: &[Lista],
     palabras: &[String],
@@ -167,7 +174,11 @@ pub fn agrupar(
             let vale = |f: &&Fila| coincide(l, f, palabras, hoy);
             let arriba: Vec<usize> = arriba.into_iter().filter(vale).map(|f| f.indice).collect();
             let hechas: Vec<usize> = hechas.into_iter().filter(vale).map(|f| f.indice).collect();
-            (!arriba.is_empty() || !hechas.is_empty()).then_some(Grupo {
+            let de_asignatura = l.asignatura.is_some()
+                && palabras
+                    .iter()
+                    .all(|p| hay_coincidencia(&l.titulo, p) || hay_coincidencia(&l.chat, p));
+            (!arriba.is_empty() || !hechas.is_empty() || de_asignatura).then_some(Grupo {
                 lista: li,
                 arriba,
                 hechas,
@@ -389,6 +400,7 @@ mod pruebas {
             cuando,
             filas: filas_de(doc),
             aparato: None,
+            asignatura: None,
         }
     }
 
@@ -494,6 +506,24 @@ mod pruebas {
         // Caso negativo: una lista vacia no hace grupo.
         let vacia = vec![lista("X", "Nada", 1, "# Nada\n")];
         assert!(agrupar(&vacia, &[], dia(3), &nada).is_empty());
+    }
+
+    #[test]
+    fn la_lista_de_una_asignatura_sale_aunque_este_vacia() {
+        let mut v = vec![
+            lista("Asignaturas", "Geometría", 1, "# Geometría\n"),
+            lista("Casa", "Nada", 2, "# Nada\n"),
+        ];
+        v[0].asignatura = Some(0x0A84FF);
+        let g = agrupar(&v, &[], dia(3), &nada);
+        assert_eq!(g.len(), 1, "solo la de la asignatura");
+        assert_eq!(g[0].lista, 0);
+        assert!(g[0].arriba.is_empty() && g[0].hechas.is_empty());
+        // Buscando, si su nombre coincide (sin tildes).
+        let g = agrupar(&v, &palabras("geometria"), dia(3), &nada);
+        assert_eq!(g.len(), 1);
+        // Caso negativo: buscando otra cosa no sale.
+        assert!(agrupar(&v, &palabras("fontanero"), dia(3), &nada).is_empty());
     }
 
     const M: Medidas = Medidas {

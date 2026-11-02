@@ -166,12 +166,19 @@ cuantas dejo fuera.
 **Cuando**: al leer las listas en la ventana de Tareas, en un hilo (hasta 60
 tareas por tanda, cuatro a la vez); al acabar, Tareas relee. Lo sabido se
 queda en memoria mientras la app esta abierta (nada va al disco ni viaja);
-tras un fallo, esa tarea no se vuelve a preguntar en 10 minutos.
+tras un fallo, esa tarea no se vuelve a preguntar en 10 minutos. Lo que no
+cupo en una tanda va en la siguiente (al releer tras la anterior), hasta
+preguntarlas todas. **Las listas de temas de una reunion** (las que una nota
+de voz enlaza en `temasLista`, «Temas · Clase…») no se preguntan: son puntos
+de una agenda, no tareas con plazo.
 
 **Estado**: `tarea` (su texto sin marcas, con su nota), `lista`, `chat` y,
 si hay, `mensajes_recientes` (los cinco ultimos mensajes escritos del
 chat). **La fecha no va**: cuanto falta para su hora (`⏰`) lo cuenta el
-codigo.
+codigo. Si la tarea no tiene hora, vale **la fecha del titulo de su lista**
+(`urgencia::dias_de_la_lista`, con `fechas::buscar`: «HOY SÁBADO», «Para
+mañana», «el lunes», «15/11»), resuelta contra el dia en que se creo la
+lista (una lista «hoy» de ayer ya paso) y, si dice varias, la mas cercana.
 
 **Preguntas**: `consecuencia` (Score 0-3: nada · una pequena molestia ·
 afecta al trabajo o los estudios · dano serio), `bloquea` (¿otro la
@@ -188,19 +195,33 @@ urgente, 🔼 → alta). Si no, puntos:
 | bloquea ≥ 0.7 | +1 |
 | plazo_ajeno ≥ 0.7 | +1 |
 | piden_ya ≥ 0.7 | +1 |
-| su hora es hoy o ya paso | +2 |
+| su hora (o la de su lista) es hoy o ya paso | +2 |
 | manana | +1.5 |
 | en 2-3 dias | +1 |
 | en 4-7 dias | +0.5 |
 
-≥ 5 urgente; ≥ 3 alta; **baja** si P(consecuencia 2-3) ≤ 0.3, bloquea y
+≥ 5 urgente; ≥ 3 alta, **y tambien alta si la consecuencia es grave
+(valor esperado ≥ 2.5) aunque no tenga fecha**; **baja** si P(consecuencia 2-3) ≤ 0.3, bloquea y
 plazo_ajeno ≤ 0.3, nadie la pide y no tiene hora en 7 dias; lo demas
 normal.
 
-**Se ve**: una chapita «✦ Urgente», «✦ Alta» o «✦ Baja» (la chispa dice
-que es de Jev, no una marca del usuario) en Tarjetas y Kanban, y lo
-pendiente se ordena por prioridad (urgente, alta, normal, baja) antes que
-por fecha. Una tarea marcada a mano ensena solo su marca.
+**Se ve**: una chapita «✦ Urgente», «✦ Alta», «✦ Normal» (gris, casi sin
+fondo) o «✦ Baja» (gris) en Tarjetas y Kanban (la chispa dice que es de
+Jev, no una marca del usuario). «Normal» tambien se ensena desde el
+1-nov-2026: sin ella, una tarea juzgada parecia sin juzgar («Jev no esta
+valorando la prioridad»). Con el raton encima, la pista dice el porque
+(`chapitas::pista_de_jev`: «Jev: consecuencia media · nadie la espera ·
+sin fecha»; «hoy (por el título de la lista)»). Lo pendiente se ordena por
+prioridad (urgente, alta, normal, baja) antes que por fecha. Una tarea
+marcada a mano ensena solo su marca.
+
+**Probado** (`urgencia_suelta`, guion `urgencia_listas.txt`: tareas
+inventadas como las de una captura; 8 peticiones, ~4 700 tokens): antes,
+siete de ocho salian normal o baja (las de «HOY SÁBADO TAREAS» sin fecha:
+normal); con la fecha de la lista, las del aula virtual, la cuenta de la
+tienda y los creditos pasan a alta y «la cena» de hoy deja de ser baja. Una
+tesis sin fecha Jev la ve de nivel 2 (~2.1, «afecta a los estudios»), no
+grave: sigue normal, y ahora su chapita lo dice.
 
 **Sin clave**: ni chapitas ni otro orden; todo como siempre.
 

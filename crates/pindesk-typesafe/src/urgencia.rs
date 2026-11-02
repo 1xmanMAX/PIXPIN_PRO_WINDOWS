@@ -1,7 +1,9 @@
 //! **La urgencia de una tarea segun su contexto**: lo que pasa si se hace
 //! tarde (Score), si otro la espera, si el plazo lo puso otro y si en el
 //! chat la piden ya (Nouls). Cuanto falta para su hora lo cuenta el codigo
-//! (las fechas nunca se le preguntan a Jev).
+//! (las fechas nunca se le preguntan a Jev): la de la tarea (`⏰`) o, si no
+//! tiene, la que dice el titulo de su lista ([`dias_de_la_lista`]: «HOY
+//! SÁBADO», «Para el lunes», «Entrega 15/11»).
 //!
 //! **Lo marcado por el usuario manda** (⏫ «muy urgente» es urgente; 🔼
 //! «urgente», alta). Sin marca, unos puntos ([`puntos`]):
@@ -12,7 +14,7 @@
 //! | `bloquea` ≥ 0.7 | +1 |
 //! | `plazo_ajeno` ≥ 0.7 | +1 |
 //! | `piden_ya` ≥ 0.7 | +1 |
-//! | su hora es hoy o ya paso | +2 |
+//! | su hora (o la de su lista) es hoy o ya paso | +2 |
 //! | manana | +1.5 |
 //! | en 2-3 dias | +1 |
 //! | en 4-7 dias | +0.5 |
@@ -20,15 +22,24 @@
 //! | puntos | prioridad |
 //! |---|---|
 //! | ≥ 5 | urgente |
-//! | ≥ 3 | alta |
+//! | ≥ 3, o consecuencia ≥ 2.5 («grave») aunque no tenga fecha | alta |
 //! | consecuencia «grave» (nivel 2-3) ≤ 0.3, nadie la espera, ningun plazo ajeno ni pedido, y sin hora en 7 dias | baja |
 //! | lo demas | normal |
 //!
+//! **La fecha de la lista**: si la tarea no lleva `⏰`, se buscan en el
+//! titulo de su lista los dias dichos (`fechas::buscar`: «hoy», «mañana»,
+//! «el lunes», «15/11», «el 3 de noviembre»...), resueltos contra el dia en
+//! que se creo la lista (una lista «HOY SÁBADO» de ayer es de ayer: ya
+//! paso), y vale el mas cercano. Sin ninguno, sin fecha.
+//!
 //! Sin respuesta de Jev (sin clave, sin red), la prioridad es la marca del
-//! usuario o «normal»: lo de siempre.
+//! usuario o «normal»: lo de siempre. Con respuesta, Tareas ensena las
+//! cuatro (tambien «normal», en gris: si no, una tarea juzgada parecia sin
+//! juzgar) y, al pasar el raton, el porque ([`Motivo`]).
 
 use serde_json::{Map, Value, json};
 
+use crate::fechas::{self, Fecha};
 use crate::preguntas::urgencia as q;
 use crate::preguntas::{NO, SI};
 use crate::{Cliente, Error, Escala, Peticion};
@@ -134,6 +145,10 @@ pub fn puntos(s: &Senales, dias: Option<i64>) -> f64 {
         + puntos_del_plazo(dias)
 }
 
+/// La consecuencia que basta para «alta» sin fecha ni nadie esperando: el
+/// valor esperado del Score cerca del nivel 3 («grave»).
+pub const GRAVE: f64 = 2.5;
+
 /// **La tabla.** `dias`: cuantos faltan para la hora de la tarea (`⏰`),
 /// contados por el codigo.
 pub fn decidir(marca: Marca, s: Option<&Senales>, dias: Option<i64>) -> Prioridad {
@@ -148,7 +163,7 @@ pub fn decidir(marca: Marca, s: Option<&Senales>, dias: Option<i64>) -> Priorida
     let n = puntos(s, dias);
     if n >= 5.0 {
         Prioridad::Urgente
-    } else if n >= 3.0 {
+    } else if n >= 3.0 || s.consecuencia.valor >= GRAVE {
         Prioridad::Alta
     } else if s.consecuencia.al_menos(2) <= NO
         && s.bloquea <= NO
@@ -159,6 +174,49 @@ pub fn decidir(marca: Marca, s: Option<&Senales>, dias: Option<i64>) -> Priorida
         Prioridad::Baja
     } else {
         Prioridad::Normal
+    }
+}
+
+/// **Los dias que faltan para la fecha del titulo de una lista** (el mas
+/// cercano de los dichos), con los dias resueltos contra `creada` (el dia
+/// en que se creo la lista) y contados desde `hoy`. Negativo: ya paso.
+pub fn dias_de_la_lista(titulo: &str, creada: Fecha, hoy: Fecha) -> Option<i64> {
+    // Un reloj atrasado no hace la lista del futuro.
+    let creada = creada.min(hoy);
+    fechas::buscar(titulo, creada)
+        .iter()
+        .map(|e| hoy.hasta(e.momento.fecha))
+        .min()
+}
+
+/// **El porque de una prioridad de Jev**, para la pista de su chapita
+/// («Jev: consecuencia media · nadie la espera · sin fecha»).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Motivo {
+    /// El nivel de la consecuencia mas cercano a su valor esperado (0-3).
+    pub consecuencia: u8,
+    /// Otro la espera (`bloquea` ≥ 0.7).
+    pub espera: bool,
+    /// El plazo lo puso otro (`plazo_ajeno` ≥ 0.7).
+    pub plazo_ajeno: bool,
+    /// La piden en el chat (`piden_ya` ≥ 0.7).
+    pub piden_ya: bool,
+    /// Los dias que faltan (los de [`decidir`]).
+    pub dias: Option<i64>,
+    /// Si esos dias salen del titulo de la lista y no de la tarea.
+    pub de_la_lista: bool,
+}
+
+impl Motivo {
+    pub fn de(s: &Senales, dias: Option<i64>, de_la_lista: bool) -> Motivo {
+        Motivo {
+            consecuencia: s.consecuencia.valor.clamp(0.0, 3.0).round() as u8,
+            espera: s.bloquea >= SI,
+            plazo_ajeno: s.plazo_ajeno >= SI,
+            piden_ya: s.piden_ya.is_some_and(|p| p >= SI),
+            dias,
+            de_la_lista: de_la_lista && dias.is_some(),
+        }
     }
 }
 
@@ -295,6 +353,112 @@ mod pruebas {
             decidir(Marca::Ninguna, Some(&duda), None),
             Prioridad::Normal
         );
+    }
+
+    /// La tabla entera para una tarea sin marca, sin nadie esperando y sin
+    /// plazo ajeno: cada consecuencia por cada distancia a su fecha.
+    #[test]
+    fn la_tabla_de_verdad_de_la_consecuencia_y_la_fecha() {
+        // Casi grave, pero no (2.4): como media.
+        const CASI: [f64; 4] = [0.0, 0.1, 0.4, 0.5];
+        let filas: [(&str, [f64; 4], [Prioridad; 4]); 4] = [
+            // sin fecha, en 7 dias, manana, hoy
+            (
+                "grave",
+                GRAVE,
+                [
+                    Prioridad::Alta,
+                    Prioridad::Alta,
+                    Prioridad::Alta,
+                    Prioridad::Alta,
+                ],
+            ),
+            (
+                "casi grave",
+                CASI,
+                [
+                    Prioridad::Normal,
+                    Prioridad::Normal,
+                    Prioridad::Alta,
+                    Prioridad::Alta,
+                ],
+            ),
+            (
+                "media",
+                MEDIA,
+                [
+                    Prioridad::Normal,
+                    Prioridad::Normal,
+                    Prioridad::Alta,
+                    Prioridad::Alta,
+                ],
+            ),
+            (
+                "leve",
+                LEVE,
+                [
+                    Prioridad::Baja,
+                    Prioridad::Normal,
+                    Prioridad::Normal,
+                    Prioridad::Normal,
+                ],
+            ),
+        ];
+        for (nombre, niveles, esperadas) in filas {
+            let x = s(niveles, 0.1, 0.1, None);
+            for (dias, esperada) in [None, Some(7), Some(1), Some(0)].into_iter().zip(esperadas) {
+                assert_eq!(
+                    decidir(Marca::Ninguna, Some(&x), dias),
+                    esperada,
+                    "{nombre} con dias {dias:?}"
+                );
+            }
+        }
+        // Grave y para hoy, con otro esperando: urgente (2.75 + 1 + 2).
+        let x = s(GRAVE, 0.9, 0.1, None);
+        assert_eq!(
+            decidir(Marca::Ninguna, Some(&x), Some(0)),
+            Prioridad::Urgente
+        );
+    }
+
+    #[test]
+    fn la_fecha_del_titulo_de_la_lista() {
+        let sabado = Fecha::nueva(2026, 10, 31).unwrap();
+        let domingo = sabado.mas(1);
+        let d = |t: &str, creada: Fecha, hoy: Fecha| dias_de_la_lista(t, creada, hoy);
+        // Creada hoy sabado: es hoy (el «sábado» suelto seria el que viene;
+        // vale el mas cercano).
+        assert_eq!(d("HOY SÁBADO TAREAS", sabado, sabado), Some(0));
+        // La misma lista al dia siguiente: ya paso.
+        assert_eq!(d("HOY SÁBADO TAREAS", sabado, domingo), Some(-1));
+        assert_eq!(d("Para mañana", sabado, sabado), Some(1));
+        assert_eq!(d("Para el lunes", sabado, sabado), Some(2));
+        assert_eq!(d("Entrega 15/11", sabado, sabado), Some(15));
+        // Sin fecha: ni «Inbox» ni una lista de temas con su dia escrito
+        // sin «el» («Clase 29-oct»).
+        assert_eq!(d("Inbox", sabado, sabado), None);
+        assert_eq!(d("Temas · Clase 29-oct", sabado, sabado), None);
+        // Un reloj atrasado no la hace del futuro.
+        assert_eq!(d("hoy", domingo, sabado), Some(0));
+    }
+
+    #[test]
+    fn el_porque_de_la_prioridad() {
+        let x = s(MEDIA, 0.9, 0.2, Some(0.1));
+        assert_eq!(
+            Motivo::de(&x, None, true),
+            Motivo {
+                consecuencia: 2,
+                espera: true,
+                plazo_ajeno: false,
+                piden_ya: false,
+                dias: None,
+                de_la_lista: false,
+            }
+        );
+        let m = Motivo::de(&s(GRAVE, 0.0, 0.0, None), Some(0), true);
+        assert_eq!((m.consecuencia, m.dias, m.de_la_lista), (3, Some(0), true));
     }
 
     #[test]

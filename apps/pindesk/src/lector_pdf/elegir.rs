@@ -48,6 +48,9 @@ const HOJAS_CON_TEXTO: usize = 8;
 pub(super) struct HojaPdf {
     pub(super) texto: PaginaDeTexto,
     pub(super) enlaces: Vec<Enlace>,
+    /// El texto lo puso el OCR (una hoja escaneada, o la T): se elige por
+    /// palabras enteras (`marcar::rango_en_hoja`).
+    pub(super) reconocida: bool,
 }
 
 /// Un clic o un arrastre que empezo sobre texto o sobre un enlace.
@@ -76,7 +79,7 @@ pub(super) struct ElegirPdf {
 
 /// **La palabra de la letra `k`**: las letras y cifras seguidas a su
 /// alrededor; una letra suelta (un signo) es ella sola.
-pub(super) fn palabra_en(texto: &[char], k: usize) -> Range<usize> {
+pub(crate) fn palabra_en(texto: &[char], k: usize) -> Range<usize> {
     if k >= texto.len() {
         return texto.len()..texto.len();
     }
@@ -98,7 +101,7 @@ pub(super) fn palabra_en(texto: &[char], k: usize) -> Range<usize> {
 /// **El renglon de la letra `k`**: las letras a su alrededor que caen a su
 /// altura, sin pasar de un salto de renglon. Los blancos sin caja (los que
 /// se anaden entre palabras) cuentan si los rodean letras del renglon.
-pub(super) fn renglon_en(t: &PaginaDeTexto, k: usize) -> Range<usize> {
+pub(crate) fn renglon_en(t: &PaginaDeTexto, k: usize) -> Range<usize> {
     let texto: Vec<char> = t.texto.chars().collect();
     let Some(Some(c)) = t.cajas.get(k) else {
         return k.min(texto.len())..(k + 1).min(texto.len());
@@ -362,8 +365,7 @@ pub(super) fn texto_elegido(e: &Estado) -> String {
         let Some(h) = e.elegir.hojas.get(&i) else {
             continue;
         };
-        let largo = h.texto.texto.chars().count();
-        if let Some(r) = sel.rango_en(i, largo) {
+        if let Some(r) = super::marcar::rango_en_hoja(sel, i, &h.texto, h.reconocida) {
             if !salida.is_empty() && !salida.ends_with('\n') {
                 salida.push('\n');
             }
@@ -397,7 +399,7 @@ pub(super) fn pintar_seleccion(e: &Estado, p: &Pintor, i: usize) {
     let (Some(h), Some(&alto)) = (e.elegir.hojas.get(&i), e.hojas.altos.get(i)) else {
         return;
     };
-    let Some(r) = sel.rango_en(i, h.texto.cajas.len()) else {
+    let Some(r) = super::marcar::rango_en_hoja(sel, i, &h.texto, h.reconocida) else {
         return;
     };
     for c in h.texto.cajas_de(r.start, r.end - r.start) {
@@ -484,7 +486,7 @@ mod pruebas {
         acotar(&mut e, m);
         let mut h = HojaPdf {
             texto: hoja(&[("Hola mundo, adios", 0.1), ("otra linea", 0.2)]),
-            enlaces: Vec::new(),
+            ..Default::default()
         };
         h.enlaces.push(Enlace {
             caja: [0.1, 0.5, 0.3, 0.55],

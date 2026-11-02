@@ -1,0 +1,63 @@
+# Urgencia de tareas: lo que Jev no ensenaba (1-nov-2026). Tareas
+# inventadas del mismo tipo que las de una captura de Tareas: una tesis sin
+# fecha, la cena, el aula virtual de la universidad, una cuenta de tienda,
+# gastar unos creditos; en listas con y sin «hoy sábado» en el titulo.
+# Sin `dias`, el ejemplo busca la fecha en el titulo de la lista (creada el
+# dia `creada`, contada desde `hoy`), como Tareas.
+#
+# hoy: 2026-10-31
+# creada: 2026-10-31
+
+# caso: l01
+# tarea: Terminar el capítulo 2 de la tesis
+# lista: Inbox
+# chat: Mensajes guardados
+# Jev la ve de nivel 2 («perjudica los estudios», ~2.1), no grave: sin
+# fecha se queda en normal, y ahora su chapita lo dice.
+# espera-no: l01 → baja
+
+# caso: l02
+# tarea: Cocinar la cena
+# lista: Inbox
+# chat: Mensajes guardados
+# espera-no: l02 → alta
+# espera-no: l02 → urgente
+
+# caso: l03
+# tarea: Revisar el aula virtual de la universidad
+# lista: HOY SÁBADO TAREAS
+# chat: Mensajes guardados
+# espera-no: l03 → baja
+# espera-no: l03 → normal
+
+# caso: l04
+# tarea: Crear la cuenta de desarrollador para subir la app a la tienda
+# lista: HOY SÁBADO TAREAS
+# chat: Mensajes guardados
+# espera-no: l04 → baja
+# espera-no: l04 → normal
+
+# caso: l05
+# tarea: Gastar los créditos que quedan del plan de prueba
+# lista: HOY SÁBADO TAREAS
+# chat: Mensajes guardados
+# espera-no: l05 → baja
+
+# caso: l06
+# tarea: Revisar el aula virtual de la universidad
+# lista: Pendientes
+# chat: Mensajes guardados
+# espera-no: l06 → urgente
+
+# caso: l07
+# tarea: Cocinar la cena
+# lista: Hoy sábado
+# chat: Mensajes guardados
+# espera-no: l07 → baja
+
+# caso: l08
+# tarea: Preparar la exposición del trabajo en grupo
+# lista: Para el lunes
+# chat: Mensajes guardados
+# espera-no: l08 → baja
+# espera-no: l08 → normal

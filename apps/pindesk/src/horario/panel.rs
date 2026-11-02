@@ -119,6 +119,7 @@ pub(crate) enum Salida {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum CampoId {
     Nueva,
+    Nombre,
     Aula,
     Nota,
     Avisar,
@@ -199,6 +200,8 @@ pub(crate) struct Panel {
     bloque: Option<usize>,
     nueva: ui::Campo,
     aula: ui::Campo,
+    /// El nombre de la asignatura, en su ficha: renombrarla (1-nov-2026).
+    nombre: ui::Campo,
     nota: ui::Campo,
     avisar: ui::Campo,
     foco: Option<CampoId>,
@@ -259,6 +262,7 @@ impl Panel {
             bloque: None,
             nueva: ui::Campo::default(),
             aula: ui::Campo::default(),
+            nombre: ui::Campo::default(),
             nota: ui::Campo::default(),
             avisar: ui::Campo::default(),
             foco: None,
@@ -344,6 +348,7 @@ impl Panel {
     fn campo_mut(&mut self, c: CampoId) -> &mut ui::Campo {
         match c {
             CampoId::Nueva => &mut self.nueva,
+            CampoId::Nombre => &mut self.nombre,
             CampoId::Aula => &mut self.aula,
             CampoId::Nota => &mut self.nota,
             CampoId::Avisar => &mut self.avisar,
@@ -393,6 +398,7 @@ impl Panel {
                 let Some(a) = self.semana.asignaturas.get(i) else {
                     return;
                 };
+                self.nombre.poner(&a.nombre);
                 (
                     a.aula.clone().unwrap_or_default(),
                     String::new(),
@@ -404,7 +410,10 @@ impl Panel {
         self.nota.poner(&nota);
         self.avisar.poner(&avisar);
         self.edicion = Some(ed);
-        self.foco = Some(CampoId::Aula);
+        self.foco = Some(match ed {
+            Edicion::Asignatura(_) => CampoId::Nombre,
+            Edicion::Bloque(_) => CampoId::Aula,
+        });
     }
 
     /// Lo escrito en la ficha, a la semana.
@@ -437,9 +446,42 @@ impl Panel {
                     .ok()
                     .map(|n| n.min(24 * 60));
             }
-            Edicion::Asignatura(i) => s.poner_aula_de_asignatura(i, aula),
+            Edicion::Asignatura(i) => {
+                s.poner_aula_de_asignatura(i, aula);
+                // Renombrarla renombra sus clases y su lista de tareas (la
+                // de su enlace): las tareas siguen con ella.
+                match s.renombrar_asignatura(i, self.nombre.texto()) {
+                    Ok(Some(_)) => {
+                        let a = s.asignaturas[i].clone();
+                        if let Some(l) = super::asignaturas::de_asignatura(&self.listas, &a) {
+                            match super::asignaturas::renombrar(raiz, l, &a.nombre) {
+                                Ok(()) => {
+                                    crate::ventana_chat::refrescar();
+                                    crate::tareas::refrescar();
+                                }
+                                Err(err) => {
+                                    tracing::warn!(?err, "horario: no se renombro la lista")
+                                }
+                            }
+                        }
+                    }
+                    Ok(None) => {}
+                    Err(j) => {
+                        // Ya hay otra con ese nombre: la ficha sigue abierta.
+                        let mut args = fluent_bundle::FluentArgs::new();
+                        args.set("asignatura", s.asignaturas[j].nombre.clone());
+                        self.decir(textos.t_args("horario-repetida", &args));
+                        self.edicion = Some(ed);
+                        self.foco = Some(CampoId::Nombre);
+                        return;
+                    }
+                }
+            }
         }
         self.cambiar(s, raiz, textos);
+        if matches!(ed, Edicion::Asignatura(_)) {
+            self.cargar_tareas(raiz);
+        }
     }
 
     fn borrar_bloque(&mut self, i: usize, raiz: &Path, textos: &Catalogo) {
@@ -458,7 +500,7 @@ impl Panel {
         let Some(a) = self.elegida.and_then(|i| self.semana.asignaturas.get(i)) else {
             return Vec::new();
         };
-        let Some(l) = super::asignaturas::de(&self.listas, &a.nombre) else {
+        let Some(l) = super::asignaturas::de_asignatura(&self.listas, a) else {
             return Vec::new();
         };
         let (arriba, _) = l.a_la_vista(&|_| false);
@@ -761,11 +803,14 @@ fn tecla(
         }
         Some(_) if vk == VK_ENTRAR && e.edicion.is_some() => e.guardar_edicion(raiz, textos),
         Some(f) if vk == VK_TAB && e.edicion.is_some() => {
-            const ORDEN: [CampoId; 3] = [CampoId::Aula, CampoId::Nota, CampoId::Avisar];
-            let solo_aula = matches!(e.edicion, Some(Edicion::Asignatura(_)));
-            let n = if solo_aula { 1 } else { 3 };
-            let k = ORDEN.iter().position(|c| *c == f).unwrap_or(0);
-            e.foco = Some(ORDEN[if shift { (k + n - 1) % n } else { (k + 1) % n }]);
+            let orden: &[CampoId] = if matches!(e.edicion, Some(Edicion::Asignatura(_))) {
+                &[CampoId::Nombre, CampoId::Aula]
+            } else {
+                &[CampoId::Aula, CampoId::Nota, CampoId::Avisar]
+            };
+            let n = orden.len();
+            let k = orden.iter().position(|c| *c == f).unwrap_or(0);
+            e.foco = Some(orden[if shift { (k + n - 1) % n } else { (k + 1) % n }]);
         }
         Some(f) => {
             let multilinea = f == CampoId::Nota;
@@ -809,19 +854,21 @@ fn hacer(
             match s.anadir_asignatura(&escrito) {
                 Ok(Some(i)) => {
                     let nombre = s.asignaturas[i].nombre.clone();
-                    e.cambiar(s, raiz, textos);
-                    e.nueva.poner("");
-                    e.elegida = Some(i);
-                    // Su grupo de tareas, ya: asi sale en el desplegable de
-                    // Tareas y en el chat.
+                    // Su grupo de tareas, a la vez (1-nov-2026): asi sale en
+                    // Tareas, en el chat y en Flow, y su linea nace con el
+                    // enlace (`lista:<id>`) que la sigue al renombrarla.
                     match super::asignaturas::asegurar_lista(raiz, aparato, &nombre) {
-                        Ok(_) => {
+                        Ok(l) => {
+                            s.asignaturas[i].lista = Some(l.codigo);
                             crate::ventana_chat::refrescar();
                             crate::tareas::refrescar();
-                            e.cargar_tareas(raiz);
                         }
                         Err(err) => tracing::warn!(?err, "horario: sin lista para la asignatura"),
                     }
+                    e.cambiar(s, raiz, textos);
+                    e.cargar_tareas(raiz);
+                    e.nueva.poner("");
+                    e.elegida = Some(i);
                     let mut args = fluent_bundle::FluentArgs::new();
                     args.set("asignatura", nombre);
                     e.decir(textos.t_args("horario-arrastra", &args));
@@ -874,12 +921,10 @@ fn hacer(
         }
         Accion::Chip(k) => return Salida::Tarea(k),
         Accion::AbrirTareas => {
-            let nombre = e
+            let clave = e
                 .elegida
                 .and_then(|i| e.semana.asignaturas.get(i))
-                .map(|a| a.nombre.clone());
-            let clave =
-                nombre.and_then(|n| super::asignaturas::de(&e.listas, &n).map(Lista::clave));
+                .and_then(|a| super::asignaturas::de_asignatura(&e.listas, a).map(Lista::clave));
             return Salida::IrATareas(clave);
         }
         Accion::Guardar => e.guardar_edicion(raiz, textos),
@@ -1681,7 +1726,8 @@ fn pintar_ficha(e: &mut Panel, p: &Pintor, w: f32, h: f32, s: f32, textos: &Cata
         },
     };
     let ancho = 440.0 * s;
-    let alto = if solo_aula { 230.0 } else { 430.0 } * s;
+    // La de una asignatura: su nombre (renombrarla) y su aula.
+    let alto = if solo_aula { 300.0 } else { 430.0 } * s;
     let caja = RectF {
         x: (w - ancho) / 2.0,
         y: (h - alto) / 2.0,
@@ -1713,7 +1759,10 @@ fn pintar_ficha(e: &mut Panel, p: &Pintor, w: f32, h: f32, s: f32, textos: &Cata
     }
     y += 6.0 * s;
     let campos: &[(CampoId, &str, usize)] = if solo_aula {
-        &[(CampoId::Aula, "horario-aula", 1)]
+        &[
+            (CampoId::Nombre, "horario-nombre", 1),
+            (CampoId::Aula, "horario-aula", 1),
+        ]
     } else {
         &[
             (CampoId::Aula, "horario-aula", 1),
@@ -1734,6 +1783,7 @@ fn pintar_ficha(e: &mut Panel, p: &Pintor, w: f32, h: f32, s: f32, textos: &Cata
             String::new()
         };
         let campo = match c {
+            CampoId::Nombre => &e.nombre,
             CampoId::Aula => &e.aula,
             CampoId::Nota => &e.nota,
             CampoId::Avisar => &e.avisar,

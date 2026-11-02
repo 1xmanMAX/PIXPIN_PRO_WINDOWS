@@ -23,7 +23,7 @@ const HUECO: f32 = 6.0;
 /// pin de la tarea).
 pub const ROJO: Color = hex(0xe5534b);
 pub const AMBAR: Color = hex(0xe8a33d);
-/// La prioridad «baja» de Jev.
+/// Las prioridades «normal» y «baja» de Jev (normal, con menos fondo).
 const GRIS: Color = hex(0x8b949e);
 /// La letra de una etiqueta: el azul claro de las fichas de la caja.
 const AZUL_LETRA: Color = hex(0x9cc4f0);
@@ -40,11 +40,54 @@ pub fn rotulo(c: &Chapa, textos: &Catalogo) -> String {
             let clave = match p {
                 Prioridad::Urgente => "tareas-prioridad-urgente",
                 Prioridad::Alta => "tareas-prioridad-alta",
-                Prioridad::Normal | Prioridad::Baja => "tareas-prioridad-baja",
+                Prioridad::Normal => "tareas-prioridad-normal",
+                Prioridad::Baja => "tareas-prioridad-baja",
             };
             format!("✦ {}", textos.t(clave))
         }
     }
+}
+
+/// **La pista de la chapita de Jev**: el porque de su prioridad, en una
+/// linea («Jev: consecuencia media · nadie la espera · sin fecha»).
+pub fn pista_de_jev(m: &pindesk_typesafe::urgencia::Motivo, textos: &Catalogo) -> String {
+    let consecuencia = match m.consecuencia {
+        0 => "tareas-jev-consecuencia-nada",
+        1 => "tareas-jev-consecuencia-leve",
+        2 => "tareas-jev-consecuencia-media",
+        _ => "tareas-jev-consecuencia-grave",
+    };
+    let mut partes = vec![textos.t(consecuencia)];
+    partes.push(textos.t(if m.espera {
+        "tareas-jev-la-esperan"
+    } else {
+        "tareas-jev-nadie-espera"
+    }));
+    if m.plazo_ajeno {
+        partes.push(textos.t("tareas-jev-plazo-ajeno"));
+    }
+    if m.piden_ya {
+        partes.push(textos.t("tareas-jev-la-piden"));
+    }
+    let cuando = match m.dias {
+        None => textos.t("tareas-jev-sin-fecha"),
+        Some(d) if d < 0 => textos.t("tareas-jev-ya-paso"),
+        Some(0) => textos.t("tareas-jev-hoy"),
+        Some(1) => textos.t("tareas-jev-manana"),
+        Some(d) => {
+            let mut a = fluent_bundle::FluentArgs::new();
+            a.set("n", d);
+            textos.t_args("tareas-jev-en-dias", &a)
+        }
+    };
+    partes.push(if m.de_la_lista {
+        let mut a = fluent_bundle::FluentArgs::new();
+        a.set("cuando", cuando);
+        textos.t_args("tareas-jev-por-la-lista", &a)
+    } else {
+        cuando
+    });
+    format!("Jev: {}", partes.join(" · "))
 }
 
 /// Sobre que va la fila.
@@ -76,10 +119,12 @@ fn colores(c: &Chapa, sobre: Sobre) -> (Color, Color) {
                 Prioridad::Alta => AMBAR,
                 Prioridad::Normal | Prioridad::Baja => GRIS,
             };
+            // «Normal» casi sin fondo: que se lea sin llamar la atencion.
+            let k = if *p == Prioridad::Normal { 0.5 } else { 1.0 };
             match sobre {
-                Sobre::Foto => (negro(0.6), color),
-                Sobre::Claro => (con_alfa(color, 0.18), color),
-                Sobre::Oscuro => (con_alfa(color, 0.16), color),
+                Sobre::Foto => (negro(0.6 * k), color),
+                Sobre::Claro => (con_alfa(color, 0.18 * k), color),
+                Sobre::Oscuro => (con_alfa(color, 0.16 * k), color),
             }
         }
     }
@@ -156,6 +201,35 @@ mod pruebas {
         assert_eq!(
             rotulo(&Chapa::Urgencia(Urgencia::MuyUrgente), &en),
             "Very urgent"
+        );
+        // Las cuatro de Jev, cada una la suya.
+        use pindesk_typesafe::urgencia::{Motivo, Prioridad};
+        assert_eq!(rotulo(&Chapa::Prioridad(Prioridad::Normal), &t), "✦ Normal");
+        assert_eq!(rotulo(&Chapa::Prioridad(Prioridad::Baja), &t), "✦ Baja");
+        assert_eq!(rotulo(&Chapa::Prioridad(Prioridad::Alta), &t), "✦ Alta");
+        let m = Motivo {
+            consecuencia: 2,
+            espera: false,
+            plazo_ajeno: false,
+            piden_ya: false,
+            dias: None,
+            de_la_lista: false,
+        };
+        assert_eq!(
+            pista_de_jev(&m, &t),
+            "Jev: consecuencia media · nadie la espera · sin fecha"
+        );
+        let m = Motivo {
+            consecuencia: 3,
+            espera: true,
+            plazo_ajeno: true,
+            dias: Some(0),
+            de_la_lista: true,
+            ..m
+        };
+        assert_eq!(
+            pista_de_jev(&m, &t),
+            "Jev: consecuencia grave · alguien la espera · plazo de otro · hoy (por el título de la lista)"
         );
         // Muy urgente se distingue de urgente de lejos: fondo lleno.
         assert_ne!(

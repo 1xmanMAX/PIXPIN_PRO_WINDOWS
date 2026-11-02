@@ -62,6 +62,7 @@ pub mod instrumento;
 pub mod lazo;
 pub mod lupa_elemento;
 pub mod marcas;
+pub mod marcas_texto;
 pub mod marco;
 pub mod medida;
 pub mod mosaico;

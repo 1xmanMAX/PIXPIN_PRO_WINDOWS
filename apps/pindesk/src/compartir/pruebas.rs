@@ -144,6 +144,11 @@ fn comprobar(salida: &Salida, formato: &str, paginas: usize) {
             let s = String::from_utf8(bytes).expect("utf8");
             assert!(s.starts_with("<!DOCTYPE html>"), "web sin cabecera");
             assert!(s.trim_end().ends_with("</html>"), "web cortada");
+            // Una lista de tareas tiene su pagina propia, sin hojas que
+            // dibujar (ver `tareas`).
+            if s.contains("<section class=\"lista\">") {
+                return;
+            }
             // Un documento que se lee va entero en una hoja, como en el
             // lector: sus paginas son una columna, no hojas sueltas.
             let hojas = if s.contains("class=\"doc-caja\"") {
@@ -553,7 +558,12 @@ fn cada_mensaje_solo_ofrece_sus_formatos_y_su_original() {
             &[PNG, JPG, SVG, PDF, WEB, "word", "texto", "pindesk"],
         ),
         ("m-tabla", &[PNG, JPG, SVG, PDF, WEB, "csv", "pindesk"]),
-        ("m-tareas", &[PNG, JPG, SVG, PDF, WEB, "texto", "pindesk"]),
+        // Una lista de tareas sola: su Word, su Markdown y su texto
+        // (1-nov-2026).
+        (
+            "m-tareas",
+            &[PNG, JPG, SVG, PDF, WEB, "word", "md", "texto", "pindesk"],
+        ),
     ];
     for (id, formatos) in esperado {
         let m = mensajes.iter().find(|m| m.id == id).unwrap().clone();
@@ -578,6 +588,28 @@ fn cada_mensaje_solo_ofrece_sus_formatos_y_su_original() {
         .map(|e| std::fs::read_to_string(e.path()).unwrap())
         .unwrap();
     assert_eq!(csv, "Cemento;12\r\n\"Arena; fina\";24\r\n");
+    // La lista de tareas tiene su pagina propia: el resumen, sus filas y lo
+    // hecho plegado, sin las casillas de Markdown a la vista.
+    let leer_de = |formato: &str| {
+        std::fs::read_dir(dir.join("m-tareas").join(formato))
+            .unwrap()
+            .flatten()
+            .next()
+            .map(|e| std::fs::read_to_string(e.path()).unwrap())
+            .unwrap()
+    };
+    let web = leer_de(WEB);
+    assert!(
+        web.contains("<section class=\"lista\">"),
+        "la pagina de las tareas"
+    );
+    assert_eq!(web.matches("<li class=\"tarea").count(), 2);
+    assert!(web.contains("<details class=\"hechas\">"));
+    assert!(!web.contains("- [ ]"));
+    let md = leer_de("md");
+    assert!(md.starts_with("# Compras\n"));
+    assert!(md.contains("- [ ] Arena\n"));
+    assert!(md.contains("- [x] Cemento\n"));
     // Varios a la vez: todas las paginas juntas, y los originales.
     let p = preparar(
         Cosa::Mensajes {

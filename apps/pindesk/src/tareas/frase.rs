@@ -145,17 +145,17 @@ pub fn a_la_vista(texto: &str, ahora: Option<Momento>) -> Vista {
 }
 
 /// **Lo mismo con la prioridad de Jev**: si el usuario no marco urgencia
-/// (lo suyo manda y ya tiene su chapita) y Jev dice urgente, alta o baja,
-/// su chapita va la primera. «Normal» no se ensena.
+/// (lo suyo manda y ya tiene su chapita), la que dio Jev va la primera,
+/// tambien «normal» (1-nov-2026, el usuario: «Jev no esta valorando la
+/// prioridad»: sin chapita, una tarea juzgada normal parecia sin juzgar).
 pub fn a_la_vista_con(
     texto: &str,
     ahora: Option<Momento>,
     prioridad: Option<pindesk_typesafe::urgencia::Prioridad>,
 ) -> Vista {
-    use pindesk_typesafe::urgencia::Prioridad;
     let mut v = a_la_vista(texto, ahora);
     let marcada = v.chapas.iter().any(|c| matches!(c, Chapa::Urgencia(_)));
-    if let Some(p) = prioridad.filter(|p| *p != Prioridad::Normal)
+    if let Some(p) = prioridad
         && !marcada
     {
         v.chapas.insert(0, Chapa::Prioridad(p));
@@ -297,12 +297,15 @@ mod pruebas {
         // Marcada a mano: solo su marca.
         let v = a_la_vista_con("pagar la luz 🔼", None, Some(Prioridad::Urgente));
         assert_eq!(v.chapas, [Chapa::Urgencia(Urgencia::Urgente)]);
-        // Normal, o sin Jev: como siempre.
-        assert!(
-            a_la_vista_con("pan", None, Some(Prioridad::Normal))
-                .chapas
-                .is_empty()
-        );
+        // Normal tambien se ensena (juzgada no es lo mismo que sin juzgar),
+        // y la baja es baja.
+        for p in [Prioridad::Normal, Prioridad::Baja] {
+            assert_eq!(
+                a_la_vista_con("pan", None, Some(p)).chapas,
+                [Chapa::Prioridad(p)]
+            );
+        }
+        // Sin Jev: como siempre.
         assert!(a_la_vista_con("pan", None, None).chapas.is_empty());
     }
 
