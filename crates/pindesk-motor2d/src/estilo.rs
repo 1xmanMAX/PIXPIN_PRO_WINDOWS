@@ -299,6 +299,17 @@ fn grosor_para(figura: &Figura, g: NivelGrosor) -> f32 {
 /// toca lo que cambia de verdad: pulsar el color que ya tiene no ensucia el
 /// historial.
 pub fn aplicar_a(escena: &mut Escena, sel: &Seleccion, cambio: CambioEstilo) {
+    escena.abrir_paso();
+    aplicar_en_el_paso(escena, sel, cambio);
+    escena.cerrar_paso();
+}
+
+/// **Lo mismo, dentro del paso que ya este abierto**, sin cerrarlo: lo que
+/// se arrastra en el panel (la opacidad, el cuadro del color) cambia el
+/// estilo con cada movimiento del raton, y todo el arrastre tiene que ser
+/// un solo `Ctrl+Z`. Quien llama abre el paso al pulsar y lo cierra al
+/// soltar; el primer estado de cada elemento se apunta una sola vez.
+pub fn aplicar_en_el_paso(escena: &mut Escena, sel: &Seleccion, cambio: CambioEstilo) {
     let cambia = |e: &crate::elemento::Elemento| match cambio {
         CambioEstilo::Trazo(c) => e.trazo != c,
         CambioEstilo::Relleno(c) => e.relleno != c,
@@ -319,7 +330,6 @@ pub fn aplicar_a(escena: &mut Escena, sel: &Seleccion, cambio: CambioEstilo) {
     if afectados.is_empty() {
         return;
     }
-    escena.abrir_paso();
     for id in afectados {
         escena.apuntar_edicion(id);
         if let Some(e) = escena.buscar_mut(id) {
@@ -339,7 +349,6 @@ pub fn aplicar_a(escena: &mut Escena, sel: &Seleccion, cambio: CambioEstilo) {
             e.tocar();
         }
     }
-    escena.cerrar_paso();
 }
 
 // -------------------------------------------------------------------------
@@ -1104,6 +1113,39 @@ mod pruebas {
             material: Default::default(),
             extras: Default::default(),
         })
+    }
+
+    #[test]
+    fn un_arrastre_de_opacidad_es_un_solo_paso_de_deshacer() {
+        // El panel cambia la opacidad con cada movimiento del raton: treinta
+        // avisos no pueden ser treinta `Ctrl+Z`.
+        let mut escena = Escena::nueva();
+        escena.abrir_paso();
+        let id = rect(&mut escena);
+        escena.cerrar_paso();
+        let antes = escena.pasos_en_historial().0;
+        let mut sel = Seleccion::nueva();
+        sel.poner(id);
+        escena.abrir_paso();
+        for o in [0.9, 0.7, 0.5, 0.35] {
+            aplicar_en_el_paso(&mut escena, &sel, CambioEstilo::Opacidad(o));
+            assert_eq!(
+                escena.buscar(id).unwrap().opacidad,
+                o,
+                "se ve mientras se arrastra"
+            );
+        }
+        escena.cerrar_paso();
+        assert_eq!(escena.pasos_en_historial().0, antes + 1);
+        assert!(escena.deshacer());
+        assert_eq!(
+            escena.buscar(id).unwrap().opacidad,
+            1.0,
+            "vuelve al de antes de pulsar"
+        );
+        // `aplicar_a` sigue siendo un paso por si solo.
+        aplicar_a(&mut escena, &sel, CambioEstilo::Opacidad(0.2));
+        assert_eq!(escena.pasos_en_historial().0, antes + 1);
     }
 
     #[test]
