@@ -68,7 +68,6 @@
 use anyhow::{Context, Result};
 use pindesk_docs::documento::{Clase, texto_y_tramos};
 use pindesk_docs::{Documento, indice, lectura, vista};
-#[cfg(test)]
 use pindesk_motor2d::vector::Punto2;
 use pindesk_render::icono::material;
 use pindesk_render::{Color, EstiloTexto, Pintor, RectF, Superficie, Tramo};
@@ -90,6 +89,8 @@ pub(crate) mod como_texto;
 mod imagenes;
 mod maqueta_movil;
 mod maqueta_vieja;
+/// Elegir y marcar el texto leyendo.
+mod marcar;
 mod tablas;
 pub(crate) use maqueta_movil::{Hoja, Letra};
 pub(crate) use tablas::ordenes_de_celda;
@@ -245,6 +246,10 @@ enum Accion {
     AutoBoton(lector::BotonAuto),
     /// Un PDF leido como texto: «Ver el PDF original, en hojas».
     VerPdf,
+    /// Un boton de la barrita de marcar lo elegido (`marcar`).
+    Marcar(pindesk_ui::barra_marcar::BotonMarcar),
+    /// El cristal de la barrita, entre dos botones: no hace nada.
+    FondoBarrita,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -258,6 +263,8 @@ enum Arrastre {
     },
     /// Anotando: el gesto es de la tinta (`lector_tinta::Tinta`) hasta soltar.
     Trazo,
+    /// Leyendo: eligiendo texto (`marcar`).
+    Elegir,
 }
 
 /// Lo que mide la ventana y a que escala.
@@ -371,6 +378,8 @@ struct Estado {
     ubicacion: Ubicacion,
     /// Si lo que se lee es un PDF pasado a texto (`como_texto`), ese PDF.
     pdf_de_origen: Option<PathBuf>,
+    /// Elegir y marcar el texto leyendo (`marcar`).
+    marcar: marcar::MarcarVisor,
 }
 
 pub fn abrir(
@@ -487,6 +496,7 @@ pub fn abrir(
         imagen_pulsada: None,
         pinear: None,
         elegir_voz: false,
+        marcar: Default::default(),
         cursor: None,
         en_pin: true,
         barra_del_pin: true,
@@ -1246,6 +1256,9 @@ fn pintar(e: &mut Estado, p: &Pintor, m: Marco, textos: &Catalogo) {
     }
     // Lo encontrado, debajo del texto: se lee por encima.
     marcas_de_busqueda(e, p, vista_doc);
+    // La capa de texto de lo que se ve y lo elegido (`marcar`).
+    marcar::preparar(e, p, vista_doc);
+    marcar::pintar_seleccion(e, p);
     // **Lo que suena**, en ambar por debajo del texto (`.pixpin-leyendo`).
     if let Some(c) = colocado_que_suena(e) {
         let aire = 3.0;
@@ -1525,6 +1538,8 @@ fn pintar(e: &mut Estado, p: &Pintor, m: Marco, textos: &Catalogo) {
     if e.panel {
         panel(e, p, m, textos, &mut botones);
     }
+    // La barrita de marcar, junto a lo elegido (`marcar`).
+    marcar::pintar_barrita(e, p, m, textos, &mut botones);
     if let Some((texto, _)) = &e.aviso {
         lector::aviso_abajo(p, texto, m.ancho, m.alto, m.e);
     }
@@ -2013,8 +2028,8 @@ fn el_lector_primero(e: &Estado, m: Marco) -> bool {
 }
 
 /// El punto del documento bajo el raton (las pruebas de la vista lo usan
-/// para comprobar que acercar deja quieto lo que hay bajo el puntero).
-#[cfg(test)]
+/// para comprobar que acercar deja quieto lo que hay bajo el puntero, y
+/// elegir texto para saber que letra hay debajo).
 fn en_el_documento(e: &Estado, m: Marco) -> Punto2 {
     let s = px(e, m);
     Punto2::nuevo(e.x + e.raton.0 / s, e.y + e.raton.1 / s)
@@ -2060,6 +2075,8 @@ fn cursor_leyendo(e: &mut Estado, m: Marco) -> Option<pindesk_shell::overlay::Fo
     // `Giro` es IDC_HAND (ver su nota en `FormaCursorWin`).
     let forma = if !arrastrando && imagen_bajo_raton(e, m).is_some() {
         FormaCursorWin::Giro
+    } else if !arrastrando && marcar::sobre_texto(e, m) {
+        marcar::CURSOR_DE_TEXTO
     } else {
         FormaCursorWin::Flecha
     };
@@ -2098,6 +2115,7 @@ fn mover_raton(e: &mut Estado, m: Marco) {
         }
         // El trazo lo lleva la tinta, en el bucle.
         Some(Arrastre::Trazo) => {}
+        Some(Arrastre::Elegir) => marcar::mover(e, m),
         None => {}
     }
 }
@@ -2158,6 +2176,11 @@ fn pulsar(e: &mut Estado, textos: &Catalogo, ruta: &Path, ubicacion: &Ubicacion,
         // Si llega aqui, la tinta no lo quiso (ver el bucle): nada.
         return false;
     }
+    // Sobre texto, se elige (`marcar`).
+    if marcar::pulsar(e, m) {
+        e.arrastre = Some(Arrastre::Elegir);
+        return true;
+    }
     // Sobre una imagen, el clic la saca como pin al soltar; si se arrastra,
     // mueve el documento como en cualquier otro sitio.
     e.imagen_pulsada = imagen_bajo_raton(e, m);
@@ -2182,15 +2205,28 @@ fn soltar(e: &mut Estado, m: Marco) {
             e.pinear = imagen;
         }
         Some(Arrastre::Mover { movido: false, .. }) => {
-            // Un toque en el papel saca (o esconde) la pastilla.
+            // Un toque en una marca la elige; en el papel saca (o esconde)
+            // la pastilla.
             e.lateral = None;
+            if !marcar::elegir_la_marca(e, m) {
+                e.pastilla_hasta = if e.pastilla_hasta > ahora_ms() {
+                    0
+                } else {
+                    ahora_ms() + MS_DE_LA_PASTILLA
+                };
+            }
+        }
+        Some(Arrastre::Mover { .. }) => fin_de_lateral(e, m),
+        // Un clic en el texto: en una marca la elige; si no, como un toque
+        // en el papel, la pastilla.
+        Some(Arrastre::Elegir) if marcar::soltar(e) && !marcar::elegir_la_marca(e, m) => {
             e.pastilla_hasta = if e.pastilla_hasta > ahora_ms() {
                 0
             } else {
                 ahora_ms() + MS_DE_LA_PASTILLA
             };
         }
-        Some(Arrastre::Mover { .. }) => fin_de_lateral(e, m),
+        Some(Arrastre::Elegir) => {}
         None => {}
     }
 }
@@ -2318,7 +2354,9 @@ fn tecla(
     }
     match (vk, ctrl) {
         (VK_ESCAPE, _) => {
-            if e.poniendo_marca || e.panel || e.viendo_indice {
+            if marcar::soltar_lo_elegido(e) {
+                // La primera Esc suelta lo elegido (y la marca elegida).
+            } else if e.poniendo_marca || e.panel || e.viendo_indice {
                 e.poniendo_marca = false;
                 e.panel = false;
                 e.viendo_indice = false;
@@ -2395,6 +2433,9 @@ fn tecla(
         (VK_G, false) => {
             e.panel = !e.panel;
             e.viendo_indice = false;
+        }
+        (VK_C, true) => {
+            marcar::copiar(e, textos);
         }
         (VK_C, false) if !e.indice.is_empty() => {
             e.viendo_indice = !e.viendo_indice;
@@ -3042,6 +3083,8 @@ fn hacer(
     m: Marco,
 ) {
     match a {
+        Accion::Marcar(b) => marcar::boton(e, b, ruta, textos, m),
+        Accion::FondoBarrita => {}
         // Pulsar el nombre ya no lo cambia (19-oct-2026, el usuario: «puede
         // pasar que se cambie por accidente»).
         Accion::Renombrar => {}
@@ -3585,6 +3628,7 @@ mod pruebas {
             imagen_pulsada: None,
             pinear: None,
             elegir_voz: false,
+            marcar: Default::default(),
             cursor: None,
             en_pin: false,
             barra_del_pin: false,

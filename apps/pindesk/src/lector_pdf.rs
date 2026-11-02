@@ -36,6 +36,11 @@
 //! elige (doble clic la palabra, triple el renglon, Ctrl+C copia) y un
 //! enlace del PDF lleva a su hoja o abre el navegador.
 //!
+//! **Marcar lo elegido** (`marcar`, 1-nov-2026): encima de lo elegido sale
+//! la barrita de los pines (resaltar, ondulada, subrayar, tachar, tapar,
+//! quitar) y la marca va a la capa de la hoja como dibujo. En una hoja
+//! escaneada el texto lo pone el OCR (solo, al pasar el raton, o con T).
+//!
 //! # Las unidades y la tinta
 //!
 //! Cada hoja mide `vista::ANCHO_HOJA` (1400, el `PAGE_WIDTH` del movil) y
@@ -95,9 +100,11 @@ use crate::overlay::Recursos;
 /// Lo que otro escribe en las capas con el lector abierto, a la vista.
 mod al_dia;
 mod cola;
-mod elegir;
+pub(crate) mod elegir;
 /// Imprimir el PDF entero (el clic derecho en el boton del marco).
 mod entero;
+/// Marcar el texto leyendo: resaltar, subrayar, tachar, tapar.
+mod marcar;
 #[cfg(test)]
 mod medir;
 pub(crate) mod office;
@@ -169,6 +176,7 @@ const VK_M: u32 = 0x4D;
 const VK_N: u32 = 0x4E;
 const VK_L: u32 = 0x4C;
 const VK_S: u32 = 0x53;
+const VK_T: u32 = 0x54;
 const VK_Y: u32 = 0x59;
 const VK_Z: u32 = 0x5A;
 const VK_C: u32 = 0x43;
@@ -399,6 +407,9 @@ enum Pedido {
         marcas: Vec<Marca>,
         destino: PathBuf,
     },
+    /// T: el texto de una hoja por el OCR, aunque el PDF traiga el suyo
+    /// (`marcar`). Llega como un `Llega::Texto` mas.
+    Reconocer { hoja: usize },
 }
 
 enum Llega {
@@ -448,6 +459,9 @@ fn hilo_de_hojas(
     let mut cola = cola::Cola::default();
     // El PDF en memoria para el texto de las hojas, leido la primera vez.
     let mut bytes: Option<Vec<u8>> = None;
+    // El texto que puso el OCR, por hoja: leer una hoja escaneada cuesta un
+    // segundo y la ventana suelta el texto de las hojas lejanas.
+    let mut reconocidas: HashMap<usize, pindesk_pdf::texto::PaginaDeTexto> = HashMap::new();
     loop {
         // Sin trabajo se duerme hasta el siguiente pedido; con trabajo solo
         // mira si ha llegado una lista mas nueva.
@@ -490,6 +504,20 @@ fn hilo_de_hojas(
                     );
                     avisar(Llega::Exportado(hecho.map(|_| destino)));
                 }
+                Pedido::Reconocer { hoja } => {
+                    let mut h =
+                        texto_de_la_hoja(documento.ruta(), &mut bytes, hoja).unwrap_or_default();
+                    if let Some(t) = marcar::reconocer_hoja(&documento, hoja) {
+                        reconocidas.insert(hoja, t.clone());
+                        h.texto = t;
+                    }
+                    h.reconocida = true;
+                    avisar(Llega::Texto {
+                        serie: 0,
+                        hoja,
+                        hoja_pdf: Some(h),
+                    });
+                }
             }
         }
         let Some(t) = cola.tomar() else { continue };
@@ -524,7 +552,22 @@ fn hilo_de_hojas(
                 });
             }
             cola::Trabajo::Texto { hoja } => {
-                let hoja_pdf = texto_de_la_hoja(documento.ruta(), &mut bytes, hoja);
+                let mut hoja_pdf = texto_de_la_hoja(documento.ruta(), &mut bytes, hoja);
+                // **Una hoja escaneada**: su texto por el OCR, el mismo de
+                // los pines, para elegirlo y marcarlo (`marcar`).
+                if let Some(h) = hoja_pdf.as_mut() {
+                    if let Some(t) = reconocidas.get(&hoja) {
+                        h.texto = t.clone();
+                        h.reconocida = true;
+                    } else if marcar::sin_texto(&h.texto)
+                        && pindesk_ocr::disponible()
+                        && let Some(t) = marcar::reconocer_hoja(&documento, hoja)
+                    {
+                        reconocidas.insert(hoja, t.clone());
+                        h.texto = t;
+                        h.reconocida = true;
+                    }
+                }
                 let (serie, _) = cola.entregar(t);
                 avisar(Llega::Texto {
                     serie,
@@ -545,7 +588,11 @@ fn texto_de_la_hoja(
 ) -> Option<elegir::HojaPdf> {
     let leer = |b: &[u8]| {
         let (texto, enlaces) = pindesk_pdf::texto::hoja_con_enlaces(b, hoja).ok()?;
-        Some(elegir::HojaPdf { texto, enlaces })
+        Some(elegir::HojaPdf {
+            texto,
+            enlaces,
+            reconocida: false,
+        })
     };
     if bytes.is_none() {
         let leido = std::fs::read(ruta).ok()?;
@@ -716,6 +763,10 @@ enum Accion {
     BorrarMarcos,
     /// PDF: «Ver como texto», en el lector de Word (`visor::como_texto`).
     ComoTexto,
+    /// Un boton de la barrita de marcar lo elegido (`marcar`).
+    Marcar(pindesk_ui::barra_marcar::BotonMarcar),
+    /// El cristal de la barrita, entre dos botones: no hace nada.
+    FondoBarrita,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -763,6 +814,8 @@ struct Estado {
     pasando_hasta: u64,
     /// Elegir texto y seguir enlaces en un PDF (`elegir`).
     elegir: elegir::ElegirPdf,
+    /// Marcar lo elegido, en un PDF o en un Word (`marcar`).
+    marcar: marcar::MarcarTexto,
     x: f32,
     y: f32,
     zoom: f32,
@@ -988,6 +1041,7 @@ fn abrir_con(
         paso: (0, 0),
         pasando_hasta: 0,
         elegir: Default::default(),
+        marcar: Default::default(),
         x: 0.0,
         y: 0.0,
         zoom_cambiado: 0,
@@ -1409,6 +1463,15 @@ fn abrir_con(
                     &tx_pedidos,
                     marco,
                 ),
+                // T: el texto de la hoja por el OCR, para elegirlo y
+                // marcarlo, como en los pines (`marcar`).
+                EventoOverlay::Tecla {
+                    vk: VK_T,
+                    ctrl: false,
+                    ..
+                } if !e.anotando
+                    && !escribiendo(&e)
+                    && marcar::reconocer(&mut e, &tx_pedidos, textos, marco) => {}
                 // L: escuchar (play/pausa con la barra abierta).
                 EventoOverlay::Tecla {
                     vk: VK_L,
@@ -1730,9 +1793,9 @@ fn recibir(e: &mut Estado, l: Llega, motor: &pindesk_render::MotorRender, textos
         } => {
             e.visto = e.visto.max(serie);
             // Sin texto (cifrado, roto) queda vacia: tampoco se vuelve a pedir.
-            e.elegir
-                .hojas
-                .insert(hoja, std::sync::Arc::new(hoja_pdf.unwrap_or_default()));
+            let h = hoja_pdf.unwrap_or_default();
+            marcar::al_llegar_el_texto(e, hoja, &h, textos);
+            e.elegir.hojas.insert(hoja, std::sync::Arc::new(h));
             if e.elegir.falta == Some(hoja) {
                 e.elegir.falta = None;
             }
@@ -2418,6 +2481,8 @@ fn pintar(e: &mut Estado, p: &Pintor, m: Marco, textos: &Catalogo) {
             botones.push((zona, Accion::Buscar(b)));
         }
     }
+    // La barrita de marcar, junto a lo elegido (`marcar`).
+    marcar::pintar_barrita(e, p, m, textos, &mut botones);
     if let Some((texto, _)) = &e.aviso {
         lector::aviso_abajo(p, texto, m.ancho, m.alto, m.e);
     }
@@ -2736,6 +2801,9 @@ fn pulsar(
         hacer(e, a, textos, ruta, ubicacion, tx, m);
         return false;
     }
+    // Un clic fuera de la barrita suelta la marca elegida (al soltar se
+    // vuelve a mirar si cae en otra).
+    e.marcar.de_marca = None;
     if e.panel || e.poniendo_marca {
         e.panel = false;
         e.poniendo_marca = false;
@@ -2773,17 +2841,26 @@ fn soltar(e: &mut Estado, m: Marco) {
         }
         Some(Arrastre::Mover { movido: false, .. }) => {
             e.lateral = None;
-            e.pastilla_hasta = if e.pastilla_hasta > ahora_ms() {
-                0
-            } else {
-                ahora_ms() + MS_DE_LA_PASTILLA
-            };
+            // Un clic en una marca la elige (para cambiarla o quitarla); en
+            // lo demas, la pastilla del nombre.
+            if !marcar::elegir_la_marca(e, m) {
+                e.pastilla_hasta = if e.pastilla_hasta > ahora_ms() {
+                    0
+                } else {
+                    ahora_ms() + MS_DE_LA_PASTILLA
+                };
+            }
         }
         Some(Arrastre::Mover { .. }) => fin_de_lateral(e, m),
-        Some(Arrastre::Elegir) if e.office.is_some() => {
-            office::soltar(e);
+        Some(Arrastre::Elegir) => {
+            if e.office.is_some() {
+                office::soltar(e);
+            } else {
+                elegir::soltar(e, m);
+            }
+            // Un clic (sin elegir nada) sobre una marca la elige.
+            marcar::elegir_la_marca(e, m);
         }
-        Some(Arrastre::Elegir) => elegir::soltar(e, m),
         None => {}
     }
 }
@@ -2874,12 +2951,8 @@ fn tecla(e: &mut Estado, vk: u32, shift: bool, ctrl: bool, ruta: &Path, m: Marco
     }
     match (vk, ctrl) {
         (VK_ESCAPE, _) => {
-            if let Some(o) = e.office.as_mut()
-                && o.seleccion.take().is_some()
-            {
-                // La primera Esc quita lo elegido.
-            } else if e.elegir.seleccion.take().is_some() {
-                // Lo elegido en un PDF, tambien.
+            if marcar::soltar_lo_elegido(e) {
+                // La primera Esc quita lo elegido (y la marca elegida).
             } else if e.poniendo_marca || e.panel {
                 e.poniendo_marca = false;
                 e.panel = false;
@@ -3499,6 +3572,8 @@ fn hacer(
     m: Marco,
 ) {
     match a {
+        Accion::Marcar(b) => marcar::boton(e, b, ruta, textos),
+        Accion::FondoBarrita => {}
         Accion::Imprimir => {
             if let Some(o) = e.office.as_mut() {
                 o.pedir_imprimir = true;
@@ -4125,6 +4200,7 @@ mod pruebas {
             paso: (0, 0),
             pasando_hasta: 0,
             elegir: Default::default(),
+            marcar: Default::default(),
             x: 0.0,
             y: 0.0,
             zoom: 1.0,

@@ -176,6 +176,19 @@ pub mod turnos {
                 && escena.pasos_en_historial().0 == self.deshacer
         }
 
+        /// **Lo recien hecho en `escena` con el grupo `grupo`, como un
+        /// turno**: lo que toca varias hojas a la vez (una marca de texto que
+        /// pasa de una hoja a otra, `lector_pdf::marcar`) se deshace entero
+        /// con un solo Ctrl+Z, igual que lo del asistente. Ya va apuntado.
+        pub fn de_ahora(grupo: &str, escena: &Escena) -> Marcado {
+            Marcado {
+                grupo: grupo.to_string(),
+                cerrados: escena.pasos_cerrados(),
+                deshacer: escena.pasos_en_historial().0,
+                sin_apuntar: false,
+            }
+        }
+
         /// El paso del turno se acaba de deshacer (Ctrl+Y lo devolveria).
         pub fn deshecho(&self, escena: &Escena) -> bool {
             let (d, r) = escena.pasos_en_historial();

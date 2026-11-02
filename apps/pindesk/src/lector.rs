@@ -832,6 +832,149 @@ pub fn globo_a_la_izquierda(p: &Pintor<'_>, junto_a: RectF, texto: &str, e: f32)
     p.texto(texto, caja.x + px, caja.y + py, tam, Color::BLANCO);
 }
 
+// ---------------------------------------------------------------------------
+// La barrita de marcar texto (los dos lectores, 1-nov-2026)
+
+/// El nombre de un boton de la barrita (para el aviso al pasar por encima):
+/// los de la barra del pin.
+fn nombre_de_marcar(
+    b: pindesk_ui::barra_marcar::BotonMarcar,
+    textos: &pindesk_store::Catalogo,
+) -> Option<String> {
+    use pindesk_motor2d::marcas_texto::Marca;
+    use pindesk_ui::barra_marcar::BotonMarcar;
+    let clave = match b {
+        BotonMarcar::Copiar => "pin-v2-marca-copiar",
+        BotonMarcar::Color(_) => return None,
+        BotonMarcar::Marcar(Marca::Resaltar) => "pin-v2-marca-resaltar",
+        BotonMarcar::Marcar(Marca::Ondulada) => "pin-v2-marca-ondulada",
+        BotonMarcar::Marcar(Marca::Subrayar) => "pin-v2-marca-subrayar",
+        BotonMarcar::Marcar(Marca::Tachar) => "pin-v2-marca-tachar",
+        BotonMarcar::Marcar(Marca::Tapar) => "pin-v2-marca-tapar",
+        BotonMarcar::Quitar => "pin-v2-marca-quitar",
+    };
+    Some(textos.t(clave))
+}
+
+fn caja_de_marcar(c: pindesk_ui::barra_marcar::Caja) -> RectF {
+    RectF {
+        x: c.x,
+        y: c.y,
+        ancho: c.ancho,
+        alto: c.alto,
+    }
+}
+
+/// **La barrita de marcar texto** junto a `zona` (lo elegido que se ve, en
+/// pixeles de la ventana): copiar, los cinco colores, las cinco marcas y
+/// quitar, con los dibujitos de la barra del pin y el nombre del boton bajo
+/// el raton. Devuelve su caja y sus botones; la disposicion es
+/// `pindesk_ui::barra_marcar`. La usan el lector de PDF y Office
+/// (`lector_pdf::marcar`) y el de Word, libros y paginas (`visor::marcar`).
+pub fn pintar_barrita_de_marcar(
+    p: &Pintor<'_>,
+    zona: [f32; 4],
+    ventana: (f32, f32),
+    e: f32,
+    color: u8,
+    raton: (f32, f32),
+    textos: &pindesk_store::Catalogo,
+) -> (RectF, Vec<(RectF, pindesk_ui::barra_marcar::BotonMarcar)>) {
+    use pindesk_ui::barra_marcar::{self, BotonMarcar};
+    let b = barra_marcar::disponer(zona, ventana, e);
+    let caja = caja_de_marcar(b.caja);
+    // La sombra y el cristal de las barras del lector.
+    p.rellenar_redondeado(
+        RectF {
+            y: caja.y + 2.0 * e,
+            ..caja
+        },
+        10.0 * e,
+        Color {
+            r: 0.0,
+            g: 0.0,
+            b: 0.0,
+            a: 0.30,
+        },
+    );
+    p.rellenar_redondeado(caja, 10.0 * e, con_alfa(CRISTAL, 0.97));
+    p.rellenar(
+        RectF {
+            x: b.raya,
+            y: caja.y + caja.alto * 0.25,
+            ancho: 1.0 * e,
+            alto: caja.alto * 0.5,
+        },
+        con_alfa(RAYA, 0.9),
+    );
+    let elegido = pindesk_pin::barra_marcas::color(color);
+    let encima = b.boton_en(raton);
+    let mut botones = Vec::with_capacity(b.botones.len());
+    for (c, boton) in &b.botones {
+        let r = caja_de_marcar(*c);
+        if encima == Some(*boton) && !matches!(boton, BotonMarcar::Color(_)) {
+            p.rellenar_redondeado(r, 7.0 * e, con_alfa(TEXTO, 0.12));
+        }
+        match *boton {
+            BotonMarcar::Copiar => {
+                let l = 19.0 * e;
+                p.icono(
+                    &material::CONTENT_COPY,
+                    RectF {
+                        x: r.x + (r.ancho - l) / 2.0,
+                        y: r.y + (r.alto - l) / 2.0,
+                        ancho: l,
+                        alto: l,
+                    },
+                    TEXTO,
+                );
+            }
+            BotonMarcar::Color(k) => {
+                let (cx, cy) = (r.x + r.ancho / 2.0, r.y + r.alto / 2.0);
+                if k == color {
+                    p.circulo((cx, cy), 8.5 * e, TEXTO);
+                    p.circulo((cx, cy), 7.0 * e, CRISTAL);
+                }
+                p.circulo((cx, cy), 5.5 * e, pindesk_pin::barra_marcas::color(k));
+            }
+            BotonMarcar::Marcar(mk) => {
+                pindesk_pin::barra_marcas::pintar_icono(p, Some(mk), r, elegido, TEXTO, e)
+            }
+            BotonMarcar::Quitar => {
+                pindesk_pin::barra_marcas::pintar_icono(p, None, r, elegido, TEXTO, e)
+            }
+        }
+        botones.push((r, *boton));
+    }
+    // El nombre del boton bajo el raton, debajo de la barrita (o encima si
+    // abajo no cabe).
+    if let Some(nombre) = encima.and_then(|x| nombre_de_marcar(x, textos)) {
+        let tam = 13.0 * e;
+        let (w, h) = p.medir_texto(&nombre, tam);
+        let cx = b
+            .botones
+            .iter()
+            .find(|(_, x)| Some(*x) == encima)
+            .map_or(caja.x, |(c, _)| c.x + c.ancho / 2.0);
+        let alto = h + 10.0 * e;
+        let y = if caja.y + caja.alto + 6.0 * e + alto <= ventana.1 {
+            caja.y + caja.alto + 6.0 * e
+        } else {
+            caja.y - 6.0 * e - alto
+        };
+        let ancho = w + 16.0 * e;
+        let aviso = RectF {
+            x: (cx - ancho / 2.0).clamp(0.0, (ventana.0 - ancho).max(0.0)),
+            y,
+            ancho,
+            alto,
+        };
+        p.rellenar_redondeado(aviso, 6.0 * e, con_alfa(CRISTAL, 0.97));
+        p.texto(&nombre, aviso.x + 8.0 * e, aviso.y + 5.0 * e, tam, TEXTO);
+    }
+    (caja, botones)
+}
+
 #[cfg(test)]
 mod pruebas {
     use super::*;
