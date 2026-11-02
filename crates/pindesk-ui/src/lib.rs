@@ -21,6 +21,8 @@ pub mod confirmar;
 pub mod conversacion;
 /// Un cupo de memoria por bytes que suelta lo menos usado (LRU).
 pub mod cupo;
+/// El boton ☀/☾ redondo de las cabeceras, como el del movil.
+pub mod dia_noche;
 /// El historial sin saltos: la rueda animada, el ancla y la precarga.
 pub mod desliz;
 /// Donde se dejo cada chat y lo que queda sin ver debajo (el «↓»).
