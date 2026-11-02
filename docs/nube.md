@@ -121,13 +121,13 @@ que la nube tiene, las fotos nuevas y el `appState` si cambió.
 
 ## «En línea / Sin conexión»
 
-En un visor de un documento de un chat de la nube (el lector de PDF —y de
-Word/PowerPoint por el mismo lector—), arriba a la izquierda un botón dice
-**En línea** (nube verde) o **Sin conexión** (nube tachada, dorada). Por
-omisión, en línea.
+En un visor de un documento de un chat de la nube, un botón dice **En
+línea** (nube verde) o **Sin conexión** (nube tachada, dorada). Por
+omisión, en línea. Fuera de un chat de la nube no sale.
 
 - **Sin conexión** (`nube::sin_conexion::SinConexion::retener`): se copia
-  aparte lo anotado del documento (`anot-<uid>…`, en
+  aparte lo anotado del documento (`anot-<uid>…`, o el lienzo
+  `pins/draw/<referencia>.excalidraw.gz` y lo de su lado; en
   `sincro/nube/sin-conexion/`) y la vuelta **no sube** esos ficheros.
 - **Lo de los demás se sigue viendo**: lo que llega se escribe en el
   fichero de verdad como siempre (el visor lo relee y lo junta *debajo* de
@@ -141,10 +141,37 @@ omisión, en línea.
   **No**: volver a en línea y subirlo. **Cancelar**: dejarlo sin conexión
   para la próxima vez que se abra.
 
-Para otro visor: guardar un `en_linea::EnLinea::de(doc)`, pintarlo encima
-de lo suyo, pasarle los clics antes y llamar a `al_cerrar` ya guardado lo
-suyo. Hoy está en el lector de PDF/Office; el plano CAD, el visor de hojas,
-las imágenes y el lienzo pueden ponerlo igual (pendiente).
+### Dónde está
+
+| Visor | Dónde va el botón | Qué retiene (la clave) |
+|---|---|---|
+| Lector de PDF, y de Word/PowerPoint convertidos (`lector_pdf`) | arriba a la izquierda | `anot-<uid>…` del adjunto |
+| Lector de Word, libros y páginas (`visor`) | arriba a la izquierda | `anot-<uid>…` (también `-texto`) |
+| Visor de hojas, un Excel o una tabla del chat (`visor_hoja`) | arriba a la izquierda de la hoja, bajo la barra de fórmulas | `anot-<uid>-h<i>…` |
+| Plano CAD (`plano_cad`, `pindesk_cad::ventana`) | un botón de su barra, antes de luna/sol | `anot-<uid>…` (marcadores, marcos, lo de cada marcador) |
+| Modelo BIM / 3D (`modelo_bim`, `pindesk_cad::ventana3d`) | igual, en su barra | `anot-<uid>-m<id>…` y sus marcadores |
+| Lienzo de una hoja DIBUJO o PAGINA, y el de una foto del chat (`ventana_chat::abrir_una_hoja` → `ventana_editor`) | arriba a la izquierda (no presentando) | la **referencia** del lienzo |
+
+La clave la saca `en_linea::Clave`: de un documento, su adjunto
+(`pindesk_proyecto::anotado::adjunto_de`); de un lienzo, la ficha y su
+referencia (`en_linea::referencia_de_la_hoja`). Las pruebas de que cada
+clave retiene lo que escribe su visor:
+`nube::sin_conexion::pruebas::la_clave_de_cada_visor_retiene_lo_que_ese_visor_escribe`.
+
+No lo llevan, porque no anotan `anot-<uid>…` ni un lienzo con referencia:
+el croquis 3D (sin tinta), el lienzo de un pin o de una foto suelta (su
+`.pixpin2d` de al lado). Los visores web (HTML, Markdown) y el pin de
+Office anotan en ventanas de DirectComposition encima de un WebView
+(`visor_html::riel`): ahí el botón necesitaría su propia ventanita; queda
+por hacer si hace falta.
+
+Para otro visor: guardar un `en_linea::EnLinea::de(doc)` (o `de_lienzo`),
+pintarlo encima de lo suyo, pasarle los clics antes y llamar a `al_cerrar`
+ya guardado lo suyo. Un visor que pinta su barra con otros medios
+(`pindesk_cad`) recibe `en_linea::para_cad(doc)`: un `EnLinea` de la barra
+(si está sin conexión y cambiar) y el mismo `EnLinea` para `al_cerrar`. El
+lienzo no sabe de chats: quien lo abre pone `en_linea::en_lienzo` mientras
+dura.
 
 ## Pruebas
 
