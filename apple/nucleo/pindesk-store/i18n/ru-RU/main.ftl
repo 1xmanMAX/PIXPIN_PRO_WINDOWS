@@ -88,9 +88,6 @@ aviso-atajos-activos-detalle = Снова работают сочетания: {
 comando-capturar-con-retardo = Снимок после обратного отсчёта
 cuenta-atras-cancelar = Esc — остановить
 comando-pinear-seleccion = Закрепить выделенное в проводнике
-ajustes-pestana-atajos = Сочетания клавиш
-ajustes-pestana-general = Общие
-ajustes-pestana-captura = Снимок
 ajustes-pestana-dibujo = Рисование
 ajustes-iman = Привязка к характерным точкам
 ajustes-iman-esquinas = Углы и концы
@@ -100,26 +97,17 @@ ajustes-iman-radio = Радиус захвата (пикс.)
 ajustes-idioma = Язык
 ajustes-idioma-sistema = Как в Windows
 ajustes-arranque = Запускать вместе с Windows
-ajustes-color = Формат цвета пипетки
-ajustes-nivel = Производительность
 ajustes-nivel-auto = Автоматически
 ajustes-nivel-completo = Полная
 ajustes-nivel-ligero = Облегчённая
 ajustes-pdf-aligerar = Облегчать PDF при добавлении в чат
-ajustes-pdf-nivel = Насколько облегчать («Малый» и «Максимум» — только вручную)
 ajustes-pdf-nivel-sin-perdida = Без потерь
 ajustes-pdf-nivel-equilibrado = Средний
 ajustes-pdf-nivel-pequeno = Малый
 ajustes-pdf-nivel-extremo = Максимум
-ajustes-retardo-captura = Секунд обратного отсчёта перед снимком
-ajustes-limite-scroll = Максимальная высота снимка с прокруткой, в пикселях
-ajustes-gif-ritmo = Кадров в секунду при записи
-ajustes-gif-retardo = Секунд ожидания перед записью
 ajustes-sin-atajo = Без сочетания
 ajustes-pulsa-combinacion = Нажмите сочетание…
 ajustes-choca = повтор
-ajustes-cerrar = Закрыть
-ajustes-abrir-fichero = Открыть файл параметров
 pin-copiar-texto = Скопировать текст с изображения
 pin-abrir-en-lienzo = Открыть на холсте
 pin-congelar = Заморозить как изображение
@@ -149,12 +137,6 @@ chat-clase-pagina = Страница
 chat-clase-proyecto = Проект
 chat-clase-miniapp = Мини-приложение
 chat-escribe = Напишите что-нибудь…
-chat-cosas = { $n ->
-    [one] { $n } элемент
-    [few] { $n } элемента
-    [many] { $n } элементов
-   *[other] { $n } элемента
-}
 chat-elegidos = { $n ->
     [one] Выбран { $n }
     [few] Выбрано { $n }
@@ -164,7 +146,6 @@ chat-elegidos = { $n ->
 chat-lienzo = Холст
 chat-tabla = Таблица
 chat-viene-de = Источник
-chat-comentar = Прокомментировать
 chat-copiar = Копировать
 chat-fijar = Закрепить вверху
 chat-soltar = Открепить сверху
@@ -186,13 +167,10 @@ chat-recordar = Напомнить
 chat-rescatar = Сохранить это
 chat-solo-la-foto = Показать только фото
 chat-ver-hilo = Комментарии
-chat-etiquetar = Добавить метку
-chat-quitar-etiqueta = Убрать метку
 chat-reenviar = Переслать
 chat-unir = Добавить в проект
 chat-transcribir = Преобразовать в текст
 chat-letra = Текст песни или текст
-chat-elegir = Выбрать
 chat-borrar = Удалить
 chat-borrar-aviso = Сообщение будет удалено из беседы вместе с вложенным файлом. Продолжить?
 chat-biblioteca-audio = Аудиотека
@@ -204,16 +182,10 @@ chat-fondo-brezo = Вереск
 chat-fondo-bosque = Лес
 chat-fondo-ocaso = Закат
 chat-fondo-pizarra = Сланец
-chat-adj-archivo = Файл
-chat-adj-pagina = Страница из проекта
-chat-adj-proyecto = Весь проект
-chat-adj-conversacion = Беседа
 chat-adj-telepronter = Телесуфлёр
 chat-adj-pronunciar = Произношение
-chat-adj-miniapp = Мини-приложение
 chat-reenviado = Переслано
 chat-copiado = Скопировано
-chat-compartido = Скопировано в буфер обмена: вставьте туда, где хотите поделиться
 chat-compartir-sin-panel = Windows не открыла панель «Поделиться»: содержимое в буфере обмена, вставьте его куда нужно
 chat-pineado = Закреплено
 chat-foto-en-la-nota = Фото добавлено к тексту: всё отправится одной заметкой
@@ -227,14 +199,8 @@ chat-escaneado = Отсканировано
 chat-sin-origen = Этого холста нет в проекте
 chat-sin-proyectos-otros = Нет другого проекта, куда можно отправить
 chat-ajustes-bandeja = Параметры открываются из значка PinDesk в области уведомлений
-chat-proyectos-lista = Проекты — это список слева
-chat-no-hay-voz = Запись голосовых заметок в Windows пока недоступна
-chat-no-hay-aligerar = Облегчение PDF в Windows пока недоступно
 chat-no-hay-unir = В Windows каждый чат уже является проектом: используйте «Переслать», чтобы перенести в другой
-chat-no-hay-biblioteca = Аудиотека в Windows пока недоступна
 chat-ver-dibujo-entero = Показать весь рисунок
-chat-no-hay-pagina = Вложение страницы из проекта в Windows пока недоступно
-chat-no-hay-telepronter = Телесуфлёр в Windows пока недоступен
 chat-no-se-pudo = Не удалось выполнить: проверьте журнал PinDesk
 chat-fecha = { $dia } { $mes }
 chat-fecha-con-ano = { $dia } { $mes } { $ano }
@@ -283,24 +249,12 @@ info-vacia-voz = Здесь появятся голосовые заметки
 info-vacia-dibujos = Здесь появятся рисунки из этого чата
 info-vacia-fijados = Здесь появится то, что вы закрепите
 info-vacia-buzon = Входящие пусты
-info-abrir = Открыть
-info-abrir-enlace = Открыть ссылку
-info-reproducir = Воспроизвести
-info-ver-en-el-chat = Показать в чате
 info-titulo = Сведения
 adjuntar-imagen = Фото или видео
 adjuntar-archivo = Файл
 adjuntar-lienzo = Новый холст
-confirmar-titulo = { $cuantos ->
-    [one] Добавить { $cuantos } файл
-    [few] Добавить { $cuantos } файла
-    [many] Добавить { $cuantos } файлов
-   *[other] Добавить { $cuantos } файла
-}
-confirmar-resto = и ещё { $cuantos }
 confirmar-pie = Добавьте подпись…
 confirmar-cancelar = Отмена
-confirmar-aceptar = Добавить
 adjuntar-tabla = Новая таблица
 tabla-nueva = Таблица
 chat-nombre-nuevo = Название проекта…
@@ -316,11 +270,7 @@ recibir-salir = Esc — закрыть
 comando-recibir-del-movil = Получить с телефона…
 comando-sincronizar = Синхронизация
 adjuntar-del-movil = Передать с телефона…
-menu-foto-aqui = Рисовать прямо здесь
 proyecto-renombrar = Переименовать
-proyecto-logo-poner = Задать логотип…
-proyecto-logo-quitar = Убрать логотип
-proyecto-logo-error = Не удалось задать этот логотип
 foto-chat-menu = Изменить фото чата…
 foto-chat-titulo = Фото чата
 foto-chat-imagen = Выбрать изображение…
@@ -571,9 +521,6 @@ papelera-ha-vuelto = «{ $nombre }» восстановлен целиком
 papelera-no-se-pudo = Не удалось восстановить «{ $nombre }»: { $motivo }
 papelera-recuperados = Восстановлено проектов: { $n } из { $total }
 
-## The document viewer: Word, EPUB books and web pages (task 2.1)
-visor-html-titulo = PinDesk — страница
-
 ## The Office pin: Office's preview as a pin (2026-10-10)
 office-titulo = Просмотр Office
 office-abriendo = Открытие в средстве просмотра Office…
@@ -581,8 +528,6 @@ office-tarda = Office открывается долго (ему нужно за�
 office-fallo = Office не смог показать этот файл. Откройте его в другом приложении через «Открыть с помощью…» (кнопка ↗ на панели).
 office-internet = Этот файл получен из интернета, и Windows в целях безопасности не разрешает его просмотр. Откройте его в другом приложении через «Открыть с помощью…» (кнопка ↗ на панели) или разблокируйте в его свойствах.
 visor-titulo = Средство просмотра PinDesk
-visor-marcador = Закладка здесь
-visor-ajustes = Параметры чтения
 visor-tamano = Размер текста
 visor-quitar-marcadores = Удалить закладки
 visor-guardar-pagina = Сохранить как веб-страницу
@@ -591,15 +536,10 @@ visor-abrir-carpeta = Открыть папку
 visor-guardado = Сохранено в «{ $nombre }»
 visor-no-guardado = Не удалось сохранить
 visor-vacio = В этом документе нет текста для показа
-visor-ayuda = Колесо — чтение · +/− размер · M закладка · G параметры · Esc — выход
-visor-elige-emoticono = Чем отметить?
-visor-sin-marcadores = Закладок пока нет
 
 ## The readers: comfortable reading, annotating on top and the PDF reader
-lector-listo = Готово
 lector-indice = Содержание
 lector-letra-fijada = Шрифт зафиксирован: поверх нарисованы заметки
-lector-letra-normal = Обычный шрифт
 lector-letra-fija = Моноширинный
 lector-grosor-normal = Обычный
 lector-grosor-gruesa = Жирный
@@ -610,11 +550,8 @@ lector-pdf-titulo = Средство чтения PDF PinDesk
 lector-pdf-no-se-abre = Не удалось открыть PDF
 lector-pdf-abriendo = Открытие PDF…
 lector-exportando = Сохранение PDF с аннотациями… { $hechas } из { $total }
-lector-exportar-pdf = Сохранить PDF с заметками
 lector-anotado = с аннотациями
-lector-ayuda-pdf = Колесо — листать · Ctrl+колесо — масштаб · Ctrl+[ Ctrl+] место для аннотаций · L слушать · A аннотировать · M закладка · Esc — выход
 lector-office-titulo = Word и PowerPoint в PinDesk
-lector-ayuda-office = Колесо — листать · Ctrl+колесо — масштаб · перетаскивание по тексту — выделить · Ctrl+C копировать · Ctrl+F найти · Ctrl+P печать · F5 показ · A аннотировать · N негатив · Esc — выход
 lector-presentar = Показ (F5)
 lector-modo-lectura = Режим чтения (перекомпонованный текст)
 lector-imprimir = Печать… (Ctrl+P)
@@ -638,7 +575,6 @@ lector-voz-parrafo = Абзац { $n } из { $total }
 lector-voz-preparando = Подготовка голоса…
 lector-voz-no-respondio = Microsoft не ответил
 lector-voz-sin-voz = Нет голоса
-lector-verde-aqui = Зелёная закладка здесь: чтение начнётся с этого места
 lector-espacio-tope = С этой стороны больше нет места
 lector-espacio-nada = С этой стороны не осталось места
 lector-sin-lado = Горизонтальная прокрутка заблокирована: только вверх и вниз
@@ -659,77 +595,7 @@ lector-hoja = Страница
 sinc-presencia-apagada = Присутствие отключено в параметрах ([sincro] presencia = false): синхронизировать отсюда можно, но телефон не найдёт этот компьютер и не сможет к нему обратиться.
 bandeja-abrir-documento = Открыть документ…
 
-## Canvas shapes and ink: arrowheads, fills and text style (group A)
-lienzo-punta-ninguna = Без наконечника
-lienzo-punta-flecha = Стрелка
-lienzo-punta-barra = Черта
-lienzo-punta-circulo = Круг
-lienzo-punta-circulo-hueco = Контур круга
-lienzo-punta-triangulo = Треугольник
-lienzo-punta-triangulo-hueco = Контур треугольника
-lienzo-punta-rombo = Ромб
-lienzo-punta-rombo-hueco = Контур ромба
-lienzo-punta-inicio = Наконечник в начале
-lienzo-punta-fin = Наконечник в конце
-lienzo-trama-zigzag = Зигзаг
-lienzo-trama-tiralineas = Линовка
-lienzo-texto-negrita = Жирный
-lienzo-texto-cursiva = Курсив
-lienzo-texto-tachado = Зачёркнутый
-lienzo-presion-firme = Штрих постоянной толщины
-lienzo-flecha-codos = Ломаная стрелка
-lienzo-flecha-libre = Стрелка от руки
-lienzo-arco-guia = Направляющий овал, ещё не обведён
-lienzo-luces-fuerza = Сила света
-
-## Build and measure: fill, trim, extend, points and angles (group C)
-lienzo-bote = Заливка
-lienzo-bote-ayuda = Щёлкните внутри замкнутой области, и она зальётся, даже если её образуют несколько разных фигур.
-lienzo-bote-abierto = Эта область не замкнута: краска вытечет через щель.
-lienzo-recortar = Обрезать
-lienzo-recortar-ayuda = Щёлкните лишний кусок линии, и он исчезнет до места пересечения с другими.
-lienzo-extender = Удлинить
-lienzo-extender-ayuda = Щёлкните недотянутый конец, и он дойдёт до первого препятствия.
-lienzo-extender-sin-tope = На пути ничего нет: линия, вытянутая в пустоту, — не удлинённая линия.
-lienzo-punto = Подписанная точка
-lienzo-punto-ayuda = Щёлкните пересечение, конец линии или центр окружности, и появится точка с буквой.
-lienzo-punto-sin-sitio = Здесь нечего обозначить: точка ставится на пересечении, конце или центре.
-lienzo-punto-serie-mayusculas = Прописные буквы (A, B, C…)
-lienzo-punto-serie-minusculas = Строчные буквы (a, b, c…)
-lienzo-punto-serie-numeros = Числа (1, 2, 3…)
-lienzo-angulos = Углы в реальном времени
-lienzo-angulos-ayuda = Пока вы что-то двигаете, показывается величина углов, которых вы касаетесь.
-lienzo-area = Площадь
-
 ## Select, transform and bind (group B)
-lienzo-lazo = Лассо
-lienzo-lazo-ayuda = Обведите то, что хотите выбрать. Берётся всё, что целиком внутри; с Shift — ещё и то, чего касается линия.
-lienzo-lazo-encerrar = Только то, что внутри
-lienzo-lazo-rozar = И то, чего касается линия
-lienzo-voltear-horizontal = Отразить по горизонтали
-lienzo-voltear-vertical = Отразить по вертикали
-lienzo-voltear-ayuda = Отражает выделение относительно центра всей группы, а не каждую фигуру относительно себя.
-lienzo-rejilla = Разлинованная бумага
-lienzo-rejilla-ninguna = Без линовки
-lienzo-rejilla-lineas = Клетка
-lienzo-rejilla-puntos = Точки
-lienzo-rejilla-imanta = Привязывать курсор к клеткам
-lienzo-rejilla-ayuda = Опора, которая есть ещё до первого штриха. При экспорте не отображается.
-lienzo-iman-intersecciones = Пересечения фигур
-lienzo-iman-intersecciones-ayuda = Точка, где пересекаются две линии и которая не является углом ни одной из них.
-lienzo-iman-bordes = Края фигур
-lienzo-iman-bordes-ayuda = Угольник: курсор скользит вдоль всего края, а не только по углам.
-lienzo-iman-eje = Начало и оси координат
-lienzo-enganche = Привязать стрелку к фигуре
-lienzo-enganche-ayuda = Отпустите кончик на фигуре, и стрелка будет следовать за ней при перемещении.
-lienzo-enganche-soltar = Отвязать кончик
-lienzo-tirador-punta = Переместить конец
-lienzo-tirador-anadir = Изогнуть здесь
-lienzo-copiar-estilo = Копировать стиль
-lienzo-copiar-estilo-ayuda = Возьмите цвет, линию и заливку одной фигуры и примените их к другим. Переносится только то, что поддерживают оба типа.
-lienzo-estilo-tomado = Стиль взят
-lienzo-estilo-sin-tomar = Вы ещё не взяли стиль.
-chat-abrir-aqui = Открыть здесь
 mini-moneda = USD
 mini-tareas = Список дел
 mini-gastos = Расходы
@@ -772,15 +638,6 @@ chat-voz-sin-codec = В этой версии Windows нет аудиокоди�
 chat-voz-fallo = Не удалось записать голосовую заметку.
 pdf-aligerado = Облегчено: с { $antes } до { $despues }
 pdf-aligerar-cifrado = PDF зашифрован, и перезаписать его без риска нельзя.
-pdf-aligerar-indice-comprimido = В этом PDF указатель хранится в сжатом виде, а его перестройка здесь пока не поддерживается.
-pdf-aligerar-objetos-comprimidos = В этом PDF объекты хранятся в сжатом виде, а их перестройка здесь пока не поддерживается.
-pdf-aligerar-sin-trailer = В PDF нет читаемого трейлера.
-pdf-aligerar-sin-objetos = Ни один объект внутри PDF не распознан.
-pdf-aligerar-largo-indirecto = Один из потоков PDF не указывает свою длину.
-pdf-aligerar-objetos-sin-entender = В PDF есть части, которые это средство чтения не понимает; при перезаписи они могут потеряться.
-pdf-aligerar-sin-fotos = В нём нет фото для облегчения: объём занимают текст или векторы.
-pdf-aligerar-ya-al-minimo = Фото уже сжаты до минимума.
-pdf-aligerar-no-compensa = Размер уменьшился бы лишь с { $antes } до { $despues }: не стоит того.
 pdf-aligerar-no-se-lee = Облегчённый файл не читается правильно; оставлен оригинал.
 aligerar-progreso = Облегчение… { $por }%
 aligerar-empezado = Облегчение PDF…
@@ -794,7 +651,6 @@ chat-recordatorio-puesto = Напомню { $cuando }
 chat-recordatorio-quitar = Удалить напоминание
 chat-recordatorio-quitado = Напоминание удалено
 chat-recordatorio-titulo = Напоминание
-chat-enviar-wifi = Отправить через Wi-Fi
 chat-transcribiendo = Преобразование в текст… { $pct }%
 chat-transcribir-hecha = Голосовая заметка преобразована в текст
 chat-transcribir-en-marcha = Уже преобразуется другая заметка; дождитесь окончания
@@ -817,7 +673,6 @@ musica-sinc-empieza = Нажимайте Пробел (или «Отметить
 musica-sinc-siguiente = Далее: { $linea }
 musica-sinc-todas = Все строки отмечены. Сохраните текст.
 musica-sinc-marcar = Отметить { $n }/{ $total }
-musica-sinc-deshacer = Отменить
 musica-sinc-guardar = Сохранить
 musica-sinc-cancelar = Отмена
 musica-sinc-guardada = Текст синхронизирован
@@ -925,7 +780,6 @@ exportar-tipo-pdf = Документ PDF
 exportar-tipo-html = Веб-страница одним файлом
 exportar-vacio = С этими настройками экспортировать нечего.
 exportar-fallo = Не удалось экспортировать холст.
-exportar-hecho = Экспортировано: { $nombre }
 imprimir-menu = Печать…	Ctrl+P
 imprimir-vacio = Печатать нечего.
 imprimir-fallo = Не удалось напечатать холст.
@@ -970,8 +824,6 @@ compartir-texto = Текст
 compartir-csv = Таблица (CSV)
 compartir-pindesk = PinDesk (.pindesk)
 compartir-dxf = DXF
-compartir-xlsx = Excel (xlsx)
-compartir-docx = Word (docx)
 compartir-md = Markdown
 compartir-exportar = Экспорт…
 compartir-paginas-de = Что включить · { $marcadas } из { $total }
@@ -983,7 +835,6 @@ compartir-preparando = Подготовка…
 compartir-marca-alguna = Отметьте хотя бы одну страницу
 compartir-en-cuanto-este = Как только будет готово
 compartir-peso-ficheros = { $peso } · файлов: { $n }
-compartir-panel-abierto = Выберите, куда отправить
 compartir-guardado = Сохранено: { $nombre }
 compartir-copiado = Скопировано в буфер обмена
 compartir-no-se-pudo = Не удалось подготовить
@@ -1002,7 +853,6 @@ compartir-tipo-tabla = Таблица
 compartir-tipo-miniapp = Мини-приложение
 compartir-tipo-voz = Голосовая заметка
 compartir-tipo-nota = Заметка
-ajustes-pestana-herramientas = Инструменты
 herramientas-lazo = Лассо
 herramientas-rectangulo = Прямоугольник
 herramientas-rombo = Ромб
@@ -1073,11 +923,6 @@ chat-fecha-corta = { $dia } { $mes }
 chat-enlace-no-abre = Не удалось открыть ссылку
 
 ## D11: a spreadsheet in the chat is a book of tables (ventana_chat/libro.rs)
-libro-titulo = Электронная таблица
-libro-xls-antiguo = Старые файлы .xls не читаются: откройте файл и сохраните его как .xlsx
-libro-abrir-fuera = Открыть в другом приложении?
-libro-no-es = Файл не является допустимой электронной таблицей
-libro-sin-hojas = В книге нет листа с данными
 hoja-preparando = Подготовка листа к редактированию…
 hoja-editar-aviso = Изменения сохраняются в листе чата; исходный файл не меняется
 hoja-editando = Редактирование · Esc — просмотр
@@ -1360,8 +1205,6 @@ chat-insertar-en-nota = Вставить в заметку
 ## Canvas: weld vertices and number points (lienzo-geometria, 26-sep)
 herramientas-nudo = Соединить вершины
 herramientas-bolita = Шарик: проведите, чтобы выделить
-lienzo-nudo = Соединить вершины
-lienzo-nudo-ayuda = Щёлкните там, где касаются две фигуры, и они скрепятся: больше не расходятся, а с одним шарниром вращаются вокруг него. Щёлкните шарнир, чтобы убрать его; перетащите его рукой, чтобы двигать скреплённые фигуры вместе.
 lienzo-punto-serie = Подписи точек
 lienzo-cota-pedir = Запрашивать длину при рисовании
 lienzo-panel-dureza = Твёрдость карандаша
@@ -1409,7 +1252,6 @@ funciones-figuras-detalle = Ваша библиотека фигур для хо
 figuras-mias = Мои фигуры
 figuras-todas = Все
 figuras-vacia = Фигур пока нет. На холсте выделите что-нибудь и выберите «Сохранить как фигуру».
-figuras-cerrar = Закрыть
 figuras-borrar = Удалить фигуру
 figuras-borrar-seguro = Нажмите ещё раз, чтобы удалить
 figuras-elegir-para = Выберите фигуру для «{ $chat }»
@@ -1626,11 +1468,7 @@ galeria-borrada = Перемещено в корзину PinDesk
 galeria-no-se-pudo = Не удалось: { $motivo }
 galeria-conservada-aviso = Сохранено: он в «Сохранённых сообщениях» и не будет удалён
 bandeja-galeria-capturas = Галерея снимков…
-chat-galeria-capturas = Галерея снимков
-chat-lecciones = Уроки
-chat-leccion-nueva = Новый урок
 chat-hacer-leccion = Сделать урок
-bandeja-lecciones = 💡 Уроки…
 bandeja-leccion-nueva = Новый урок…
 bandeja-tareas = ☑ Задачи…
 bandeja-timeline = 🕒 Хронология и уроки…
@@ -1856,7 +1694,6 @@ ajustes2-auto = Авто
 comando-buscar = 🔍 Поиск в PinDesk…
 comando-grabar-clase = 🎙 Записать урок или встречу…
 clase-titulo = Запись урока или встречи
-clase-sub = Записывает звук и вставляет снимки экрана в нужную минуту
 clase-microfono = Микрофон
 clase-equipo = Звук компьютера (Meet, Zoom…)
 clase-guardar-en = Сохранить в: { $proyecto }
@@ -1865,7 +1702,6 @@ clase-nada = Выберите микрофон, звук компьютера и
 clase-captura = Снимок
 clase-terminar = Завершить
 clase-capturas = Снимков: { $n } · щелчок повторяет область
-clase-pista = «Снимок» сохраняет область экрана на этой минуте
 clase-elige-zona = Выберите область на экране…
 clase-captura-hecha = Снимок сохранён на { $minuto }
 clase-zona-cambiada = Область изменена
@@ -1884,7 +1720,6 @@ clase-listo = Готово
 clase-nombre = Урок { $fecha }
 clase-sin-sonido-equipo = С компьютера ничего не слышно: нет активных динамиков или наушников
 clase-video = Видео этого экрана
-clase-video-corto = Запись видео
 clase-video-roto = Видео остановилось; звук продолжает записываться
 clase-video-guardado = С видео экрана.
 clase-calidad-ligero = Лёгкое
@@ -1910,13 +1745,6 @@ clase-recuperar-sin-nada = От «{ $nombre }» осталось только в
 clase-recuperar-descartar = Удалить «{ $nombre }»? Запись будет удалена без возможности восстановления.
 clase-recuperar-fallo = Не удалось восстановить «{ $nombre }». Запись по-прежнему цела и будет предложена снова при запуске PinDesk.
 clase-texto-de-fondo = Закрыть (продолжится в фоне)
-clase-modo-pantalla = Экран и звук
-clase-modo-capturas = Звук и снимки
-clase-modo-pantalla-sub = Записывает видео этого экрана с выбранными звуками
-clase-modo-capturas-sub = Записывает звук; «Снимок» сохраняет весь экран
-clase-captura-entera = Снимок: весь экран, мгновенно
-clase-pista-entera = «Снимок» сохраняет весь экран на этой минуте; кнопка области — только часть
-clase-capturas-entera = Снимков: { $n } · весь экран
 clase-abrir-para-estudiar = Открыть для изучения
 clase-camara-movil = 📱 Камера телефона
 clase-camara-movil-n = 📱 Камера телефона · { $n }
@@ -1937,14 +1765,10 @@ chat-colaboradores-nadie = Только мои фото в этой записи
 clase-hora-sin-comprobar = время не проверено
 baliza-movil-aislado = Телефон не появляется, хотя вы в одной сети: возможно, эта сеть Wi-Fi изолирует устройства друг от друга (так делают гостевые, гостиничные и офисные сети) или брандмауэр блокирует PinDesk. Подключите компьютер к точке доступа телефона или оба устройства к другой сети Wi-Fi. Сделанные фото ждут на телефоне и встанут на свою минуту, как только устройства найдут друг друга.
 baliza-movil-otra-red = Телефон находится в другой сети, чем этот компьютер. Подключите оба к одной сети Wi-Fi (или компьютер к точке доступа телефона). Сделанные фото ждут на телефоне и встанут на свою минуту, как только устройства найдут друг друга.
-clase-modo-presencial = Очно
-clase-modo-presencial-sub = Записывает микрофон; «Фото» использует камеру в полном разрешении
 clase-camara = Камера: { $camara }
 clase-camara-buscando = Поиск камер…
 clase-camara-ninguna = Нет камеры: «Фото» и «Клип» не будут работать (звук всё равно записывается)
 clase-foto = Фото
-clase-fotos = Фото: { $n } · с камеры, в полном разрешении
-clase-pista-foto = «Фото» делает снимок камерой на этой минуте; видеокамера записывает клип
 clase-foto-hecha = Фото сохранено на { $minuto }
 clase-camara-abriendo = Открытие камеры…
 clase-camara-lista = Камера готова: фото { $medida }
@@ -2129,140 +1953,6 @@ buscar-todo-conservar = Сохранить
 buscar-todo-borrada = Снимок удалён
 buscar-todo-deshacer = Отменить
 buscar-todo-copiado = Скопировано
-
-## v2-lecciones
-lec2-que-aprendiste = Чему вы научились? Введите или продиктуйте и нажмите Enter
-lec2-guardar = Сохранить
-lec2-rellena-solo = Заполнено за вас, изменить можно щелчком:
-lec2-rellena-solo-vacio = Область, проект и серьёзность заполняются сами по мере ввода.
-lec2-area-de = Область: { $area }
-lec2-proyecto-de = Проект: { $proyecto }
-lec2-ya-la-tienes = Такой урок уже есть: «{ $titulo }» · Это повторилось
-lec2-pega-capturas = вставляет снимки
-lec2-guardada = Урок сохранён в { $donde }
-lec2-apuntado-otra-vez = Отмечено: это повторилось
-lec2-no-se-pudo = Не получилось. Повторите попытку.
-lec2-solo-imagenes = В урок можно добавлять только изображения.
-lec2-sin-area = Без области
-lec2-sin-proyecto = Без проекта (общий чат)
-lec2-buscar = Поиск: слово, ситуация, метка…
-lec2-todas = Все
-lec2-repetidas = Повторяющиеся
-lec2-graves = Серьёзные
-lec2-para-repasar = Повторить сегодня · { $n }
-lec2-que-harias-si = Что бы вы сделали, если бы это повторилось?
-lec2-repasar = Повторить
-lec2-este-mes = В этом месяце
-lec2-antes = Ранее
-lec2-lista-vacia = Уроков пока нет. Напишите выше, чему вы научились.
-lec2-nada-con-filtro = С этим фильтром ничего нет.
-lec2-nada-con = По запросу «{ $q }» ничего нет. Попробуйте другое слово или запишите урок выше.
-lec2-moverse = перемещение
-lec2-leve = Незначительный
-lec2-importante = Важный
-lec2-grave = Серьёзный
-lec2-hoy = сегодня
-lec2-ayer = вчера
-lec2-manana = завтра
-lec2-hace-dias = { $n } дн. назад
-lec2-hace-semanas = { $n ->
-    [one] { $n } неделю назад
-    [few] { $n } недели назад
-    [many] { $n } недель назад
-   *[other] { $n } недели назад
-  }
-lec2-hace-meses = { $n ->
-    [one] { $n } месяц назад
-    [few] { $n } месяца назад
-    [many] { $n } месяцев назад
-   *[other] { $n } месяца назад
-  }
-lec2-hace-anios = { $n ->
-    [one] { $n } год назад
-    [few] { $n } года назад
-    [many] { $n } лет назад
-   *[other] { $n } года назад
-  }
-lec2-en-dias = через { $n } дн.
-lec2-meses = янв фев мар апр май июн июл авг сен окт ноя дек
-lec2-clic-para-editar = Щёлкните любой текст, чтобы изменить его · сохраняется само
-lec2-mas-campos = Другие поля…
-lec2-que-paso = Что случилось
-lec2-por-que = Почему
-lec2-proxima = В следующий раз
-lec2-que-paso-vacio = Добавьте, что случилось…
-lec2-por-que-vacio = Добавьте, почему это случилось…
-lec2-proxima-vacio = Добавьте, что сделаете иначе в следующий раз…
-lec2-editar = Изменить
-lec2-escribe-aqui = Введите здесь
-lec2-ayuda-linea = Enter — сохранить · Esc — завершить
-lec2-ayuda-bloque = Enter — сохранить · Shift+Enter — новая строка · Tab — к следующему
-lec2-nota-de-voz = Голосовая заметка
-lec2-anadir-foto = Добавить фото
-lec2-ver-en-chat = Показать в чате
-lec2-pinear = Закрепить
-lec2-pineado = Закреплено на экране
-lec2-borrar = Удалить
-lec2-borrada = Урок удалён
-lec2-deshacer = Отменить
-lec2-veces = { $n ->
-    [one] раз это случилось
-    [few] раза это случалось
-    [many] раз это случалось
-   *[other] раза это случалось
-  }
-lec2-la-ultima = Последний раз: { $fecha }
-lec2-me-volvio = Это повторилось
-lec2-gravedad = Серьёзность
-lec2-area = Область
-lec2-proyecto = Проект
-lec2-etiquetas = Метки
-lec2-anadir = + Добавить
-lec2-nueva-etiqueta = метка и Enter
-lec2-relacionadas = Связанные
-lec2-proximo-repaso = Следующее повторение: { $cuando }
-lec2-vacia-titulo = Записывайте то, чему научились, чтобы не повторять ошибок
-lec2-vacia-texto = Напишите выше одним махом: «что случилось…, потому что…, в следующий раз…». PinDesk разделит текст, задаст область, проект и серьёзность и подскажет, если это уже случалось.
-lec2-comprobacion = Перед началом проверьте: { $hechas } из { $total }
-lec2-comprobacion-vacia = В разделе «в следующий раз…» пока ничего нет. Это третий блок каждого урока.
-lec2-nada-que-repasar = Сегодня повторять нечего.
-lec2-repaso-titulo = Повторение на сегодня
-lec2-repaso-de = { $va } из { $total }
-lec2-salir = Выход
-lec2-paso-pensar = Подумайте, что бы вы сделали
-lec2-paso-mirar = Посмотрите, что вы записали
-lec2-paso-recordar = Вспомнили?
-lec2-situacion = Ситуация
-lec2-repaso-cuando = Когда { $pista }…
-lec2-repaso-recuerda = Вспомните этот урок
-lec2-repaso-veces = случалось раз: { $n }
-lec2-que-harias = Что бы вы сделали?
-lec2-escribe-o-dicta = Введите или продиктуйте
-lec2-dictar = Диктовать
-lec2-mostrar = Показать ответ
-lec2-mostrada = Ответ показан
-lec2-lo-que-apuntaste = Что вы записали
-lec2-oculta = Подумайте, прежде чем смотреть: припоминание запоминается гораздо лучше перечитывания.
-lec2-por-que-paso = Почему это случилось: { $causa }
-lec2-abrir-completa = Открыть урок полностью
-lec2-lo-recordabas = Вспомнили? Выберите мышью или клавишами
-lec2-nota-recordaba = Вспомнил
-lec2-nota-a-medias = Частично
-lec2-nota-olvide = Забыл
-lec2-vuelve-manana = Вернётся завтра
-lec2-vuelve-en = Вернётся через { $dias } дн.
-lec2-saltar = Пропустить
-lec2-repaso-pie = Ваш ответ нужен для сравнения: он не сохраняется.
-lec2-siguiente = Далее
-lec2-repaso-elige = Выберите 1, 2 или 3: вспомнили?
-lec2-repaso-hecho = Повторение завершено
-lec2-repaso-hechas = { $n ->
-    [one] Вы повторили { $n } урок. Возвращайтесь, когда подойдёт срок.
-    [few] Вы повторили { $n } урока. Они вернутся, когда подойдёт срок.
-    [many] Вы повторили { $n } уроков. Они вернутся, когда подойдёт срок.
-   *[other] Вы повторили { $n } урока. Они вернутся, когда подойдёт срок.
-  }
-lec2-repaso-volver = Назад к списку
 
 ## v2-galeria
 galeria-subtitulo = { $cuantas } · хранятся 7 дней
@@ -2500,9 +2190,13 @@ timeline-ayer = Вчера
 timeline-exportar = Экспорт
 timeline-volver = Назад
 timeline-pista = Что происходит? Введите или продиктуйте…
+timeline-frase-titulo = вот что случилось
+timeline-frase-titulo-corta = случилось то что
+timeline-frase-descripcion = и вот как это было
+timeline-frase-descripcion-corta = рассказываю
 timeline-vacio = За последние 24 часа пока ничего нет.
     Введите или продиктуйте, что происходит, и нажмите Enter.
-    При диктовке «con esto pasó…» начинает заголовок, а «y así te lo cuento…» — описание.
+    При диктовке «{ timeline-frase-titulo }…» начинает заголовок, а «{ timeline-frase-descripcion }…» — описание.
 timeline-vacio-dia = В этот день ничего не записано.
 timeline-nota-de-voz = Голосовая заметка
 timeline-sin-titulo-voz = Голосовая заметка
@@ -2548,10 +2242,6 @@ timeline-mic-corto = Слишком коротко: говорите чуть д
 timeline-mic-error = Не удалось записать: { $error }
 timeline-mic-sin-texto = Не распознано: сохранён только звук
 
-## simple-lecciones
-lecs-menos-campos = Меньше полей
-lecs-ficha-completa = Тип, причины и ключевые слова…
-
 ## galeria-menu (5-oct-2026, right click)
 galeria-guardar-como = Сохранить как…
 galeria-mostrar-en-carpeta = Показать в папке
@@ -2586,7 +2276,6 @@ timeline-momentos-vacio = Сюда попадают выбранные вами 
 timeline-a-momentos = Отправлено в «Моменты»
 timeline-fuera-de-momentos = Убрано из «Моментов»
 timeline-estado-sobre-todo = В основном
-timeline-estado-lo-mas = «{ $que }»
 timeline-exportar-busqueda = Поиск: «{ $que }»
 timeline-pestana-lecciones = Уроки
 timeline-sub-lecciones = { $n ->
@@ -2600,7 +2289,6 @@ timeline-lecciones-vacio = Уроков пока нет. Нажмите ламп
 timeline-gravedad-leve = Незначительный
 timeline-gravedad-importante = Важный
 timeline-gravedad-grave = Серьёзный
-timeline-otra-vez = Это повторилось +1
 timeline-otra-vez-hecho = Отмечено: теперь раз — { $n }
 timeline-leccion = Урок
 timeline-leccion-hecha = 💡 Урок создан: он в «Уроках»
@@ -2672,7 +2360,6 @@ tareas5-corregir-pista = Текст задачи…
 tareas5-imagen-pista = Добавить изображения · Ctrl+V вставляет скопированное
 tareas5-guardar = Сохранить
 tareas5-corregida = Задача обновлена
-tareas5-vista-lista = Список · Ctrl+L
 tareas5-vista-tarjetas = Карточки · Ctrl+T
 tareas5-vista-horario = Расписание · Ctrl+H
 tareas5-marcar = Отметить как выполненное
@@ -2691,7 +2378,6 @@ tareas5-quitar = Удалить
 ## salida (6-oct-2026): the floating window to drag out what was exported
 salida-titulo = Готово к отправке
 salida-titulo-exportado = Экспортировано
-salida-titulo-guardado = Сохранено
 salida-pista = Перетащите файл в другое приложение или папку
 salida-todos = Перетащить все вместе ({ $n })
 salida-arrastra-todos = Удерживайте и перетащите, чтобы взять все
@@ -2699,13 +2385,11 @@ salida-soltado = Перенесено · можно перенести и в д�
 salida-copiado = Скопировано в буфер обмена
 salida-pineado = Закреплено
 salida-no-se-pudo = Не удалось
-salida-compartir = Поделиться
 salida-copiar = Копировать
 salida-abrir = Открыть
 salida-carpeta = Показать в папке
 salida-pinear = Закрепить
 salida-compartir-menu = Поделиться…
-compartir-arrastrar = Перетащите отсюда в другое приложение · щёлкните, чтобы оставить на экране
 
 ## al-movil (6-oct-2026): a photo from the Flow plugin to the phone's open canvas
 al-movil-lienzo = { $n ->
@@ -2919,8 +2603,6 @@ asistente-voz-sin-whisper = Этот компьютер не может прео
 asistente-voz-fallo = Не удалось преобразовать голос в текст.
 asistente-voz-cancelado = Отменено: ничего не отправлено.
 asistente-voz-nada-que-leer = В этом ответе нет текста для чтения.
-asistente-voz-leer = Прочитать вслух
-asistente-voz-callar = Остановить чтение
 
 ## Page folders in the chat (26-oct-2026): a named notebook
 carpeta-nueva = Папка страниц
@@ -2945,10 +2627,6 @@ carpeta-exportando = Экспорт PDF…
 carpeta-exportado = PDF сохранён: { $nombre }
 carpeta-no-se-exporto = Не удалось экспортировать: ни на одной странице ничего нет
 carpeta-vacia = Эта папка пуста. Нажмите «Новая страница» или в чате выберите «Добавить в папку…» в меню холста или изображения.
-carpeta-antes = Раньше
-carpeta-despues = Позже
-carpeta-renombrar = Переименовать
-carpeta-quitar = Убрать из папки
 carpeta-no-esta = Этой папки больше нет в чате
 carpeta-pista = Перетащите страницу, чтобы переместить её · F2 меняет заголовок · Del убирает её (она снова появится в чате)
 carpeta-escribe-titulo = Введите заголовок и нажмите Enter
@@ -2960,8 +2638,6 @@ carpeta-grabacion-detalle = { $duracion } · { $capturas ->
    *[other] { $capturas } снимка
 }
 carpeta-estudiar = Изучить
-carpeta-de-la-grabacion = Из записи
-carpeta-adjuntos = Вложения к уроку
 carpeta-adjunto-insignia = Вложение · не часть записи
 carpeta-adjuntar = Вложить в урок
 carpeta-adjuntado = Вложено в урок: { $nombre }
@@ -3001,7 +2677,6 @@ clase-importante-decision = Решение
 clase-importante-pregunta = Вопрос
 clase-importante-examen = Экзамен
 clase-importante-buscando = Поиск важного…
-clase-importante-nada = На уроке ничего такого нет
 clase-importante-tareas = + задач в «Задачи»: { $n }
 clase-importante-anadidas = Задач добавлено во «Входящие» «Задач»: { $n }
 tareas-prioridad-urgente = Срочный

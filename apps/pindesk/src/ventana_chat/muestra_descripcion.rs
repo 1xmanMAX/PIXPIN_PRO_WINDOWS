@@ -108,8 +108,8 @@ fn muestra_de_la_foto_con_descripcion() {
     );
     let miniaturas = crate::miniaturas::Miniaturas::nuevo();
     let mut previas = crate::miniaturas::Miniaturas::con_lado(super::PREVIA_LADO);
-    let fichas = vec![ficha.clone()];
-    let orden = vec![0usize];
+    let fichas = crate::ventana_chat::muestra_lista::fichas(&ficha, &a, ahora);
+    let orden = crate::ventana_chat::muestra_lista::orden(&fichas);
     let marcados = Default::default();
     for _ in 0..4 {
         let rutas = fotos_del_historial(&a, &d, escala);

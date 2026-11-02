@@ -590,8 +590,8 @@ fn muestra_del_chat_con_el_asistente() {
     );
     let miniaturas = crate::miniaturas::Miniaturas::nuevo();
     let mut previas = crate::miniaturas::Miniaturas::con_lado(PREVIA_LADO);
-    let fichas = vec![a.ficha.clone()];
-    let orden = vec![0usize];
+    let fichas = crate::ventana_chat::muestra_lista::fichas(&a.ficha, &a, ahora);
+    let orden = crate::ventana_chat::muestra_lista::orden(&fichas);
     let marcados = Default::default();
     for _ in 0..4 {
         let rutas = fotos_del_historial(&a, &d, escala);
@@ -930,8 +930,8 @@ fn chat_a_png(a: &Abierto, ancho: u32, alto: u32, nombre: &str) -> std::path::Pa
     );
     let miniaturas = crate::miniaturas::Miniaturas::nuevo();
     let mut previas = crate::miniaturas::Miniaturas::con_lado(PREVIA_LADO);
-    let fichas = vec![a.ficha.clone()];
-    let orden = vec![0usize];
+    let fichas = crate::ventana_chat::muestra_lista::fichas(&a.ficha, a, ahora);
+    let orden = crate::ventana_chat::muestra_lista::orden(&fichas);
     let marcados = Default::default();
     for _ in 0..4 {
         let rutas = fotos_del_historial(a, &d, escala);

@@ -109,9 +109,6 @@ cuenta-atras-cancelar = Échap pour arrêter
 comando-pinear-seleccion = Épingler la sélection de l’Explorateur
 
 # The settings window (P6).
-ajustes-pestana-atajos = Raccourcis
-ajustes-pestana-general = Général
-ajustes-pestana-captura = Capture
 ajustes-pestana-dibujo = Dessin
 ajustes-iman = Aimanter aux points remarquables
 ajustes-iman-esquinas = Coins et extrémités
@@ -121,26 +118,17 @@ ajustes-iman-radio = Distance d’accroche (px)
 ajustes-idioma = Langue
 ajustes-idioma-sistema = Comme Windows
 ajustes-arranque = Démarrer avec Windows
-ajustes-color = Format de la pipette
-ajustes-nivel = Performances
 ajustes-nivel-auto = Automatique
 ajustes-nivel-completo = Complet
 ajustes-nivel-ligero = Léger
 ajustes-pdf-aligerar = Alléger les PDF ajoutés au chat
-ajustes-pdf-nivel = Niveau d’allègement (Petit et Max : manuel uniquement)
 ajustes-pdf-nivel-sin-perdida = Exact
 ajustes-pdf-nivel-equilibrado = Moyen
 ajustes-pdf-nivel-pequeno = Petit
 ajustes-pdf-nivel-extremo = Max
-ajustes-retardo-captura = Secondes de compte à rebours avant la capture
-ajustes-limite-scroll = Hauteur maximale d’une capture défilante, en pixels
-ajustes-gif-ritmo = Images par seconde pendant l’enregistrement
-ajustes-gif-retardo = Secondes de délai avant l’enregistrement
 ajustes-sin-atajo = Aucun raccourci
 ajustes-pulsa-combinacion = Appuyez sur la combinaison…
 ajustes-choca = en double
-ajustes-cerrar = Fermer
-ajustes-abrir-fichero = Ouvrir le fichier de paramètres
 
 # Reading the text of a pin (P4.2).
 pin-copiar-texto = Copier le texte de l’image
@@ -175,10 +163,6 @@ chat-clase-proyecto = Projet
 chat-clase-miniapp = Mini-app
 chat-escribe = Écrivez quelque chose…
 # The chat, like PinDesk Android's (guardados/MensajesActivity.kt).
-chat-cosas = { $n ->
-    [one] 1 élément
-   *[other] { $n } éléments
-}
 chat-elegidos = { $n ->
     [one] 1 sélectionné
    *[other] { $n } sélectionnés
@@ -186,7 +170,6 @@ chat-elegidos = { $n ->
 chat-lienzo = Canevas
 chat-tabla = Tableau
 chat-viene-de = Provient de
-chat-comentar = Commenter
 chat-copiar = Copier
 chat-fijar = Épingler en haut
 chat-soltar = Retirer du haut
@@ -208,13 +191,10 @@ chat-recordar = Me le rappeler
 chat-rescatar = Conserver
 chat-solo-la-foto = Afficher uniquement la photo
 chat-ver-hilo = Voir les commentaires
-chat-etiquetar = Ajouter une étiquette
-chat-quitar-etiqueta = Retirer l’étiquette
 chat-reenviar = Transférer
 chat-unir = Ajouter au projet
 chat-transcribir = Convertir en texte
 chat-letra = Paroles ou texte
-chat-elegir = Sélectionner
 chat-borrar = Supprimer
 chat-borrar-aviso = L’élément sera retiré de la conversation, ainsi que le fichier joint. Continuer ?
 chat-biblioteca-audio = Bibliothèque audio
@@ -226,30 +206,18 @@ chat-fondo-brezo = Bruyère
 chat-fondo-bosque = Forêt
 chat-fondo-ocaso = Crépuscule
 chat-fondo-pizarra = Ardoise
-chat-adj-archivo = Un fichier
-chat-adj-pagina = Une page d’un projet
-chat-adj-proyecto = Un projet entier
-chat-adj-conversacion = Une conversation
 chat-adj-telepronter = Prompteur
 chat-adj-pronunciar = Prononciation
-chat-adj-miniapp = Une mini-app
 chat-reenviado = Transféré
 chat-copiado = Copié
-chat-compartido = Copié dans le presse-papiers : collez-le là où vous voulez le partager
 chat-compartir-sin-panel = Windows n’a pas ouvert le panneau Partager : c’est dans le presse-papiers, collez-le où vous voulez
 chat-pineado = Épinglé
 chat-foto-en-la-nota = Photo ajoutée à votre texte : le tout est envoyé en une seule note
 chat-sin-archivo = Ce message n’a pas de fichier sur cet ordinateur
 chat-sin-origen = Ce canevas n’est pas dans ce projet
 chat-sin-proyectos-otros = Aucun autre projet vers lequel l’envoyer
-chat-proyectos-lista = Les projets sont dans la liste de gauche
-chat-no-hay-voz = L’enregistrement de notes vocales n’existe pas encore sous Windows
-chat-no-hay-aligerar = L’allègement des PDF n’existe pas encore sous Windows
 chat-no-hay-unir = Sous Windows, chaque chat est déjà un projet : utilisez Transférer pour l’envoyer vers un autre
-chat-no-hay-biblioteca = La bibliothèque audio n’existe pas encore sous Windows
 chat-ver-dibujo-entero = Afficher tout le dessin
-chat-no-hay-pagina = Joindre une page d’un projet n’existe pas encore sous Windows
-chat-no-hay-telepronter = Le prompteur n’existe pas encore sous Windows
 chat-no-se-pudo = Opération impossible : consultez le journal de PinDesk
 chat-fecha = { $dia } { $mes }
 chat-fecha-con-ano = { $dia } { $mes } { $ano }
@@ -297,22 +265,12 @@ info-vacia-voz = Les notes vocales apparaîtront ici
 info-vacia-dibujos = Les dessins de ce chat apparaîtront ici
 info-vacia-fijados = Ce que vous épinglez apparaîtra ici
 info-vacia-buzon = La boîte de réception est vide
-info-abrir = Ouvrir
-info-abrir-enlace = Ouvrir le lien
-info-reproducir = Lire
-info-ver-en-el-chat = Afficher dans le chat
 info-titulo = Infos
 adjuntar-imagen = Photo ou vidéo
 adjuntar-archivo = Fichier
 adjuntar-lienzo = Nouveau canevas
-confirmar-titulo = { $cuantos ->
-    [one] Ajouter un fichier
-   *[other] Ajouter { $cuantos } fichiers
-}
-confirmar-resto = et { $cuantos } de plus
 confirmar-pie = Ajouter une légende…
 confirmar-cancelar = Annuler
-confirmar-aceptar = Ajouter
 adjuntar-tabla = Nouveau tableau
 tabla-nueva = Tableau
 chat-nombre-nuevo = Nom du projet…
@@ -328,11 +286,7 @@ recibir-salir = Échap pour fermer
 comando-recibir-del-movil = Recevoir du téléphone…
 comando-sincronizar = Synchroniser
 adjuntar-del-movil = Importer du téléphone…
-menu-foto-aqui = Dessiner ici même
 proyecto-renombrar = Renommer
-proyecto-logo-poner = Définir une image de logo…
-proyecto-logo-quitar = Retirer l’image de logo
-proyecto-logo-error = Impossible de définir cette image de logo
 # The chat photo (25-oct-2026): image, emoji or colour in the circle.
 foto-chat-menu = Changer la photo du chat…
 foto-chat-titulo = Photo du chat
@@ -590,7 +544,6 @@ papelera-no-se-pudo = Impossible de récupérer « { $nombre } » : { $mot
 papelera-recuperados = { $n } projets récupérés sur { $total }
 
 ## The document viewer: Word, EPUB books and web pages (task 2.1)
-visor-html-titulo = PinDesk — page
 ## The Office pin: Office's preview as a pin (2026-10-10)
 office-titulo = Aperçu Office
 office-abriendo = Ouverture avec l’aperçu Office…
@@ -598,8 +551,6 @@ office-tarda = Office prend du temps (il doit démarrer). Vous pouvez attendre, 
 office-fallo = Office n’a pas pu afficher l’aperçu de ce fichier. Ouvrez-le dans une autre application avec « Ouvrir avec… » (le bouton ↗ de la barre).
 office-internet = Ce fichier provient d’internet et, par sécurité, Windows n’autorise pas son aperçu. Ouvrez-le dans une autre application avec « Ouvrir avec… » (le bouton ↗ de la barre), ou débloquez-le dans ses Propriétés.
 visor-titulo = Visionneuse PinDesk
-visor-marcador = Signet ici
-visor-ajustes = Paramètres de lecture
 visor-tamano = Taille du texte
 visor-quitar-marcadores = Supprimer les signets
 visor-guardar-pagina = Enregistrer comme page web
@@ -608,15 +559,10 @@ visor-abrir-carpeta = Ouvrir le dossier
 visor-guardado = Enregistré dans « { $nombre } »
 visor-no-guardado = Impossible d’enregistrer
 visor-vacio = Ce document n’a pas de texte à afficher
-visor-ayuda = Molette pour lire · +/− taille · M signet · G paramètres · Échap pour quitter
-visor-elige-emoticono = Avec quoi le marquer ?
-visor-sin-marcadores = Aucun signet pour l’instant
 
 ## The readers: comfortable reading, annotating on top and the PDF reader
-lector-listo = Terminé
 lector-indice = Sommaire
 lector-letra-fijada = La police est verrouillée : des notes sont dessinées par-dessus
-lector-letra-normal = Police normale
 lector-letra-fija = Chasse fixe
 lector-grosor-normal = Normal
 lector-grosor-gruesa = Gras
@@ -630,11 +576,8 @@ lector-pdf-reconociendo = Reconnaissance du texte de la page…
 lector-pdf-reconocido = Texte reconnu : vous pouvez le sélectionner et le marquer
 lector-pdf-sin-texto = Aucun texte trouvé sur cette page
 lector-exportando = Enregistrement du PDF annoté… { $hechas } sur { $total }
-lector-exportar-pdf = Enregistrer le PDF avec les notes
 lector-anotado = annoté
-lector-ayuda-pdf = Molette pour tourner les pages · Ctrl+molette zoom · Ctrl+[ Ctrl+] espace pour annoter · L écouter · A annoter · M signet · Échap pour quitter
 lector-office-titulo = Word et PowerPoint dans PinDesk
-lector-ayuda-office = Molette pour tourner les pages · Ctrl+molette zoom · glisser sur le texte pour sélectionner · Ctrl+C copier · Ctrl+F rechercher · Ctrl+P imprimer · F5 présenter · A annoter · N négatif · Échap pour quitter
 lector-presentar = Présenter (F5)
 lector-modo-lectura = Mode lecture (texte recomposé)
 lector-imprimir = Imprimer… (Ctrl+P)
@@ -658,7 +601,6 @@ lector-voz-parrafo = Paragraphe { $n } sur { $total }
 lector-voz-preparando = Préparation de la voix…
 lector-voz-no-respondio = Microsoft n’a pas répondu
 lector-voz-sin-voz = Aucune voix
-lector-verde-aqui = Signet vert ici : la lecture commencera à partir de ce point
 lector-espacio-tope = Plus de place de ce côté
 lector-espacio-nada = Il ne reste plus d’espace de ce côté
 lector-sin-lado = Défilement latéral verrouillé : uniquement vers le haut et le bas
@@ -693,78 +635,12 @@ sinc-presencia-apagada = La présence est désactivée dans les paramètres ([si
 bandeja-abrir-documento = Ouvrir un document…
 
 ## Canvas shapes and ink: arrowheads, fills and text style (group A)
-lienzo-punta-ninguna = Sans pointe
-lienzo-punta-flecha = Flèche
-lienzo-punta-barra = Barre
-lienzo-punta-circulo = Cercle
-lienzo-punta-circulo-hueco = Cercle vide
-lienzo-punta-triangulo = Triangle
-lienzo-punta-triangulo-hueco = Triangle vide
-lienzo-punta-rombo = Losange
-lienzo-punta-rombo-hueco = Losange vide
-lienzo-punta-inicio = Pointe de début
-lienzo-punta-fin = Pointe de fin
-lienzo-trama-zigzag = Zigzag
-lienzo-trama-tiralineas = Hachures
-lienzo-texto-negrita = Gras
-lienzo-texto-cursiva = Italique
-lienzo-texto-tachado = Barré
-lienzo-presion-firme = Trait d’épaisseur fixe
-lienzo-flecha-codos = Flèche coudée
-lienzo-flecha-libre = Flèche à main levée
-lienzo-arco-guia = Ovale guide, pas encore tracé
-lienzo-luces-fuerza = Intensité de la lumière
 
 ## Build and measure: fill, trim, extend, points and angles (group C)
-lienzo-bote = Pot de peinture
-lienzo-bote-ayuda = Cliquez dans un espace fermé pour le remplir, même s’il est formé de plusieurs formes différentes.
-lienzo-bote-abierto = Cet espace n’est pas fermé : la peinture s’échapperait par une fissure.
-lienzo-recortar = Ajuster
-lienzo-recortar-ayuda = Cliquez sur le morceau de trait en trop et il disparaît, jusqu’à l’endroit où les autres le croisent.
-lienzo-extender = Prolonger
-lienzo-extender-ayuda = Cliquez sur l’extrémité trop courte et elle atteint le premier obstacle sur son chemin.
-lienzo-extender-sin-tope = Rien sur son chemin : une ligne étirée dans le vide n’est pas une ligne prolongée.
-lienzo-punto = Point nommé
-lienzo-punto-ayuda = Cliquez sur une intersection, une extrémité ou le centre d’un cercle et le point apparaît avec sa lettre.
-lienzo-punto-sin-sitio = Rien à nommer ici : un point se place sur une intersection, une extrémité ou un centre.
-lienzo-punto-serie-mayusculas = Majuscules (A, B, C…)
-lienzo-punto-serie-minusculas = Minuscules (a, b, c…)
-lienzo-punto-serie-numeros = Nombres (1, 2, 3…)
-lienzo-angulos = Angles en direct
-lienzo-angulos-ayuda = Pendant que vous déplacez quelque chose, affiche la mesure des angles que vous touchez.
-lienzo-area = Aire
 
 ## Select, transform and bind (group B)
-lienzo-lazo = Lasso
-lienzo-lazo-ayuda = Entourez ce que vous voulez sélectionner. Ce qui est entièrement à l’intérieur est pris ; avec Maj, aussi ce que le trait touche.
-lienzo-lazo-encerrar = Seulement ce qui est à l’intérieur
-lienzo-lazo-rozar = Aussi ce que le trait touche
-lienzo-voltear-horizontal = Retourner horizontalement
-lienzo-voltear-vertical = Retourner verticalement
-lienzo-voltear-ayuda = Crée le miroir de la sélection autour du centre de l’ensemble, et non de chaque forme autour d’elle-même.
-lienzo-rejilla = Papier réglé
-lienzo-rejilla-ninguna = Uni
-lienzo-rejilla-lineas = Carreaux
-lienzo-rejilla-puntos = Points
-lienzo-rejilla-imanta = Aimanter le curseur aux carreaux
-lienzo-rejilla-ayuda = Le repère présent avant le premier trait. Il n’apparaît pas à l’export.
-lienzo-iman-intersecciones = Intersections entre formes
-lienzo-iman-intersecciones-ayuda = Le point où deux traits se coupent, qui n’est le coin d’aucun des deux.
-lienzo-iman-bordes = Bords des formes
-lienzo-iman-bordes-ayuda = L’équerre : le curseur glisse sur tout le bord, pas seulement sur ses coins.
-lienzo-iman-eje = Origine et axes de coordonnées
-lienzo-enganche = Lier la flèche à la forme
-lienzo-enganche-ayuda = Déposez la pointe sur une forme et la flèche la suivra quand vous la déplacerez.
-lienzo-enganche-soltar = Détacher la pointe
-lienzo-tirador-punta = Déplacer l’extrémité
-lienzo-tirador-anadir = Plier ici
-lienzo-copiar-estilo = Copier le style
-lienzo-copiar-estilo-ayuda = Prenez la couleur, le trait et le remplissage d’une forme et collez-les sur d’autres. Seul ce que les deux types acceptent est transmis.
-lienzo-estilo-tomado = Style copié
-lienzo-estilo-sin-tomar = Vous n’avez pas encore copié de style.
 
 # The attachment the document viewer can open without leaving PinDesk.
-chat-abrir-aqui = Ouvrir ici
 
 # The seven mini-apps from the phone, and their panel.
 mini-moneda = EUR
@@ -811,15 +687,6 @@ chat-voz-fallo = Impossible d’enregistrer la note vocale.
 # Shrinking an attached PDF: it lowers the photos inside, and never for the worse.
 pdf-aligerado = Allégé : de { $antes } à { $despues }
 pdf-aligerar-cifrado = Le PDF est chiffré et ne peut pas être réécrit sans risque.
-pdf-aligerar-indice-comprimido = Ce PDF garde son index compressé, et sa reconstruction n’est pas encore prise en charge ici.
-pdf-aligerar-objetos-comprimidos = Ce PDF garde ses objets compressés, et leur reconstruction n’est pas encore prise en charge ici.
-pdf-aligerar-sin-trailer = Le PDF n’a pas de trailer lisible.
-pdf-aligerar-sin-objetos = Aucun objet du PDF n’a été reconnu.
-pdf-aligerar-largo-indirecto = Un flux du PDF n’indique pas sa longueur.
-pdf-aligerar-objetos-sin-entender = Certaines parties du PDF ne sont pas comprises par ce lecteur ; le réécrire pourrait les perdre.
-pdf-aligerar-sin-fotos = Il n’a pas de photos à alléger : le poids vient du texte ou des vecteurs.
-pdf-aligerar-ya-al-minimo = Les photos sont déjà au minimum.
-pdf-aligerar-no-compensa = Il ne passerait que de { $antes } à { $despues } : cela n’en vaut pas la peine.
 pdf-aligerar-no-se-lee = Le fichier allégé ne se relit pas correctement ; l’original est conservé.
 aligerar-progreso = Allègement… { $por } %
 aligerar-empezado = Allègement du PDF…
@@ -838,7 +705,6 @@ chat-recordatorio-quitado = Rappel supprimé
 chat-recordatorio-titulo = Rappel
 
 # A message menu entry: send the attachment to someone over Wi-Fi.
-chat-enviar-wifi = Envoyer par Wi-Fi
 
 # Turning a voice note into text with Vosk. What is missing is named with its
 # file and link: PinDesk never downloads anything on its own.
@@ -864,7 +730,6 @@ musica-sinc-empieza = Appuyez sur Espace (ou « Marquer ») au début de cha
 musica-sinc-siguiente = Suivante : { $linea }
 musica-sinc-todas = Toutes les lignes sont marquées. Enregistrez les paroles.
 musica-sinc-marcar = Marquer { $n }/{ $total }
-musica-sinc-deshacer = Annuler
 musica-sinc-guardar = Enregistrer
 musica-sinc-cancelar = Annuler
 musica-sinc-guardada = Paroles synchronisées
@@ -980,7 +845,6 @@ exportar-tipo-pdf = Document PDF
 exportar-tipo-html = Page web en un seul fichier
 exportar-vacio = Il n’y a rien à exporter avec ceci.
 exportar-fallo = Impossible d’exporter le canevas.
-exportar-hecho = Exporté : { $nombre }
 imprimir-menu = Imprimer…	Ctrl+P
 imprimir-vacio = Il n’y a rien à imprimer.
 imprimir-fallo = Impossible d’imprimer le canevas.
@@ -1028,8 +892,6 @@ compartir-texto = Texte
 compartir-csv = Tableau (CSV)
 compartir-pindesk = PinDesk (.pindesk)
 compartir-dxf = DXF
-compartir-xlsx = Excel (xlsx)
-compartir-docx = Word (docx)
 compartir-md = Markdown
 compartir-exportar = Exporter…
 compartir-paginas-de = À inclure · { $marcadas } sur { $total }
@@ -1041,7 +903,6 @@ compartir-preparando = Préparation…
 compartir-marca-alguna = Cochez au moins une page
 compartir-en-cuanto-este = Dès que c’est prêt
 compartir-peso-ficheros = { $peso } · { $n } fichiers
-compartir-panel-abierto = Choisissez où l’envoyer
 compartir-guardado = Enregistré : { $nombre }
 compartir-copiado = Copié dans le presse-papiers
 compartir-no-se-pudo = Impossible de le préparer
@@ -1063,7 +924,6 @@ compartir-tipo-nota = Note
 
 # Drawing tools: the ones shown in the canvas, the reader, pins and the
 # screen annotator. Turning one off removes it from the bar and its key.
-ajustes-pestana-herramientas = Outils
 herramientas-lazo = Lasso
 herramientas-rectangulo = Rectangle
 herramientas-rombo = Losange
@@ -1134,11 +994,6 @@ chat-fecha-corta = { $dia } { $mes }
 chat-enlace-no-abre = Impossible d’ouvrir le lien
 
 ## D11: a spreadsheet in the chat is a book of tables (ventana_chat/libro.rs)
-libro-titulo = Classeur
-libro-xls-antiguo = Les anciens fichiers .xls ne peuvent pas être lus : ouvrez-le et enregistrez-le en .xlsx
-libro-abrir-fuera = L’ouvrir avec une autre application ?
-libro-no-es = Le fichier n’est pas un classeur valide
-libro-sin-hojas = Le classeur n’a aucune feuille avec des données
 hoja-preparando = Préparation de la feuille pour la modifier…
 hoja-editar-aviso = Les modifications sont enregistrées dans la feuille du chat ; le fichier d’origine reste inchangé
 hoja-editando = Modification · Échap pour afficher
@@ -1445,8 +1300,6 @@ chat-insertar-en-nota = Insérer dans une note
 ## Canvas: weld vertices and number points (lienzo-geometria, 26-sep)
 herramientas-nudo = Souder des sommets
 herramientas-bolita = Boule : balayez pour sélectionner
-lienzo-nudo = Souder des sommets
-lienzo-nudo-ayuda = Cliquez là où deux formes se touchent pour les fixer ensemble : elles ne se séparent plus et, avec une seule fixation, elles pivotent autour. Cliquez sur la fixation pour la retirer ; faites-la glisser avec la main pour emporter les formes fixées.
 lienzo-punto-serie = Étiquettes des points
 lienzo-cota-pedir = Demander la longueur au tracé
 lienzo-panel-dureza = Dureté du crayon
@@ -1494,7 +1347,6 @@ funciones-figuras-detalle = Votre bibliothèque de formes pour les canevas
 figuras-mias = Mes formes
 figuras-todas = Toutes
 figuras-vacia = Aucune forme pour l’instant. Sur un canevas, sélectionnez quelque chose puis « Enregistrer comme forme ».
-figuras-cerrar = Fermer
 figuras-borrar = Supprimer la forme
 figuras-borrar-seguro = Appuyez à nouveau pour supprimer
 figuras-elegir-para = Choisissez une forme pour « { $chat } »
@@ -1753,12 +1605,8 @@ galeria-borrada = Déplacée dans la corbeille de PinDesk
 galeria-no-se-pudo = Opération impossible : { $motivo }
 galeria-conservada-aviso = Conservée : elle est dans Messages enregistrés et ne sera pas supprimée
 bandeja-galeria-capturas = Galerie des captures…
-chat-galeria-capturas = Galerie des captures
 # Lessons learned (3-oct, as on the phone)
-chat-lecciones = Leçons
-chat-leccion-nueva = Nouvelle leçon
 chat-hacer-leccion = Créer une leçon
-bandeja-lecciones = 💡 Leçons…
 bandeja-leccion-nueva = Nouvelle leçon…
 bandeja-tareas = ☑ Tâches…
 bandeja-timeline = 🕒 Chronologie et leçons…
@@ -1978,7 +1826,6 @@ ajustes2-auto = Auto
 comando-buscar = 🔍 Rechercher dans PinDesk…
 comando-grabar-clase = 🎙 Enregistrer un cours ou une réunion…
 clase-titulo = Enregistrer un cours ou une réunion
-clase-sub = Enregistre l’audio et place les captures à leur minute
 clase-microfono = Micro
 clase-equipo = Son de l’ordinateur (Meet, Zoom…)
 clase-guardar-en = Enregistrer dans : { $proyecto }
@@ -1987,7 +1834,6 @@ clase-nada = Choisissez le micro, le son de l’ordinateur ou les deux
 clase-captura = Capturer
 clase-terminar = Terminer
 clase-capturas = Captures : { $n } · un clic répète la zone
-clase-pista = « Capturer » enregistre une zone de l’écran à cette minute
 clase-elige-zona = Choisissez la zone à l’écran…
 clase-captura-hecha = Capture enregistrée à { $minuto }
 clase-zona-cambiada = Zone modifiée
@@ -2006,7 +1852,6 @@ clase-listo = Terminé
 clase-nombre = Cours { $fecha }
 clase-sin-sonido-equipo = On n’entend rien de l’ordinateur : aucun haut-parleur ni casque n’est actif
 clase-video = Vidéo de cet écran
-clase-video-corto = Enregistrement vidéo
 clase-video-roto = La vidéo s’est arrêtée ; l’audio continue d’être enregistré
 clase-video-guardado = Avec la vidéo de l’écran.
 clase-calidad-ligero = Légère
@@ -2032,13 +1877,6 @@ clase-recuperar-sin-nada = Il ne reste de « { $nombre } » qu’une vidéo 
 clase-recuperar-descartar = Ignorer « { $nombre } » ? L’enregistrement sera supprimé et ne pourra pas être récupéré.
 clase-recuperar-fallo = « { $nombre } » n’a pas pu être récupéré. L’enregistrement reste en lieu sûr et sera proposé à nouveau à l’ouverture de PinDesk.
 clase-texto-de-fondo = Fermer (continue)
-clase-modo-pantalla = Écran et son
-clase-modo-capturas = Audio et captures
-clase-modo-pantalla-sub = Enregistre la vidéo de cet écran avec les sons choisis
-clase-modo-capturas-sub = Enregistre l’audio ; « Capturer » enregistre tout l’écran
-clase-captura-entera = Capturer : tout l’écran, instantanément
-clase-pista-entera = « Capturer » enregistre tout l’écran à cette minute ; le bouton de zone, seulement une partie
-clase-capturas-entera = Captures : { $n } · tout l’écran
 clase-abrir-para-estudiar = Ouvrir pour étudier
 clase-camara-movil = 📱 Caméra du téléphone
 clase-camara-movil-n = 📱 Caméra du téléphone · { $n }
@@ -2061,14 +1899,10 @@ clase-hora-sin-comprobar = heure non vérifiée
 baliza-movil-aislado = Votre téléphone n’apparaît pas, bien que vous soyez sur le même réseau : ce Wi-Fi isole peut-être les appareils (c’est le cas des réseaux invités, d’hôtel et de bureau) ou un pare-feu bloque PinDesk. Connectez le PC au point d’accès du téléphone, ou les deux à un autre Wi-Fi. Les photos prises attendent sur le téléphone et s’insèrent à leur minute dès qu’ils se retrouvent.
 baliza-movil-otra-red = Votre téléphone est sur un autre réseau que ce PC. Connectez les deux au même Wi-Fi (ou le PC au point d’accès du téléphone). Les photos prises attendent sur le téléphone et s’insèrent à leur minute dès qu’ils se retrouvent.
 # In-person meeting (27-oct-2026): the computer's camera, photos and clips.
-clase-modo-presencial = En présentiel
-clase-modo-presencial-sub = Enregistre le micro ; « Photo » utilise la caméra en pleine résolution
 clase-camara = Caméra : { $camara }
 clase-camara-buscando = Recherche des caméras…
 clase-camara-ninguna = Aucune caméra : Photo et Clip ne fonctionneront pas (l’audio est enregistré quand même)
 clase-foto = Photo
-clase-fotos = Photos : { $n } · avec la caméra, en pleine résolution
-clase-pista-foto = « Photo » prend une photo avec la caméra à cette minute ; la caméra vidéo enregistre un clip
 clase-foto-hecha = Photo enregistrée à { $minuto }
 clase-camara-abriendo = Ouverture de la caméra…
 clase-camara-lista = Caméra prête : photos en { $medida }
@@ -2254,128 +2088,6 @@ buscar-todo-deshacer = Annuler
 buscar-todo-copiado = Copié
 ## v2-lecciones
 # The lessons window of the v2 redesign (Lecciones2.dc.html and Lecciones2-repaso.dc.html).
-lec2-que-aprendiste = Qu’avez-vous appris ? Écrivez-le ou dictez-le et appuyez sur Entrée
-lec2-guardar = Enregistrer
-lec2-rellena-solo = Rempli pour vous, modifiable d’un clic :
-lec2-rellena-solo-vacio = Domaine, projet et gravité se remplissent tout seuls pendant la saisie.
-lec2-area-de = Domaine : { $area }
-lec2-proyecto-de = Projet : { $proyecto }
-lec2-ya-la-tienes = Vous l’avez déjà : « { $titulo } » · C’est arrivé à nouveau
-lec2-pega-capturas = colle des captures
-lec2-guardada = Leçon enregistrée dans { $donde }
-lec2-apuntado-otra-vez = Noté : c’est arrivé à nouveau
-lec2-no-se-pudo = Échec. Réessayez.
-lec2-solo-imagenes = Seules des images peuvent être ajoutées à une leçon.
-lec2-sin-area = Aucun domaine
-lec2-sin-proyecto = Aucun projet (chat général)
-lec2-buscar = Rechercher : mot, situation, étiquette…
-lec2-todas = Toutes
-lec2-repetidas = Répétées
-lec2-graves = Graves
-lec2-para-repasar = À réviser aujourd’hui · { $n }
-lec2-que-harias-si = Que feriez-vous si cela se reproduisait ?
-lec2-repasar = Réviser
-lec2-este-mes = Ce mois-ci
-lec2-antes = Plus tôt
-lec2-lista-vacia = Aucune leçon pour l’instant. Écrivez ci-dessus ce que vous avez appris.
-lec2-nada-con-filtro = Rien avec ce filtre.
-lec2-nada-con = Rien avec « { $q } ». Essayez un autre mot ou notez-le ci-dessus.
-lec2-moverse = naviguer
-lec2-leve = Mineure
-lec2-importante = Importante
-lec2-grave = Grave
-lec2-hoy = aujourd’hui
-lec2-ayer = hier
-lec2-manana = demain
-lec2-hace-dias = il y a { $n } jours
-lec2-hace-semanas = { $n ->
-    [one] il y a 1 semaine
-   *[other] il y a { $n } semaines
-  }
-lec2-hace-meses = { $n ->
-    [one] il y a 1 mois
-   *[other] il y a { $n } mois
-  }
-lec2-hace-anios = { $n ->
-    [one] il y a 1 an
-   *[other] il y a { $n } ans
-  }
-lec2-en-dias = dans { $n } jours
-lec2-meses = janv. févr. mars avr. mai juin juil. août sept. oct. nov. déc.
-lec2-clic-para-editar = Cliquez sur un texte pour le modifier · enregistrement automatique
-lec2-mas-campos = Plus de champs…
-lec2-que-paso = Ce qui s’est passé
-lec2-por-que = Pourquoi
-lec2-proxima = La prochaine fois
-lec2-que-paso-vacio = Ajoutez ce qui s’est passé…
-lec2-por-que-vacio = Ajoutez pourquoi c’est arrivé…
-lec2-proxima-vacio = Ajoutez ce que vous ferez autrement la prochaine fois…
-lec2-editar = Modifier
-lec2-escribe-aqui = Écrivez ici
-lec2-ayuda-linea = Entrée enregistre · Échap termine
-lec2-ayuda-bloque = Entrée enregistre · Maj+Entrée nouvelle ligne · Tab au suivant
-lec2-nota-de-voz = Note vocale
-lec2-anadir-foto = Ajouter une photo
-lec2-ver-en-chat = Voir dans le chat
-lec2-pinear = Épingler
-lec2-pineado = Épinglé à l’écran
-lec2-borrar = Supprimer
-lec2-borrada = Leçon supprimée
-lec2-deshacer = Annuler
-lec2-veces = { $n ->
-    [one] fois que c’est arrivé
-   *[other] fois que c’est arrivé
-  }
-lec2-la-ultima = Dernière fois : { $fecha }
-lec2-me-volvio = C’est arrivé à nouveau
-lec2-gravedad = Gravité
-lec2-area = Domaine
-lec2-proyecto = Projet
-lec2-etiquetas = Étiquettes
-lec2-anadir = + Ajouter
-lec2-nueva-etiqueta = étiquette et Entrée
-lec2-relacionadas = Associées
-lec2-proximo-repaso = Prochaine révision : { $cuando }
-lec2-vacia-titulo = Notez ce que vous apprenez pour ne pas répéter vos erreurs
-lec2-vacia-texto = Écrivez-le ci-dessus d’un trait : « ce qui s’est passé…, parce que…, la prochaine fois… ». PinDesk le découpe, définit le domaine, le projet et la gravité, et vous dit si c’est déjà arrivé.
-lec2-comprobacion = Avant de commencer, vérifiez : { $hechas } sur { $total }
-lec2-comprobacion-vacia = Rien sous « la prochaine fois… » pour l’instant. C’est le troisième bloc de chaque leçon.
-lec2-nada-que-repasar = Rien à réviser aujourd’hui.
-lec2-repaso-titulo = Révision du jour
-lec2-repaso-de = { $va } sur { $total }
-lec2-salir = Quitter
-lec2-paso-pensar = Pensez à ce que vous feriez
-lec2-paso-mirar = Regardez ce que vous avez noté
-lec2-paso-recordar = Vous en souveniez-vous ?
-lec2-situacion = La situation
-lec2-repaso-cuando = Quand { $pista }…
-lec2-repaso-recuerda = Rappelez-vous cette leçon
-lec2-repaso-veces = c’est arrivé { $n } fois
-lec2-que-harias = Que feriez-vous ?
-lec2-escribe-o-dicta = Écrivez ou dictez
-lec2-dictar = Dicter
-lec2-mostrar = Afficher la réponse
-lec2-mostrada = Réponse affichée
-lec2-lo-que-apuntaste = Ce que vous avez noté
-lec2-oculta = Réfléchissez avant de regarder : se remémorer ancre bien mieux que relire.
-lec2-por-que-paso = Pourquoi c’est arrivé : { $causa }
-lec2-abrir-completa = Ouvrir la leçon complète
-lec2-lo-recordabas = Vous en souveniez-vous ? Choisissez avec la souris ou avec
-lec2-nota-recordaba = Je m’en souvenais
-lec2-nota-a-medias = En partie
-lec2-nota-olvide = J’avais oublié
-lec2-vuelve-manana = Revient demain
-lec2-vuelve-en = Revient dans { $dias } jours
-lec2-saltar = Passer celle-ci
-lec2-repaso-pie = Votre réponse sert à comparer : elle n’est pas enregistrée.
-lec2-siguiente = Suivante
-lec2-repaso-elige = Choisissez 1, 2 ou 3 : vous en souveniez-vous ?
-lec2-repaso-hecho = Révision terminée
-lec2-repaso-hechas = { $n ->
-    [one] Vous avez révisé 1 leçon. Revenez à sa prochaine échéance.
-   *[other] Vous avez révisé { $n } leçons. Elles reviendront à leur échéance.
-  }
-lec2-repaso-volver = Retour à la liste
 ## v2-galeria
 galeria-subtitulo = { $cuantas } · conservées 7 jours
 galeria-buscar = Rechercher, y compris le texte des captures
@@ -2601,9 +2313,13 @@ timeline-ayer = Hier
 timeline-exportar = Exporter
 timeline-volver = Retour
 timeline-pista = Que se passe-t-il ? Écrivez ou dictez…
+timeline-frase-titulo = voilà ce qui s’est passé
+timeline-frase-titulo-corta = il s’est passé que
+timeline-frase-descripcion = et je te raconte
+timeline-frase-descripcion-corta = je te raconte
 timeline-vacio = Rien dans les dernières 24 heures pour l’instant.
     Écrivez ou dictez ce qui se passe et appuyez sur Entrée.
-    En dictée, « con esto pasó… » commence le titre et « y así te lo cuento… » la description.
+    En dictée, « { timeline-frase-titulo }… » commence le titre et « { timeline-frase-descripcion }… » la description.
 timeline-vacio-dia = Rien n’a été noté ce jour-là.
 timeline-nota-de-voz = Note vocale
 timeline-sin-titulo-voz = Note vocale
@@ -2649,8 +2365,6 @@ timeline-mic-sin-texto = Non compris : seul l’audio est conservé
 
 
 ## simple-lecciones
-lecs-menos-campos = Moins de champs
-lecs-ficha-completa = Type, causes et mots-clés…
 
 ## galeria-menu (5-oct-2026, right click)
 galeria-guardar-como = Enregistrer sous…
@@ -2682,7 +2396,6 @@ timeline-momentos-vacio = Les moments que vous choisissez arrivent ici. Dans «�
 timeline-a-momentos = Envoyé dans Moments
 timeline-fuera-de-momentos = Retiré de Moments
 timeline-estado-sobre-todo = Surtout
-timeline-estado-lo-mas = « { $que } »
 timeline-exportar-busqueda = Recherche : « { $que } »
 timeline-pestana-lecciones = Leçons
 timeline-sub-lecciones = { $n ->
@@ -2694,7 +2407,6 @@ timeline-lecciones-vacio = Aucune leçon pour l’instant. Appuyez sur l’ampou
 timeline-gravedad-leve = Mineure
 timeline-gravedad-importante = Importante
 timeline-gravedad-grave = Grave
-timeline-otra-vez = C’est arrivé à nouveau +1
 timeline-otra-vez-hecho = Noté : { $n } fois maintenant
 timeline-leccion = Leçon
 timeline-leccion-hecha = 💡 Leçon créée : elle est dans « Leçons »
@@ -2760,7 +2472,6 @@ tareas5-corregir-pista = Texte de la tâche…
 tareas5-imagen-pista = Ajouter des images · Ctrl+V colle une image copiée
 tareas5-guardar = Enregistrer
 tareas5-corregida = Tâche mise à jour
-tareas5-vista-lista = Liste · Ctrl+L
 tareas5-vista-tarjetas = Cartes · Ctrl+T
 tareas5-vista-horario = Emploi du temps · Ctrl+H
 tareas5-vista-kanban = Tableau Kanban · Ctrl+K
@@ -2778,7 +2489,6 @@ tareas5-quitar = Retirer
 ## salida (6-oct-2026): the floating window to drag out what was exported
 salida-titulo = Prêt à partager
 salida-titulo-exportado = Exporté
-salida-titulo-guardado = Enregistré
 salida-pista = Faites glisser un fichier vers une autre application ou un dossier
 salida-todos = Faire glisser les { $n } ensemble
 salida-arrastra-todos = Maintenez et faites glisser pour tous les prendre
@@ -2786,13 +2496,11 @@ salida-soltado = Déposé · vous pouvez aussi le déposer ailleurs
 salida-copiado = Copié dans le presse-papiers
 salida-pineado = Épinglé
 salida-no-se-pudo = Opération impossible
-salida-compartir = Partager
 salida-copiar = Copier
 salida-abrir = Ouvrir
 salida-carpeta = Afficher dans le dossier
 salida-pinear = Épingler
 salida-compartir-menu = Partager…
-compartir-arrastrar = Faites glisser d’ici vers une autre application · cliquez pour le garder à l’écran
 
 ## al-movil (6-oct-2026): a photo from the Flow plugin to the phone's open canvas
 al-movil-lienzo = { $n ->
@@ -3031,8 +2739,6 @@ asistente-voz-sin-whisper = Ce PC ne peut pas convertir la voix en texte : ONN
 asistente-voz-fallo = Impossible de convertir votre voix en texte.
 asistente-voz-cancelado = Annulé : rien n’a été envoyé.
 asistente-voz-nada-que-leer = Cette réponse n’a pas de texte à lire.
-asistente-voz-leer = Lire à voix haute
-asistente-voz-callar = Arrêter la lecture
 
 # The buttons of the Windows notifications (15-oct).
 notif-hecha = Fait
@@ -3091,7 +2797,6 @@ horario-sin-clases = Aucun cours dans l’emploi du temps pour l’instant : o
 horario-guardada = Vous l’entendrez au prochain cours de { $clase }
 
 ## Weekly timetable window and subjects (18-oct-2026)
-horario-titulo = Emploi du temps
 horario-subtitulo = { $asignaturas } matières · { $clases } cours
 horario-nueva = Nouvelle matière (@salle facultatif)
 horario-domingo = Dimanche
@@ -3114,15 +2819,12 @@ horario-asignatura-borrada = « { $asignatura } » retirée de l’emploi du
 horario-repetida = « { $asignatura } » est déjà dans la liste
 horario-arrastra = Faites glisser « { $asignatura } » sur la semaine
 horario-no-guardado = Impossible d’enregistrer l’emploi du temps
-tareas-asignatura-pista = Matière de la tâche
 tareas-destino-pista = Liste ou matière de la tâche
 tareas-sin-asignatura = Sans matière (vers la Boîte de réception)
-tareas-sin-asignaturas = Aucune matière pour l’instant : créez-les dans « Emploi du temps… »
 tareas-apuntar-en-asignatura = Nouvelle tâche de { $asignatura }…
 
 # Viewers: the frame to print (2026-10-19)
 marco-imprimir-pista = Tracez un cadre sur ce que vous voulez imprimer · Entrée : tout · Échap : quitter
-lector-marco = Cadre à imprimer (P)
 marcos-pista = Faites glisser pour cadrer · un numéro : aller à ce cadre · Ctrl+P : tout imprimer · Suppr : retirer le dernier · I ou Échap : quitter
 marcos-imprimir = Imprimer les cadres (Ctrl+P)
 marcos-borrar = Effacer les cadres
@@ -3151,7 +2853,6 @@ barra-cerrar = Fermer (Échap)
 visor-letra = Police et espacement (T / B)
 lector-mas = Plus d’options (G)
 visor-indice-pista = Sommaire (C)
-riel-hojita = Bloc-notes (Ctrl+Maj+N)
 riel-editar = Modifier (Alt+R)
 riel-mirar = Revenir à la lecture (Alt+R ou Échap)
 
@@ -3204,10 +2905,6 @@ carpeta-exportando = Export du PDF…
 carpeta-exportado = PDF enregistré : { $nombre }
 carpeta-no-se-exporto = Export impossible : aucune page n’a de contenu
 carpeta-vacia = Ce dossier est vide. Appuyez sur « Nouvelle page », ou dans le chat choisissez « Ajouter au dossier… » dans le menu d’un canevas ou d’une image.
-carpeta-antes = Plus tôt
-carpeta-despues = Plus tard
-carpeta-renombrar = Renommer
-carpeta-quitar = Retirer du dossier
 carpeta-no-esta = Ce dossier n’est plus dans le chat
 carpeta-pista = Faites glisser une page pour la déplacer · F2 change son titre · Suppr la retire (elle réapparaît dans le chat)
 carpeta-escribe-titulo = Saisissez le titre et appuyez sur Entrée
@@ -3217,8 +2914,6 @@ carpeta-grabacion-detalle = { $duracion } · { $capturas ->
    *[other] { $capturas } captures
 }
 carpeta-estudiar = Étudier
-carpeta-de-la-grabacion = De l’enregistrement
-carpeta-adjuntos = Joints au cours
 carpeta-adjunto-insignia = Pièce jointe · ne fait pas partie de l’enregistrement
 carpeta-adjuntar = Joindre au cours
 carpeta-adjuntado = Joint au cours : { $nombre }
@@ -3246,7 +2941,6 @@ clase-importante-decision = Décision
 clase-importante-pregunta = Question
 clase-importante-examen = Examen
 clase-importante-buscando = Recherche de l’essentiel…
-clase-importante-nada = Rien de tel dans le cours
 clase-importante-tareas = + { $n } tâches vers Tâches
 clase-importante-anadidas = { $n } tâches ajoutées à la Boîte de réception des Tâches
 tareas-prioridad-urgente = Urgente

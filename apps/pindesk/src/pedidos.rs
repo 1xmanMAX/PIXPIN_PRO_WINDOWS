@@ -304,7 +304,7 @@ pub enum Pedido {
         operacion: OperacionPines,
     },
     /// **Un momento en el timeline** (15-oct): con `texto`, se apunta (su
-    /// primera frase es el titulo, `pindesk_timeline::frases::partir`); sin
+    /// primera frase es el titulo, `pindesk_timeline::frases::partir_con`); sin
     /// el, se abre la ventana.
     Timeline {
         #[serde(default)]
@@ -1335,7 +1335,7 @@ fn hacer(p: Pedido, cx: &Contexto) -> Result<Hecho, Fallo> {
         Pedido::Timeline { texto } => {
             match texto.as_deref().map(str::trim).filter(|t| !t.is_empty()) {
                 Some(t) => {
-                    let titulo = apuntar_en_timeline(raiz, t, ahora)?;
+                    let titulo = apuntar_en_timeline(raiz, t, ahora, cx.idioma)?;
                     return Ok(aviso("pedido-timeline-apuntado", &[("titulo", titulo)]));
                 }
                 None => crate::timeline::abrir(cx.idioma, cx.ubicacion.clone()),
@@ -1801,8 +1801,15 @@ fn comando_por_la_ventana(comando: pindesk_store::comandos::Comando, espera: std
 /// **Apunta un momento en el timeline** como la caja de su ventana: la
 /// primera frase es el titulo y lo demas la descripcion. La ventana, si esta
 /// abierta, lo ve al cambiar el fichero (`Almacen::huella`).
-pub(crate) fn apuntar_en_timeline(raiz: &Path, texto: &str, cuando: i64) -> Result<String, Fallo> {
-    let (mut titulo, descripcion) = pindesk_timeline::frases::partir(texto.trim());
+pub(crate) fn apuntar_en_timeline(
+    raiz: &Path,
+    texto: &str,
+    cuando: i64,
+    idioma: pindesk_store::Idioma,
+) -> Result<String, Fallo> {
+    let textos = Catalogo::nuevo(idioma);
+    let frases = pindesk_timeline::frases::Frases::del_catalogo(|k| textos.t(k));
+    let (mut titulo, descripcion) = pindesk_timeline::frases::partir_con(texto.trim(), &frases);
     if titulo.trim().is_empty() {
         titulo = texto.trim().chars().take(90).collect();
     }

@@ -3942,6 +3942,10 @@ fn pintar_fotos(p: &Pintor, v: &mut Vista, tema: &Tema, e: f32, textos: &Catalog
     p.soltar_recorte();
 }
 
+/// La muestra en PNG de la ventana (las capturas de la Store).
+#[cfg(test)]
+mod muestras;
+
 #[cfg(test)]
 mod pruebas {
     use super::*;

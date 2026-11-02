@@ -1057,3 +1057,13 @@ fn una_nota_de_voz_va_dentro_del_html_con_o_sin_hojas() {
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
+
+#[test]
+fn la_pagina_de_tareas_pone_el_mes_como_va_dentro_de_una_fecha() {
+    // «5 октября», no «5 октябрь»: el ruso lo pide en genitivo
+    // (`chat-mes-dia-*`); el español no cambia.
+    let ru = tareas::rotulos(&Catalogo::nuevo(Idioma::Ruso));
+    assert_eq!(ru.meses[9], "октября");
+    let es = tareas::rotulos(&textos());
+    assert_eq!(es.meses[9], "octubre");
+}

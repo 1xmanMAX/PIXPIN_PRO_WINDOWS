@@ -67,6 +67,10 @@ impl CapturasDelAparato for CapturasDelMac {
                     cuando: e.cuando,
                     bytes: e.bytes as i64,
                     mime: pindesk_sincro::al_lienzo::mime_de(&e.nombre).to_string(),
+                    // La galeria del Mac aun no lee el texto de sus capturas:
+                    // vacio. `galeria::al_dia` no olvida por eso el texto que
+                    // trajo otro aparato (solo pone uno que no estaba).
+                    texto: String::new(),
                     nombre: e.nombre,
                 })
                 .collect(),

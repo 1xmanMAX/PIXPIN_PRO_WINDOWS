@@ -1225,7 +1225,13 @@ mod pruebas {
             };
             pindesk_proyecto::cuaderno::anadir(&carpeta, &m).unwrap();
         }
-        crate::pedidos::apuntar_en_timeline(&raiz, "Llego el camion", ahora).unwrap();
+        crate::pedidos::apuntar_en_timeline(
+            &raiz,
+            "Llego el camion",
+            ahora,
+            pindesk_store::Idioma::Espanol,
+        )
+        .unwrap();
         let a = contar(
             &raiz,
             ahora - 1000,

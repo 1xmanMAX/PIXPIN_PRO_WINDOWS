@@ -63,8 +63,8 @@ fn a_png(a: &Abierto, ficha: &Ficha, tema: &Tema, claro: bool, nombre: &str) -> 
     );
     let miniaturas = crate::miniaturas::Miniaturas::nuevo();
     let previas = crate::miniaturas::Miniaturas::con_lado(super::PREVIA_LADO);
-    let fichas = vec![ficha.clone()];
-    let orden = vec![0usize];
+    let fichas = crate::ventana_chat::muestra_lista::fichas(ficha, a, ahora);
+    let orden = crate::ventana_chat::muestra_lista::orden(&fichas);
     let marcados = Default::default();
     a.colocado.borrow_mut().ancho = 0;
     for _ in 0..2 {

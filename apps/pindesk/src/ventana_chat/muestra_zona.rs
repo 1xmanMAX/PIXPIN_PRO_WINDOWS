@@ -124,8 +124,8 @@ fn muestra_del_chat_con_la_zona() {
     );
     let miniaturas = crate::miniaturas::Miniaturas::nuevo();
     let mut previas = crate::miniaturas::Miniaturas::con_lado(super::PREVIA_LADO);
-    let fichas = vec![ficha.clone()];
-    let orden = vec![0usize];
+    let fichas = crate::ventana_chat::muestra_lista::fichas(&ficha, &a, ahora);
+    let orden = crate::ventana_chat::muestra_lista::orden(&fichas);
     let marcados = Default::default();
     // Unas vueltas: la primera coloca las burbujas, las siguientes suben la
     // foto (va de cuatro en cuatro) y la pintan.

@@ -109,9 +109,6 @@ cuenta-atras-cancelar = Esc untuk berhenti
 comando-pinear-seleccion = Pin pilihan di Explorer
 
 # The settings window (P6).
-ajustes-pestana-atajos = Pintasan
-ajustes-pestana-general = Umum
-ajustes-pestana-captura = Tangkapan
 ajustes-pestana-dibujo = Menggambar
 ajustes-iman = Tempelkan ke titik penting
 ajustes-iman-esquinas = Sudut dan titik ujung
@@ -121,26 +118,17 @@ ajustes-iman-radio = Jarak tangkap (px)
 ajustes-idioma = Bahasa
 ajustes-idioma-sistema = Sama dengan Windows
 ajustes-arranque = Mulai bersama Windows
-ajustes-color = Format pengambil warna
-ajustes-nivel = Performa
 ajustes-nivel-auto = Otomatis
 ajustes-nivel-completo = Penuh
 ajustes-nivel-ligero = Ringan
 ajustes-pdf-aligerar = Perkecil PDF saat ditambahkan ke obrolan
-ajustes-pdf-nivel = Seberapa kecil (Kecil dan Maks: hanya manual)
 ajustes-pdf-nivel-sin-perdida = Persis
 ajustes-pdf-nivel-equilibrado = Sedang
 ajustes-pdf-nivel-pequeno = Kecil
 ajustes-pdf-nivel-extremo = Maks
-ajustes-retardo-captura = Detik hitung mundur sebelum menangkap
-ajustes-limite-scroll = Tinggi maksimum tangkapan bergulir, dalam piksel
-ajustes-gif-ritmo = Bingkai per detik saat merekam
-ajustes-gif-retardo = Detik jeda sebelum merekam
 ajustes-sin-atajo = Tanpa pintasan
 ajustes-pulsa-combinacion = Tekan kombinasinya…
 ajustes-choca = duplikat
-ajustes-cerrar = Tutup
-ajustes-abrir-fichero = Buka file pengaturan
 
 # Reading the text of a pin (P4.2).
 pin-copiar-texto = Salin teks dalam gambar
@@ -174,16 +162,12 @@ chat-clase-proyecto = Proyek
 chat-clase-miniapp = Aplikasi mini
 chat-escribe = Tulis sesuatu…
 # The chat, like PinDesk Android's (guardados/MensajesActivity.kt).
-chat-cosas = { $n ->
-   *[other] { $n } item
-}
 chat-elegidos = { $n ->
    *[other] { $n } dipilih
 }
 chat-lienzo = Kanvas
 chat-tabla = Tabel
 chat-viene-de = Berasal dari
-chat-comentar = Komentari ini
 chat-copiar = Salin
 chat-fijar = Sematkan di atas
 chat-soltar = Lepas dari atas
@@ -205,13 +189,10 @@ chat-recordar = Ingatkan saya
 chat-rescatar = Simpan ini
 chat-solo-la-foto = Tampilkan foto saja
 chat-ver-hilo = Lihat komentar
-chat-etiquetar = Tambah tag
-chat-quitar-etiqueta = Hapus tag
 chat-reenviar = Teruskan
 chat-unir = Tambahkan ke proyek
 chat-transcribir = Ubah menjadi teks
 chat-letra = Lirik atau teks
-chat-elegir = Pilih
 chat-borrar = Hapus
 chat-borrar-aviso = Ini akan dihapus dari percakapan. File lampiran ikut terhapus. Lanjutkan?
 chat-biblioteca-audio = Pustaka audio
@@ -223,30 +204,18 @@ chat-fondo-brezo = Semak ungu
 chat-fondo-bosque = Hutan
 chat-fondo-ocaso = Senja
 chat-fondo-pizarra = Batu tulis
-chat-adj-archivo = File
-chat-adj-pagina = Halaman dari proyek
-chat-adj-proyecto = Seluruh proyek
-chat-adj-conversacion = Percakapan
 chat-adj-telepronter = Teleprompter
 chat-adj-pronunciar = Pelafalan
-chat-adj-miniapp = Aplikasi mini
 chat-reenviado = Diteruskan
 chat-copiado = Disalin
-chat-compartido = Disalin ke papan klip: tempelkan di mana pun Anda ingin membagikannya
 chat-compartir-sin-panel = Windows tidak membuka panel Bagikan: isinya ada di papan klip, tempelkan di mana pun Anda mau
 chat-pineado = Di-pin
 chat-foto-en-la-nota = Foto ditambahkan ke teks Anda: semuanya dikirim sebagai satu catatan
 chat-sin-archivo = Pesan ini tidak memiliki file di komputer ini
 chat-sin-origen = Kanvas itu tidak ada di proyek ini
 chat-sin-proyectos-otros = Tidak ada proyek lain untuk tujuan pengiriman
-chat-proyectos-lista = Proyek adalah daftar di sebelah kiri
-chat-no-hay-voz = Merekam catatan suara belum tersedia di Windows
-chat-no-hay-aligerar = Memperkecil PDF belum tersedia di Windows
 chat-no-hay-unir = Di Windows setiap obrolan sudah merupakan proyek: gunakan Teruskan untuk memindahkannya ke proyek lain
-chat-no-hay-biblioteca = Pustaka audio belum tersedia di Windows
 chat-ver-dibujo-entero = Tampilkan seluruh gambar
-chat-no-hay-pagina = Melampirkan halaman dari proyek belum tersedia di Windows
-chat-no-hay-telepronter = Teleprompter belum tersedia di Windows
 chat-no-se-pudo = Tidak dapat dilakukan: periksa log PinDesk
 chat-fecha = { $dia } { $mes }
 chat-fecha-con-ano = { $dia } { $mes } { $ano }
@@ -293,21 +262,12 @@ info-vacia-voz = Catatan suara akan muncul di sini
 info-vacia-dibujos = Gambar dari obrolan ini akan muncul di sini
 info-vacia-fijados = Yang Anda sematkan akan muncul di sini
 info-vacia-buzon = Kotak masuk kosong
-info-abrir = Buka
-info-abrir-enlace = Buka tautan
-info-reproducir = Putar
-info-ver-en-el-chat = Tampilkan di obrolan
 info-titulo = Info
 adjuntar-imagen = Foto atau video
 adjuntar-archivo = File
 adjuntar-lienzo = Kanvas baru
-confirmar-titulo = { $cuantos ->
-   *[other] Tambahkan { $cuantos } file
-}
-confirmar-resto = dan { $cuantos } lainnya
 confirmar-pie = Tambahkan keterangan…
 confirmar-cancelar = Batal
-confirmar-aceptar = Tambah
 adjuntar-tabla = Tabel baru
 tabla-nueva = Tabel
 chat-nombre-nuevo = Nama proyek…
@@ -323,11 +283,7 @@ recibir-salir = Esc untuk menutup
 comando-recibir-del-movil = Terima dari ponsel…
 comando-sincronizar = Sinkronkan
 adjuntar-del-movil = Ambil dari ponsel…
-menu-foto-aqui = Gambar langsung di sini
 proyecto-renombrar = Ganti nama
-proyecto-logo-poner = Atur gambar logo…
-proyecto-logo-quitar = Hapus gambar logo
-proyecto-logo-error = Tidak dapat mengatur gambar logo itu
 # The chat photo (25-oct-2026): image, emoji or colour in the circle.
 foto-chat-menu = Ubah foto obrolan…
 foto-chat-titulo = Foto obrolan
@@ -580,7 +536,6 @@ papelera-no-se-pudo = Tidak dapat memulihkan «{ $nombre }»: { $motivo }
 papelera-recuperados = { $n } dari { $total } proyek dipulihkan
 
 ## The document viewer: Word, EPUB books and web pages (task 2.1)
-visor-html-titulo = PinDesk — halaman
 ## The Office pin: Office's preview as a pin (2026-10-10)
 office-titulo = Pratinjau Office
 office-abriendo = Membuka dengan pratinjau Office…
@@ -588,8 +543,6 @@ office-tarda = Office memerlukan waktu (harus dijalankan dulu). Anda bisa menung
 office-fallo = Office tidak dapat menampilkan pratinjau file ini. Buka di aplikasi lain dengan “Buka dengan…” (tombol ↗ di bilah).
 office-internet = File ini berasal dari internet dan, demi keamanan, Windows tidak mengizinkan pratinjaunya. Buka di aplikasi lain dengan “Buka dengan…” (tombol ↗ di bilah), atau buka blokirnya di Properti.
 visor-titulo = Penampil PinDesk
-visor-marcador = Penanda di sini
-visor-ajustes = Pengaturan membaca
 visor-tamano = Ukuran teks
 visor-quitar-marcadores = Hapus penanda
 visor-guardar-pagina = Simpan sebagai halaman web
@@ -598,15 +551,10 @@ visor-abrir-carpeta = Buka folder
 visor-guardado = Disimpan ke "{ $nombre }"
 visor-no-guardado = Tidak dapat menyimpan
 visor-vacio = Dokumen ini tidak punya teks untuk ditampilkan
-visor-ayuda = Gulir untuk membaca · +/− ukuran · M penanda · G pengaturan · Esc untuk keluar
-visor-elige-emoticono = Tandai dengan apa?
-visor-sin-marcadores = Belum ada penanda
 
 ## The readers: comfortable reading, annotating on top and the PDF reader
-lector-listo = Selesai
 lector-indice = Daftar isi
 lector-letra-fijada = Huruf dikunci: ada catatan yang digambar di atasnya
-lector-letra-normal = Huruf normal
 lector-letra-fija = Monospace
 lector-grosor-normal = Biasa
 lector-grosor-gruesa = Tebal
@@ -620,11 +568,8 @@ lector-pdf-reconociendo = Mengenali teks di halaman…
 lector-pdf-reconocido = Teks dikenali: sekarang bisa dipilih dan ditandai
 lector-pdf-sin-texto = Tidak ada teks di halaman ini
 lector-exportando = Menyimpan PDF beranotasi… { $hechas } dari { $total }
-lector-exportar-pdf = Simpan PDF dengan catatan
 lector-anotado = beranotasi
-lector-ayuda-pdf = Gulir untuk membalik halaman · Ctrl+gulir zoom · Ctrl+[ Ctrl+] ruang untuk anotasi · L dengarkan · A anotasi · M penanda · Esc untuk keluar
 lector-office-titulo = Word dan PowerPoint di PinDesk
-lector-ayuda-office = Gulir untuk membalik halaman · Ctrl+gulir zoom · seret di atas teks untuk memilih · Ctrl+C salin · Ctrl+F cari · Ctrl+P cetak · F5 presentasi · A anotasi · N negatif · Esc untuk keluar
 lector-presentar = Presentasi (F5)
 lector-modo-lectura = Mode baca (teks disusun ulang)
 lector-imprimir = Cetak… (Ctrl+P)
@@ -648,7 +593,6 @@ lector-voz-parrafo = Paragraf { $n } dari { $total }
 lector-voz-preparando = Menyiapkan suara…
 lector-voz-no-respondio = Microsoft tidak menjawab
 lector-voz-sin-voz = Tidak ada suara
-lector-verde-aqui = Penanda hijau di sini: pembacaan akan dimulai dari titik ini
 lector-espacio-tope = Tidak ada ruang lagi di sisi itu
 lector-espacio-nada = Sisi itu sudah tidak punya ruang
 lector-sin-lado = Gerak ke samping dikunci: hanya gulir ke atas dan ke bawah
@@ -683,78 +627,12 @@ sinc-presencia-apagada = Kehadiran dinonaktifkan di pengaturan ([sincro] presenc
 bandeja-abrir-documento = Buka dokumen…
 
 ## Canvas shapes and ink: arrowheads, fills and text style (group A)
-lienzo-punta-ninguna = Tanpa ujung panah
-lienzo-punta-flecha = Panah
-lienzo-punta-barra = Batang
-lienzo-punta-circulo = Lingkaran
-lienzo-punta-circulo-hueco = Garis luar lingkaran
-lienzo-punta-triangulo = Segitiga
-lienzo-punta-triangulo-hueco = Garis luar segitiga
-lienzo-punta-rombo = Belah ketupat
-lienzo-punta-rombo-hueco = Garis luar belah ketupat
-lienzo-punta-inicio = Ujung panah awal
-lienzo-punta-fin = Ujung panah akhir
-lienzo-trama-zigzag = Zigzag
-lienzo-trama-tiralineas = Garis bergaris
-lienzo-texto-negrita = Tebal
-lienzo-texto-cursiva = Miring
-lienzo-texto-tachado = Coret
-lienzo-presion-firme = Goresan lebar tetap
-lienzo-flecha-codos = Panah siku
-lienzo-flecha-libre = Panah bebas
-lienzo-arco-guia = Oval panduan, belum ditelusuri
-lienzo-luces-fuerza = Kekuatan cahaya
 
 ## Build and measure: fill, trim, extend, points and angles (group C)
-lienzo-bote = Ember isi
-lienzo-bote-ayuda = Klik di dalam celah tertutup dan celah itu akan diisi, meski dibentuk oleh beberapa bentuk berbeda.
-lienzo-bote-abierto = Celah ini tidak tertutup: catnya akan bocor lewat retakan.
-lienzo-recortar = Pangkas
-lienzo-recortar-ayuda = Klik potongan sisa sebuah goresan dan potongan itu hilang, sampai titik goresan lain memotongnya.
-lienzo-extender = Perpanjang
-lienzo-extender-ayuda = Klik ujung yang kurang panjang dan ujung itu mencapai benda pertama di jalurnya.
-lienzo-extender-sin-tope = Tidak ada apa pun di jalurnya: garis yang ditarik ke kehampaan bukan garis yang diperpanjang.
-lienzo-punto = Titik berlabel
-lienzo-punto-ayuda = Klik perpotongan, titik ujung, atau pusat lingkaran dan titik muncul dengan hurufnya.
-lienzo-punto-sin-sitio = Tidak ada yang bisa dinamai di sana: titik diletakkan di perpotongan, titik ujung, atau pusat.
-lienzo-punto-serie-mayusculas = Huruf kapital (A, B, C…)
-lienzo-punto-serie-minusculas = Huruf kecil (a, b, c…)
-lienzo-punto-serie-numeros = Angka (1, 2, 3…)
-lienzo-angulos = Sudut langsung
-lienzo-angulos-ayuda = Saat Anda memindahkan sesuatu, ditampilkan besar sudut yang Anda sentuh.
-lienzo-area = Luas
 
 ## Select, transform and bind (group B)
-lienzo-lazo = Laso
-lienzo-lazo-ayuda = Gambar di sekeliling yang ingin Anda pilih. Yang sepenuhnya di dalam akan diambil; dengan Shift, yang tersentuh goresan juga.
-lienzo-lazo-encerrar = Hanya yang di dalam
-lienzo-lazo-rozar = Yang tersentuh goresan juga
-lienzo-voltear-horizontal = Balik horizontal
-lienzo-voltear-vertical = Balik vertikal
-lienzo-voltear-ayuda = Mencerminkan pilihan terhadap pusat seluruh grup, bukan tiap bentuk terhadap dirinya sendiri.
-lienzo-rejilla = Kertas bergaris
-lienzo-rejilla-ninguna = Polos
-lienzo-rejilla-lineas = Kotak-kotak
-lienzo-rejilla-puntos = Titik-titik
-lienzo-rejilla-imanta = Tempelkan kursor ke kotak
-lienzo-rejilla-ayuda = Acuan yang sudah ada sebelum goresan pertama. Tidak muncul saat diekspor.
-lienzo-iman-intersecciones = Perpotongan antarbentuk
-lienzo-iman-intersecciones-ayuda = Titik tempat dua goresan saling memotong, yang bukan sudut dari keduanya.
-lienzo-iman-bordes = Tepi bentuk
-lienzo-iman-bordes-ayuda = Penggaris siku: kursor meluncur di sepanjang tepi, bukan hanya di sudutnya.
-lienzo-iman-eje = Titik asal dan sumbu koordinat
-lienzo-enganche = Ikat panah ke bentuk
-lienzo-enganche-ayuda = Lepaskan ujungnya di sebuah bentuk dan panah akan mengikutinya saat dipindahkan.
-lienzo-enganche-soltar = Lepaskan ujung
-lienzo-tirador-punta = Pindahkan ujung
-lienzo-tirador-anadir = Tekuk di sini
-lienzo-copiar-estilo = Salin gaya
-lienzo-copiar-estilo-ayuda = Ambil warna, goresan, dan isian dari satu bentuk lalu tempelkan ke yang lain. Hanya yang diterima kedua jenis yang terbawa.
-lienzo-estilo-tomado = Gaya diambil
-lienzo-estilo-sin-tomar = Anda belum mengambil gaya.
 
 # The attachment the document viewer can open without leaving PinDesk.
-chat-abrir-aqui = Buka di sini
 
 # The seven mini-apps from the phone, and their panel.
 mini-moneda = USD
@@ -800,15 +678,6 @@ chat-voz-fallo = Catatan suara tidak dapat direkam.
 # Shrinking an attached PDF: it lowers the photos inside, and never for the worse.
 pdf-aligerado = Diperkecil: dari { $antes } menjadi { $despues }
 pdf-aligerar-cifrado = PDF dienkripsi dan tidak bisa ditulis ulang tanpa risiko.
-pdf-aligerar-indice-comprimido = PDF ini menyimpan indeksnya dalam bentuk terkompresi, dan menyusunnya ulang belum didukung di sini.
-pdf-aligerar-objetos-comprimidos = PDF ini menyimpan objeknya dalam bentuk terkompresi, dan menyusunnya ulang belum didukung di sini.
-pdf-aligerar-sin-trailer = PDF tidak punya trailer yang bisa dibaca.
-pdf-aligerar-sin-objetos = Tidak ada objek di dalam PDF yang dikenali.
-pdf-aligerar-largo-indirecto = Salah satu stream di PDF tidak menyebutkan panjangnya.
-pdf-aligerar-objetos-sin-entender = Ada bagian PDF yang tidak dipahami pembaca ini; menulis ulang bisa menghilangkannya.
-pdf-aligerar-sin-fotos = Tidak ada foto untuk diperkecil: ukurannya berasal dari teks atau vektor.
-pdf-aligerar-ya-al-minimo = Foto sudah di tingkat minimum.
-pdf-aligerar-no-compensa = Hanya akan turun dari { $antes } menjadi { $despues }: tidak sepadan.
 pdf-aligerar-no-se-lee = File yang diperkecil tidak terbaca dengan benar; file asli dipertahankan.
 aligerar-progreso = Memperkecil… { $por }%
 aligerar-empezado = Memperkecil PDF…
@@ -827,7 +696,6 @@ chat-recordatorio-quitado = Pengingat dihapus
 chat-recordatorio-titulo = Pengingat
 
 # A message menu entry: send the attachment to someone over Wi-Fi.
-chat-enviar-wifi = Kirim lewat Wi-Fi
 
 # Turning a voice note into text with Vosk. What is missing is named with its
 # file and link: PinDesk never downloads anything on its own.
@@ -853,7 +721,6 @@ musica-sinc-empieza = Tekan Spasi (atau “Tandai”) tepat saat setiap baris di
 musica-sinc-siguiente = Berikutnya: { $linea }
 musica-sinc-todas = Semua baris sudah ditandai. Simpan liriknya.
 musica-sinc-marcar = Tandai { $n }/{ $total }
-musica-sinc-deshacer = Urungkan
 musica-sinc-guardar = Simpan
 musica-sinc-cancelar = Batal
 musica-sinc-guardada = Lirik disinkronkan
@@ -969,7 +836,6 @@ exportar-tipo-pdf = Dokumen PDF
 exportar-tipo-html = Halaman web satu file
 exportar-vacio = Tidak ada yang bisa diekspor dengan ini.
 exportar-fallo = Kanvas tidak dapat diekspor.
-exportar-hecho = Diekspor: { $nombre }
 imprimir-menu = Cetak…	Ctrl+P
 imprimir-vacio = Tidak ada yang bisa dicetak.
 imprimir-fallo = Kanvas tidak dapat dicetak.
@@ -1017,8 +883,6 @@ compartir-texto = Teks
 compartir-csv = Tabel (CSV)
 compartir-pindesk = PinDesk (.pindesk)
 compartir-dxf = DXF
-compartir-xlsx = Excel (xlsx)
-compartir-docx = Word (docx)
 compartir-md = Markdown
 compartir-exportar = Ekspor…
 compartir-paginas-de = Yang disertakan · { $marcadas } dari { $total }
@@ -1030,7 +894,6 @@ compartir-preparando = Menyiapkan…
 compartir-marca-alguna = Centang setidaknya satu halaman
 compartir-en-cuanto-este = Segera setelah siap
 compartir-peso-ficheros = { $peso } · { $n } file
-compartir-panel-abierto = Pilih tujuan pengiriman
 compartir-guardado = Disimpan: { $nombre }
 compartir-copiado = Disalin ke papan klip
 compartir-no-se-pudo = Tidak dapat disiapkan
@@ -1052,7 +915,6 @@ compartir-tipo-nota = Catatan
 
 # Drawing tools: the ones shown in the canvas, the reader, pins and the
 # screen annotator. Turning one off removes it from the bar and its key.
-ajustes-pestana-herramientas = Alat
 herramientas-lazo = Laso
 herramientas-rectangulo = Persegi panjang
 herramientas-rombo = Belah ketupat
@@ -1122,11 +984,6 @@ chat-fecha-corta = { $dia } { $mes }
 chat-enlace-no-abre = Tautan tidak dapat dibuka
 
 ## D11: a spreadsheet in the chat is a book of tables (ventana_chat/libro.rs)
-libro-titulo = Lembar kerja
-libro-xls-antiguo = File .xls lama tidak bisa dibaca: buka lalu simpan sebagai .xlsx
-libro-abrir-fuera = Buka dengan aplikasi lain?
-libro-no-es = File ini bukan lembar kerja yang valid
-libro-sin-hojas = Buku kerja tidak punya lembar berisi data
 hoja-preparando = Menyiapkan lembar untuk diedit…
 hoja-editar-aviso = Perubahan disimpan di lembar obrolan; file aslinya tetap sama
 hoja-editando = Mengedit · Esc untuk melihat
@@ -1432,8 +1289,6 @@ chat-insertar-en-nota = Sisipkan ke catatan
 ## Canvas: weld vertices and number points (lienzo-geometria, 26-sep)
 herramientas-nudo = Las titik sudut
 herramientas-bolita = Bola: sapukan untuk memilih
-lienzo-nudo = Las titik sudut
-lienzo-nudo-ayuda = Klik tempat dua bentuk bersentuhan dan keduanya akan disematkan: tidak lagi terpisah dan, dengan satu sematan, berputar di sekitarnya. Klik sematan untuk menghapusnya; seret dengan tangan untuk membawa bentuk yang tersemat.
 lienzo-punto-serie = Label titik
 lienzo-cota-pedir = Tanyakan panjang saat digambar
 lienzo-panel-dureza = Kekerasan pensil
@@ -1481,7 +1336,6 @@ funciones-figuras-detalle = Pustaka bentuk Anda untuk kanvas
 figuras-mias = Bentuk saya
 figuras-todas = Semua
 figuras-vacia = Belum ada bentuk. Di kanvas, pilih sesuatu lalu “Simpan sebagai bentuk”.
-figuras-cerrar = Tutup
 figuras-borrar = Hapus bentuk
 figuras-borrar-seguro = Tekan lagi untuk menghapus
 figuras-elegir-para = Pilih bentuk untuk “{ $chat }”
@@ -1740,12 +1594,8 @@ galeria-borrada = Dipindahkan ke tempat sampah PinDesk
 galeria-no-se-pudo = Tidak dapat dilakukan: { $motivo }
 galeria-conservada-aviso = Dipertahankan: ada di Pesan tersimpan dan tidak akan dihapus
 bandeja-galeria-capturas = Galeri tangkapan…
-chat-galeria-capturas = Galeri tangkapan
 # Lessons learned (3-oct, as on the phone)
-chat-lecciones = Pelajaran
-chat-leccion-nueva = Pelajaran baru
 chat-hacer-leccion = Buat pelajaran
-bandeja-lecciones = 💡 Pelajaran…
 bandeja-leccion-nueva = Pelajaran baru…
 bandeja-tareas = ☑ Tugas…
 bandeja-timeline = 🕒 Lini masa dan pelajaran…
@@ -1961,7 +1811,6 @@ ajustes2-auto = Otomatis
 comando-buscar = 🔍 Cari di PinDesk…
 comando-grabar-clase = 🎙 Rekam kelas atau rapat…
 clase-titulo = Rekam kelas atau rapat
-clase-sub = Merekam audio dan menaruh tangkapan layar di menitnya
 clase-microfono = Mikrofon
 clase-equipo = Suara komputer (Meet, Zoom…)
 clase-guardar-en = Simpan ke: { $proyecto }
@@ -1970,7 +1819,6 @@ clase-nada = Pilih mikrofon, suara komputer, atau keduanya
 clase-captura = Tangkap
 clase-terminar = Selesai
 clase-capturas = Tangkapan layar: { $n } · satu klik mengulang area
-clase-pista = “Tangkap” menyimpan area layar di menit ini
 clase-elige-zona = Pilih area di layar…
 clase-captura-hecha = Tangkapan layar disimpan di { $minuto }
 clase-zona-cambiada = Area diubah
@@ -1989,7 +1837,6 @@ clase-listo = Selesai
 clase-nombre = Kelas { $fecha }
 clase-sin-sonido-equipo = Tidak ada suara dari komputer: tidak ada speaker atau headphone yang aktif
 clase-video = Video layar ini
-clase-video-corto = Merekam video
 clase-video-roto = Video berhenti; audio masih direkam
 clase-video-guardado = Dengan video layar.
 clase-calidad-ligero = Ringan
@@ -2015,13 +1862,6 @@ clase-recuperar-sin-nada = Dari “{ $nombre }” hanya tersisa video yang tidak
 clase-recuperar-descartar = Buang “{ $nombre }”? Rekaman akan dihapus dan tidak bisa dipulihkan.
 clase-recuperar-fallo = “{ $nombre }” tidak dapat dipulihkan. Rekaman masih aman dan akan ditawarkan lagi saat PinDesk dibuka.
 clase-texto-de-fondo = Tutup (tetap berjalan)
-clase-modo-pantalla = Layar dan suara
-clase-modo-capturas = Audio dan tangkapan layar
-clase-modo-pantalla-sub = Merekam video layar ini dengan suara yang Anda pilih
-clase-modo-capturas-sub = Merekam audio; “Tangkap” menyimpan seluruh layar
-clase-captura-entera = Tangkap: seluruh layar, seketika
-clase-pista-entera = “Tangkap” menyimpan seluruh layar di menit ini; tombol area, hanya sebagian
-clase-capturas-entera = Tangkapan layar: { $n } · seluruh layar
 clase-abrir-para-estudiar = Buka untuk belajar
 clase-camara-movil = 📱 Kamera ponsel
 clase-camara-movil-n = 📱 Kamera ponsel · { $n }
@@ -2044,14 +1884,10 @@ clase-hora-sin-comprobar = waktu belum diverifikasi
 baliza-movil-aislado = Ponsel Anda tidak muncul, padahal di jaringan yang sama: Wi-Fi ini mungkin memisahkan perangkat (jaringan tamu, hotel, dan kantor sering begitu) atau firewall mungkin memblokir PinDesk. Sambungkan PC ke hotspot ponsel, atau keduanya ke Wi-Fi lain. Foto yang Anda ambil menunggu di ponsel dan masuk di menitnya setelah keduanya saling menemukan.
 baliza-movil-otra-red = Ponsel Anda berada di jaringan yang berbeda dari PC ini. Sambungkan keduanya ke Wi-Fi yang sama (atau PC ke hotspot ponsel). Foto yang Anda ambil menunggu di ponsel dan masuk di menitnya setelah keduanya saling menemukan.
 # In-person meeting (27-oct-2026): the computer's camera, photos and clips.
-clase-modo-presencial = Tatap muka
-clase-modo-presencial-sub = Merekam mikrofon; “Foto” memakai kamera dengan resolusi penuh
 clase-camara = Kamera: { $camara }
 clase-camara-buscando = Mencari kamera…
 clase-camara-ninguna = Tidak ada kamera: Foto dan Klip tidak akan berfungsi (audio tetap direkam)
 clase-foto = Foto
-clase-fotos = Foto: { $n } · dengan kamera, resolusi penuh
-clase-pista-foto = “Foto” mengambil gambar dengan kamera di menit ini; kamera video merekam klip
 clase-foto-hecha = Foto disimpan di { $minuto }
 clase-camara-abriendo = Membuka kamera…
 clase-camara-lista = Kamera siap: foto { $medida }
@@ -2235,123 +2071,6 @@ buscar-todo-deshacer = Urungkan
 buscar-todo-copiado = Disalin
 ## v2-lecciones
 # The lessons window of the v2 redesign (Lecciones2.dc.html and Lecciones2-repaso.dc.html).
-lec2-que-aprendiste = Apa yang Anda pelajari? Ketik atau diktekan lalu tekan Enter
-lec2-guardar = Simpan
-lec2-rellena-solo = Diisi untuk Anda, ubah dengan satu klik:
-lec2-rellena-solo-vacio = Area, proyek, dan tingkat keparahan terisi sendiri saat Anda mengetik.
-lec2-area-de = Area: { $area }
-lec2-proyecto-de = Proyek: { $proyecto }
-lec2-ya-la-tienes = Anda sudah punya: “{ $titulo }” · Terjadi lagi
-lec2-pega-capturas = menempel tangkapan layar
-lec2-guardada = Pelajaran disimpan di { $donde }
-lec2-apuntado-otra-vez = Dicatat: terjadi lagi
-lec2-no-se-pudo = Tidak berhasil. Coba lagi.
-lec2-solo-imagenes = Hanya gambar yang bisa ditambahkan ke pelajaran.
-lec2-sin-area = Tanpa area
-lec2-sin-proyecto = Tanpa proyek (obrolan umum)
-lec2-buscar = Cari: kata, situasi, tag…
-lec2-todas = Semua
-lec2-repetidas = Berulang
-lec2-graves = Serius
-lec2-para-repasar = Untuk diulas hari ini · { $n }
-lec2-que-harias-si = Apa yang akan Anda lakukan jika terjadi lagi?
-lec2-repasar = Ulas
-lec2-este-mes = Bulan ini
-lec2-antes = Sebelumnya
-lec2-lista-vacia = Belum ada pelajaran. Tulis yang Anda pelajari di atas.
-lec2-nada-con-filtro = Tidak ada dengan filter ini.
-lec2-nada-con = Tidak ada untuk “{ $q }”. Coba kata lain atau catat di atas.
-lec2-moverse = pindah
-lec2-leve = Ringan
-lec2-importante = Penting
-lec2-grave = Serius
-lec2-hoy = hari ini
-lec2-ayer = kemarin
-lec2-manana = besok
-lec2-hace-dias = { $n } hari lalu
-lec2-hace-semanas = { $n ->
-   *[other] { $n } minggu lalu
-  }
-lec2-hace-meses = { $n ->
-   *[other] { $n } bulan lalu
-  }
-lec2-hace-anios = { $n ->
-   *[other] { $n } tahun lalu
-  }
-lec2-en-dias = dalam { $n } hari
-lec2-meses = Jan Feb Mar Apr Mei Jun Jul Agu Sep Okt Nov Des
-lec2-clic-para-editar = Klik teks mana pun untuk mengeditnya · tersimpan otomatis
-lec2-mas-campos = Kolom lain…
-lec2-que-paso = Apa yang terjadi
-lec2-por-que = Mengapa
-lec2-proxima = Lain kali
-lec2-que-paso-vacio = Tambahkan apa yang terjadi…
-lec2-por-que-vacio = Tambahkan mengapa itu terjadi…
-lec2-proxima-vacio = Tambahkan apa yang akan Anda lakukan berbeda lain kali…
-lec2-editar = Edit
-lec2-escribe-aqui = Ketik di sini
-lec2-ayuda-linea = Enter menyimpan · Esc menyelesaikan
-lec2-ayuda-bloque = Enter menyimpan · Shift+Enter baris baru · Tab ke berikutnya
-lec2-nota-de-voz = Catatan suara
-lec2-anadir-foto = Tambah foto
-lec2-ver-en-chat = Lihat di obrolan
-lec2-pinear = Pin
-lec2-pineado = Di-pin di layar
-lec2-borrar = Hapus
-lec2-borrada = Pelajaran dihapus
-lec2-deshacer = Urungkan
-lec2-veces = { $n ->
-   *[other] kali terjadi
-  }
-lec2-la-ultima = Terakhir kali: { $fecha }
-lec2-me-volvio = Terjadi lagi
-lec2-gravedad = Tingkat keparahan
-lec2-area = Area
-lec2-proyecto = Proyek
-lec2-etiquetas = Tag
-lec2-anadir = + Tambah
-lec2-nueva-etiqueta = tag lalu Enter
-lec2-relacionadas = Terkait
-lec2-proximo-repaso = Ulasan berikutnya: { $cuando }
-lec2-vacia-titulo = Catat yang Anda pelajari agar tidak mengulang kesalahan
-lec2-vacia-texto = Tulis di atas sekaligus: “apa yang terjadi…, karena…, lain kali…”. PinDesk memisahkannya, mengatur area, proyek, dan tingkat keparahan, serta memberi tahu jika pernah terjadi sebelumnya.
-lec2-comprobacion = Sebelum mulai, periksa: { $hechas } dari { $total }
-lec2-comprobacion-vacia = Belum ada apa pun di “lain kali…”. Itu blok ketiga dari setiap pelajaran.
-lec2-nada-que-repasar = Tidak ada yang perlu diulas hari ini.
-lec2-repaso-titulo = Ulasan hari ini
-lec2-repaso-de = { $va } dari { $total }
-lec2-salir = Keluar
-lec2-paso-pensar = Pikirkan apa yang akan Anda lakukan
-lec2-paso-mirar = Lihat yang Anda catat
-lec2-paso-recordar = Apakah Anda ingat?
-lec2-situacion = Situasinya
-lec2-repaso-cuando = Saat { $pista }…
-lec2-repaso-recuerda = Ingat pelajaran ini
-lec2-repaso-veces = terjadi { $n } kali
-lec2-que-harias = Apa yang akan Anda lakukan?
-lec2-escribe-o-dicta = Ketik atau diktekan
-lec2-dictar = Dikte
-lec2-mostrar = Tampilkan jawaban
-lec2-mostrada = Jawaban ditampilkan
-lec2-lo-que-apuntaste = Yang Anda catat
-lec2-oculta = Pikirkan sebelum melihat: mengingat kembali jauh lebih melekat daripada membaca ulang.
-lec2-por-que-paso = Mengapa terjadi: { $causa }
-lec2-abrir-completa = Buka pelajaran lengkap
-lec2-lo-recordabas = Apakah Anda ingat? Pilih dengan mouse atau dengan
-lec2-nota-recordaba = Saya ingat
-lec2-nota-a-medias = Sebagian
-lec2-nota-olvide = Saya lupa
-lec2-vuelve-manana = Kembali besok
-lec2-vuelve-en = Kembali dalam { $dias } hari
-lec2-saltar = Lewati yang ini
-lec2-repaso-pie = Jawaban Anda untuk perbandingan: tidak disimpan.
-lec2-siguiente = Berikutnya
-lec2-repaso-elige = Pilih 1, 2, atau 3: apakah Anda ingat?
-lec2-repaso-hecho = Ulasan selesai
-lec2-repaso-hechas = { $n ->
-   *[other] Anda mengulas { $n } pelajaran. Pelajaran akan kembali saat jatuh tempo.
-  }
-lec2-repaso-volver = Kembali ke daftar
 ## v2-galeria
 galeria-subtitulo = { $cuantas } · disimpan selama 7 hari
 galeria-buscar = Cari, termasuk teks di tangkapan
@@ -2571,9 +2290,13 @@ timeline-ayer = Kemarin
 timeline-exportar = Ekspor
 timeline-volver = Kembali
 timeline-pista = Apa yang sedang terjadi? Ketik atau diktekan…
+timeline-frase-titulo = begini kejadiannya
+timeline-frase-titulo-corta = yang terjadi adalah
+timeline-frase-descripcion = dan ceritanya begini
+timeline-frase-descripcion-corta = ceritanya begini
 timeline-vacio = Belum ada apa pun dalam 24 jam terakhir.
     Ketik atau diktekan apa yang sedang terjadi lalu tekan Enter.
-    Saat mendikte, «con esto pasó…» memulai judul dan «y así te lo cuento…» deskripsinya.
+    Saat mendikte, «{ timeline-frase-titulo }…» memulai judul dan «{ timeline-frase-descripcion }…» deskripsinya.
 timeline-vacio-dia = Tidak ada yang dicatat pada hari itu.
 timeline-nota-de-voz = Catatan suara
 timeline-sin-titulo-voz = Catatan suara
@@ -2618,8 +2341,6 @@ timeline-mic-sin-texto = Tidak dipahami: hanya audio yang disimpan
 
 
 ## simple-lecciones
-lecs-menos-campos = Lebih sedikit kolom
-lecs-ficha-completa = Jenis, penyebab, dan kata kunci…
 
 ## galeria-menu (5-oct-2026, right click)
 galeria-guardar-como = Simpan sebagai…
@@ -2649,7 +2370,6 @@ timeline-momentos-vacio = Momen yang Anda pilih masuk ke sini. Di "Hari ini", ar
 timeline-a-momentos = Dikirim ke Momen
 timeline-fuera-de-momentos = Dihapus dari Momen
 timeline-estado-sobre-todo = Terutama
-timeline-estado-lo-mas = "{ $que }"
 timeline-exportar-busqueda = Cari: "{ $que }"
 timeline-pestana-lecciones = Pelajaran
 timeline-sub-lecciones = { $n ->
@@ -2660,7 +2380,6 @@ timeline-lecciones-vacio = Belum ada pelajaran. Tekan bola lampu pada momen untu
 timeline-gravedad-leve = Ringan
 timeline-gravedad-importante = Penting
 timeline-gravedad-grave = Serius
-timeline-otra-vez = Terjadi lagi +1
 timeline-otra-vez-hecho = Dicatat: sekarang { $n } kali
 timeline-leccion = Pelajaran
 timeline-leccion-hecha = 💡 Pelajaran dibuat: ada di "Pelajaran"
@@ -2722,7 +2441,6 @@ tareas5-corregir-pista = Teks tugas…
 tareas5-imagen-pista = Tambah gambar · Ctrl+V menempel yang disalin
 tareas5-guardar = Simpan
 tareas5-corregida = Tugas diperbarui
-tareas5-vista-lista = Daftar · Ctrl+L
 tareas5-vista-tarjetas = Kartu · Ctrl+T
 tareas5-vista-horario = Jadwal · Ctrl+H
 tareas5-vista-kanban = Papan Kanban · Ctrl+K
@@ -2740,7 +2458,6 @@ tareas5-quitar = Hapus
 ## salida (6-oct-2026): the floating window to drag out what was exported
 salida-titulo = Siap dibagikan
 salida-titulo-exportado = Diekspor
-salida-titulo-guardado = Disimpan
 salida-pista = Seret file ke aplikasi lain atau ke folder
 salida-todos = Seret { $n } sekaligus
 salida-arrastra-todos = Tahan dan seret untuk membawa semuanya
@@ -2748,13 +2465,11 @@ salida-soltado = Dilepas · Anda juga bisa melepasnya di tempat lain
 salida-copiado = Disalin ke papan klip
 salida-pineado = Di-pin
 salida-no-se-pudo = Tidak dapat dilakukan
-salida-compartir = Bagikan
 salida-copiar = Salin
 salida-abrir = Buka
 salida-carpeta = Tampilkan di folder
 salida-pinear = Pin
 salida-compartir-menu = Bagikan…
-compartir-arrastrar = Seret dari sini ke aplikasi lain · klik untuk menahannya di layar
 
 ## al-movil (6-oct-2026): a photo from the Flow plugin to the phone's open canvas
 al-movil-lienzo = { $n ->
@@ -2990,8 +2705,6 @@ asistente-voz-sin-whisper = PC ini tidak bisa mengubah suara menjadi teks: ONNX 
 asistente-voz-fallo = Suara Anda tidak dapat diubah menjadi teks.
 asistente-voz-cancelado = Dibatalkan: tidak ada yang dikirim.
 asistente-voz-nada-que-leer = Jawaban ini tidak punya teks untuk dibaca.
-asistente-voz-leer = Bacakan
-asistente-voz-callar = Berhenti membaca
 
 # The buttons of the Windows notifications (15-oct).
 notif-hecha = Selesai
@@ -3050,7 +2763,6 @@ horario-sin-clases = Belum ada kelas di jadwal: buka “Jadwal kelas…” dan t
 horario-guardada = Anda akan mendengarnya di kelas { $clase } berikutnya
 
 ## Weekly timetable window and subjects (18-oct-2026)
-horario-titulo = Jadwal
 horario-subtitulo = { $asignaturas } mata pelajaran · { $clases } kelas
 horario-nueva = Mata pelajaran baru (@ruang opsional)
 horario-domingo = Minggu
@@ -3073,15 +2785,12 @@ horario-asignatura-borrada = “{ $asignatura }” dihapus dari jadwal (tugasnya
 horario-repetida = “{ $asignatura }” sudah ada di daftar
 horario-arrastra = Seret “{ $asignatura }” ke minggu
 horario-no-guardado = Jadwal tidak dapat disimpan
-tareas-asignatura-pista = Mata pelajaran tugas
 tareas-destino-pista = Daftar atau mata pelajaran tugas
 tareas-sin-asignatura = Tanpa mata pelajaran (ke Kotak masuk)
-tareas-sin-asignaturas = Belum ada mata pelajaran: buat di “Jadwal kelas…”
 tareas-apuntar-en-asignatura = Tugas { $asignatura } baru…
 
 # Viewers: the frame to print (2026-10-19)
 marco-imprimir-pista = Seret kotak di atas yang ingin dicetak · Enter: semuanya · Esc: keluar
-lector-marco = Bingkai cetak (P)
 marcos-pista = Seret untuk membingkai · angka: buka bingkai itu · Ctrl+P: cetak semua · Del: hapus yang terakhir · I atau Esc: keluar
 marcos-imprimir = Cetak bingkai (Ctrl+P)
 marcos-borrar = Hapus bingkai
@@ -3110,7 +2819,6 @@ barra-cerrar = Tutup (Esc)
 visor-letra = Huruf dan spasi (T / B)
 lector-mas = Opsi lain (G)
 visor-indice-pista = Daftar isi (C)
-riel-hojita = Notepad (Ctrl+Shift+N)
 riel-editar = Edit (Alt+R)
 riel-mirar = Kembali melihat (Alt+R atau Esc)
 
@@ -3162,10 +2870,6 @@ carpeta-exportando = Mengekspor PDF…
 carpeta-exportado = PDF disimpan: { $nombre }
 carpeta-no-se-exporto = Tidak dapat mengekspor: tidak ada halaman yang berisi
 carpeta-vacia = Folder ini kosong. Tekan “Halaman baru”, atau di obrolan pilih “Tambahkan ke folder…” di menu kanvas atau gambar.
-carpeta-antes = Sebelumnya
-carpeta-despues = Sesudahnya
-carpeta-renombrar = Ganti nama
-carpeta-quitar = Hapus dari folder
 carpeta-no-esta = Folder itu sudah tidak ada di obrolan
 carpeta-pista = Seret halaman untuk memindahkannya · F2 mengubah judulnya · Del menghapusnya (muncul lagi di obrolan)
 carpeta-escribe-titulo = Ketik judul lalu tekan Enter
@@ -3174,8 +2878,6 @@ carpeta-grabacion-detalle = { $duracion } · { $capturas ->
    *[other] { $capturas } tangkapan
 }
 carpeta-estudiar = Pelajari
-carpeta-de-la-grabacion = Dari rekaman
-carpeta-adjuntos = Dilampirkan ke kelas
 carpeta-adjunto-insignia = Lampiran · bukan bagian dari rekaman
 carpeta-adjuntar = Lampirkan ke kelas
 carpeta-adjuntado = Dilampirkan ke kelas: { $nombre }
@@ -3203,7 +2905,6 @@ clase-importante-decision = Keputusan
 clase-importante-pregunta = Pertanyaan
 clase-importante-examen = Ujian
 clase-importante-buscando = Mencari yang penting…
-clase-importante-nada = Tidak ada hal ini di kelas
 clase-importante-tareas = + { $n } tugas ke Tugas
 clase-importante-anadidas = { $n } tugas ditambahkan ke kotak masuk Tugas
 tareas-prioridad-urgente = Mendesak

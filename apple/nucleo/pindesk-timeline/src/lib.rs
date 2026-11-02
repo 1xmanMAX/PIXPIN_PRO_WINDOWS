@@ -39,7 +39,9 @@ pub mod emoticonos;
 pub mod estilo;
 pub mod frases;
 pub mod html;
+pub mod lengua;
 pub mod momento;
 pub mod resumen;
 
+pub use lengua::Lengua;
 pub use momento::Momento;

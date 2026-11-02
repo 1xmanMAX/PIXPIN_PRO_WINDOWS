@@ -777,11 +777,16 @@ impl Estado {
         }
     }
 
+    /// Las frases clave del idioma de la app (y las de español, siempre).
+    fn frases(textos: &Catalogo) -> frases::Frases {
+        frases::Frases::del_catalogo(|k| textos.t(k))
+    }
+
     /// **Apunta un momento nuevo** con lo que diga `texto`, las imagenes de
     /// la caja y, si lo hay, el audio. Devuelve si se apunto.
     fn apuntar(&mut self, texto: &str, audio: Option<Dicho>, textos: &Catalogo) -> bool {
         let cuando = audio.as_ref().map_or_else(Self::ahora, |d| d.desde);
-        let (mut titulo, descripcion) = frases::partir(texto);
+        let (mut titulo, descripcion) = frases::partir_con(texto, &Self::frases(textos));
         if titulo.is_empty() {
             titulo = if audio.is_some() {
                 textos.t("timeline-sin-titulo-voz")
@@ -835,7 +840,7 @@ impl Estado {
     fn enviar(&mut self, textos: &Catalogo) {
         let texto = self.campo.texto().trim().to_string();
         if let Some(id) = self.corrigiendo.clone() {
-            let (titulo, descripcion) = frases::partir(&texto);
+            let (titulo, descripcion) = frases::partir_con(&texto, &Self::frases(textos));
             let Some(m) = self.momentos.iter_mut().find(|m| m.id == id) else {
                 self.vaciar_caja();
                 return;

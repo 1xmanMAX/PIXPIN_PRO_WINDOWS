@@ -109,9 +109,6 @@ cuenta-atras-cancelar = Durdurmak için Esc
 comando-pinear-seleccion = Gezgin seçimini sabitle
 
 # The settings window (P6).
-ajustes-pestana-atajos = Kısayollar
-ajustes-pestana-general = Genel
-ajustes-pestana-captura = Yakalama
 ajustes-pestana-dibujo = Çizim
 ajustes-iman = Önemli noktalara yapış
 ajustes-iman-esquinas = Köşeler ve uç noktalar
@@ -121,26 +118,17 @@ ajustes-iman-radio = Yakalama mesafesi (px)
 ajustes-idioma = Dil
 ajustes-idioma-sistema = Windows ile aynı
 ajustes-arranque = Windows ile başlat
-ajustes-color = Renk seçici biçimi
-ajustes-nivel = Performans
 ajustes-nivel-auto = Otomatik
 ajustes-nivel-completo = Tam
 ajustes-nivel-ligero = Hafif
 ajustes-pdf-aligerar = Sohbete eklenen PDF'leri hafiflet
-ajustes-pdf-nivel = Ne kadar hafif (Küçük ve Azami: yalnızca elle)
 ajustes-pdf-nivel-sin-perdida = Birebir
 ajustes-pdf-nivel-equilibrado = Orta
 ajustes-pdf-nivel-pequeno = Küçük
 ajustes-pdf-nivel-extremo = Azami
-ajustes-retardo-captura = Yakalamadan önce geri sayım saniyesi
-ajustes-limite-scroll = Kaydırarak yakalamanın azami yüksekliği (piksel)
-ajustes-gif-ritmo = Kayıtta saniyedeki kare sayısı
-ajustes-gif-retardo = Kayıttan önceki bekleme saniyesi
 ajustes-sin-atajo = Kısayol yok
 ajustes-pulsa-combinacion = Tuş birleşimine basın…
 ajustes-choca = çakışıyor
-ajustes-cerrar = Kapat
-ajustes-abrir-fichero = Ayarlar dosyasını aç
 
 # Reading the text of a pin (P4.2).
 pin-copiar-texto = Görüntüdeki metni kopyala
@@ -175,10 +163,6 @@ chat-clase-proyecto = Proje
 chat-clase-miniapp = Mini uygulama
 chat-escribe = Bir şey yazın…
 # The chat, like PinDesk Android's (guardados/MensajesActivity.kt).
-chat-cosas = { $n ->
-    [one] 1 öğe
-   *[other] { $n } öğe
-}
 chat-elegidos = { $n ->
     [one] 1 seçili
    *[other] { $n } seçili
@@ -186,7 +170,6 @@ chat-elegidos = { $n ->
 chat-lienzo = Tuval
 chat-tabla = Tablo
 chat-viene-de = Kaynağı
-chat-comentar = Buna yorum yap
 chat-copiar = Kopyala
 chat-fijar = Üste sabitle
 chat-soltar = Üstten kaldır
@@ -208,13 +191,10 @@ chat-recordar = Bana hatırlat
 chat-rescatar = Bunu sakla
 chat-solo-la-foto = Yalnızca fotoğrafı göster
 chat-ver-hilo = Yorumları gör
-chat-etiquetar = Etiket ekle
-chat-quitar-etiqueta = Etiketi kaldır
 chat-reenviar = İlet
 chat-unir = Projeye ekle
 chat-transcribir = Metne dönüştür
 chat-letra = Şarkı sözü veya metin
-chat-elegir = Seç
 chat-borrar = Sil
 chat-borrar-aviso = Konuşmadan kaldırılacak. Ekli dosya da onunla birlikte silinir. Devam edilsin mi?
 chat-biblioteca-audio = Ses kitaplığı
@@ -226,30 +206,18 @@ chat-fondo-brezo = Funda
 chat-fondo-bosque = Orman
 chat-fondo-ocaso = Gün batımı
 chat-fondo-pizarra = Arduvaz
-chat-adj-archivo = Bir dosya
-chat-adj-pagina = Bir projeden sayfa
-chat-adj-proyecto = Bütün bir proje
-chat-adj-conversacion = Bir konuşma
 chat-adj-telepronter = Teleprompter
 chat-adj-pronunciar = Telaffuz
-chat-adj-miniapp = Bir mini uygulama
 chat-reenviado = İletildi
 chat-copiado = Kopyalandı
-chat-compartido = Panoya kopyalandı: paylaşmak istediğiniz yere yapıştırın
 chat-compartir-sin-panel = Windows Paylaş panelini açmadı: istediğiniz yere yapıştırabilmeniz için panoda
 chat-pineado = Sabitlendi
 chat-foto-en-la-nota = Fotoğraf metninize eklendi: hepsi tek not olarak gönderilir
 chat-sin-archivo = Bu mesajın bu bilgisayarda dosyası yok
 chat-sin-origen = O tuval bu projede değil
 chat-sin-proyectos-otros = Gönderilecek başka proje yok
-chat-proyectos-lista = Projeler soldaki listedir
-chat-no-hay-voz = Sesli not kaydı Windows'ta henüz yok
-chat-no-hay-aligerar = PDF hafifletme Windows'ta henüz yok
 chat-no-hay-unir = Windows'ta her sohbet zaten bir proje: başka birine taşımak için İlet'i kullanın
-chat-no-hay-biblioteca = Ses kitaplığı Windows'ta henüz yok
 chat-ver-dibujo-entero = Çizimin tamamını göster
-chat-no-hay-pagina = Bir projeden sayfa eklemek Windows'ta henüz yok
-chat-no-hay-telepronter = Teleprompter Windows'ta henüz yok
 chat-no-se-pudo = Yapılamadı: PinDesk günlüğüne bakın
 chat-fecha = { $dia } { $mes }
 chat-fecha-con-ano = { $dia } { $mes } { $ano }
@@ -297,22 +265,12 @@ info-vacia-voz = Sesli notlar burada görünecek
 info-vacia-dibujos = Bu sohbetteki çizimler burada görünecek
 info-vacia-fijados = Sabitlediğiniz şeyler burada görünecek
 info-vacia-buzon = Gelen kutusu boş
-info-abrir = Aç
-info-abrir-enlace = Bağlantıyı aç
-info-reproducir = Oynat
-info-ver-en-el-chat = Sohbette göster
 info-titulo = Bilgi
 adjuntar-imagen = Fotoğraf veya video
 adjuntar-archivo = Dosya
 adjuntar-lienzo = Yeni tuval
-confirmar-titulo = { $cuantos ->
-    [one] Bir dosya ekle
-   *[other] { $cuantos } dosya ekle
-}
-confirmar-resto = ve { $cuantos } tane daha
 confirmar-pie = Açıklama ekleyin…
 confirmar-cancelar = İptal
-confirmar-aceptar = Ekle
 adjuntar-tabla = Yeni tablo
 tabla-nueva = Tablo
 chat-nombre-nuevo = Proje adı…
@@ -328,11 +286,7 @@ recibir-salir = Kapatmak için Esc
 comando-recibir-del-movil = Telefondan al…
 comando-sincronizar = Eşitle
 adjuntar-del-movil = Telefondan getir…
-menu-foto-aqui = Tam burada çiz
 proyecto-renombrar = Yeniden adlandır
-proyecto-logo-poner = Logo görüntüsü ayarla…
-proyecto-logo-quitar = Logo görüntüsünü kaldır
-proyecto-logo-error = Bu logo görüntüsü ayarlanamadı
 # The chat photo (25-oct-2026): image, emoji or colour in the circle.
 foto-chat-menu = Sohbet fotoğrafını değiştir…
 foto-chat-titulo = Sohbet fotoğrafı
@@ -590,7 +544,6 @@ papelera-no-se-pudo = «{ $nombre }» kurtarılamadı: { $motivo }
 papelera-recuperados = { $total } projeden { $n } tanesi kurtarıldı
 
 ## The document viewer: Word, EPUB books and web pages (task 2.1)
-visor-html-titulo = PinDesk — sayfa
 ## The Office pin: Office's preview as a pin (2026-10-10)
 office-titulo = Office önizlemesi
 office-abriendo = Office önizlemesiyle açılıyor…
@@ -598,8 +551,6 @@ office-tarda = Office biraz zaman alıyor (başlaması gerekiyor). Bekleyebilir 
 office-fallo = Office bu dosyayı önizleyemedi. “Birlikte aç…” ile başka bir uygulamada açın (çubuktaki ↗ düğmesi).
 office-internet = Bu dosya internetten geliyor ve güvenlik nedeniyle Windows önizlemesine izin vermiyor. “Birlikte aç…” ile başka bir uygulamada açın (çubuktaki ↗ düğmesi) veya Özellikler'den engelini kaldırın.
 visor-titulo = PinDesk görüntüleyici
-visor-marcador = Buraya yer imi koy
-visor-ajustes = Okuma ayarları
 visor-tamano = Metin boyutu
 visor-quitar-marcadores = Yer imlerini kaldır
 visor-guardar-pagina = Web sayfası olarak kaydet
@@ -608,15 +559,10 @@ visor-abrir-carpeta = Klasörü aç
 visor-guardado = "{ $nombre }" olarak kaydedildi
 visor-no-guardado = Kaydedilemedi
 visor-vacio = Bu belgede gösterilecek metin yok
-visor-ayuda = Okumak için tekerlek · +/− boyut · M yer imi · G ayarlar · Çıkmak için Esc
-visor-elige-emoticono = Neyle işaretlensin?
-visor-sin-marcadores = Henüz yer imi yok
 
 ## The readers: comfortable reading, annotating on top and the PDF reader
-lector-listo = Bitti
 lector-indice = İçindekiler
 lector-letra-fijada = Yazı tipi kilitli: üzerinde çizilmiş notlar var
-lector-letra-normal = Normal yazı
 lector-letra-fija = Eş aralıklı
 lector-grosor-normal = Normal
 lector-grosor-gruesa = Kalın
@@ -630,11 +576,8 @@ lector-pdf-reconociendo = Sayfadaki metin tanınıyor…
 lector-pdf-reconocido = Metin tanındı: artık seçip işaretleyebilirsiniz
 lector-pdf-sin-texto = Bu sayfada metin bulunamadı
 lector-exportando = Notlu PDF kaydediliyor… { $hechas } / { $total }
-lector-exportar-pdf = PDF'yi notlarla kaydet
 lector-anotado = notlu
-lector-ayuda-pdf = Sayfa çevirmek için tekerlek · Ctrl+tekerlek yakınlaştır · Ctrl+[ Ctrl+] not alanı · L dinle · A not al · M yer imi · Çıkmak için Esc
 lector-office-titulo = PinDesk'te Word ve PowerPoint
-lector-ayuda-office = Sayfa çevirmek için tekerlek · Ctrl+tekerlek yakınlaştır · seçmek için metnin üzerinde sürükleyin · Ctrl+C kopyala · Ctrl+F bul · Ctrl+P yazdır · F5 sun · A not al · N negatif · Çıkmak için Esc
 lector-presentar = Sun (F5)
 lector-modo-lectura = Okuma modu (yeniden akıtılmış metin)
 lector-imprimir = Yazdır… (Ctrl+P)
@@ -658,7 +601,6 @@ lector-voz-parrafo = Paragraf { $n } / { $total }
 lector-voz-preparando = Ses hazırlanıyor…
 lector-voz-no-respondio = Microsoft yanıt vermedi
 lector-voz-sin-voz = Ses yok
-lector-verde-aqui = Burada yeşil yer imi: okuma bu noktadan başlayacak
 lector-espacio-tope = O tarafta daha fazla yer yok
 lector-espacio-nada = O tarafta yer kalmadı
 lector-sin-lado = Yana hareket kilitli: yalnızca yukarı ve aşağı kayar
@@ -693,78 +635,12 @@ sinc-presencia-apagada = Ayarlarda görünürlük kapalı ([sincro] presencia = 
 bandeja-abrir-documento = Belge aç…
 
 ## Canvas shapes and ink: arrowheads, fills and text style (group A)
-lienzo-punta-ninguna = Ok ucu yok
-lienzo-punta-flecha = Ok
-lienzo-punta-barra = Çubuk
-lienzo-punta-circulo = Daire
-lienzo-punta-circulo-hueco = Daire ana hattı
-lienzo-punta-triangulo = Üçgen
-lienzo-punta-triangulo-hueco = Üçgen ana hattı
-lienzo-punta-rombo = Eşkenar dörtgen
-lienzo-punta-rombo-hueco = Eşkenar dörtgen ana hattı
-lienzo-punta-inicio = Başlangıç ok ucu
-lienzo-punta-fin = Bitiş ok ucu
-lienzo-trama-zigzag = Zikzak
-lienzo-trama-tiralineas = Çizgili
-lienzo-texto-negrita = Kalın
-lienzo-texto-cursiva = İtalik
-lienzo-texto-tachado = Üstü çizili
-lienzo-presion-firme = Sabit kalınlıkta çizgi
-lienzo-flecha-codos = Dirsekli ok
-lienzo-flecha-libre = Serbest ok
-lienzo-arco-guia = Kılavuz oval, henüz çizilmedi
-lienzo-luces-fuerza = Işık gücü
 
 ## Build and measure: fill, trim, extend, points and angles (group C)
-lienzo-bote = Boya kovası
-lienzo-bote-ayuda = Kapalı bir boşluğun içine tıklayın, birkaç farklı şekil oluştursa bile doldurulur.
-lienzo-bote-abierto = Bu boşluk kapalı değil: boya bir çatlaktan taşar.
-lienzo-recortar = Kırp
-lienzo-recortar-ayuda = Bir çizginin artan parçasına tıklayın, diğerlerinin kesiştiği yere kadar silinir.
-lienzo-extender = Uzat
-lienzo-extender-ayuda = Kısa kalan uca tıklayın, yolundaki ilk şeye ulaşır.
-lienzo-extender-sin-tope = Yolunda hiçbir şey yok: boşluğa uzatılmış çizgi uzatılmış çizgi değildir.
-lienzo-punto = Etiketli nokta
-lienzo-punto-ayuda = Bir kesişime, uç noktaya veya dairenin merkezine tıklayın, nokta harfiyle görünür.
-lienzo-punto-sin-sitio = Orada adlandırılacak bir şey yok: nokta bir kesişime, uç noktaya veya merkeze konur.
-lienzo-punto-serie-mayusculas = Büyük harfler (A, B, C…)
-lienzo-punto-serie-minusculas = Küçük harfler (a, b, c…)
-lienzo-punto-serie-numeros = Sayılar (1, 2, 3…)
-lienzo-angulos = Canlı açılar
-lienzo-angulos-ayuda = Bir şeyi taşırken dokunduğunuz köşelerin ne kadar büyük olduğunu gösterir.
-lienzo-area = Alan
 
 ## Select, transform and bind (group B)
-lienzo-lazo = Kement
-lienzo-lazo-ayuda = Seçmek istediğinizin etrafını çizin. Tamamen içinde kalanlar alınır; Shift ile çizginin dokunduğu her şey de.
-lienzo-lazo-encerrar = Yalnızca içinde kalanlar
-lienzo-lazo-rozar = Çizginin dokunduğu her şey de
-lienzo-voltear-horizontal = Yatay çevir
-lienzo-voltear-vertical = Dikey çevir
-lienzo-voltear-ayuda = Seçimi her şeklin kendi merkezine göre değil, tüm grubun merkezine göre yansıtır.
-lienzo-rejilla = Çizgili kâğıt
-lienzo-rejilla-ninguna = Düz
-lienzo-rejilla-lineas = Kareler
-lienzo-rejilla-puntos = Noktalar
-lienzo-rejilla-imanta = İmleci karelere yapıştır
-lienzo-rejilla-ayuda = İlk çizgiden önce orada olan referans. Dışa aktarırken görünmez.
-lienzo-iman-intersecciones = Şekiller arası kesişimler
-lienzo-iman-intersecciones-ayuda = İki çizginin birbirini kestiği nokta; ikisinin de köşesi değildir.
-lienzo-iman-bordes = Şekil kenarları
-lienzo-iman-bordes-ayuda = Gönye: imleç yalnızca köşelerde değil, kenarın tamamı boyunca kayar.
-lienzo-iman-eje = Başlangıç noktası ve koordinat eksenleri
-lienzo-enganche = Oku şekle bağla
-lienzo-enganche-ayuda = Ucu bir şeklin üzerine bırakın, şekli taşıdığınızda ok onu izler.
-lienzo-enganche-soltar = Ucu serbest bırak
-lienzo-tirador-punta = Ucu taşı
-lienzo-tirador-anadir = Burada bük
-lienzo-copiar-estilo = Stili kopyala
-lienzo-copiar-estilo-ayuda = Bir şeklin rengini, çizgisini ve dolgusunu alıp diğerlerine yapıştırın. Yalnızca iki türün de kabul ettiği aktarılır.
-lienzo-estilo-tomado = Stil alındı
-lienzo-estilo-sin-tomar = Henüz bir stil almadınız.
 
 # The attachment the document viewer can open without leaving PinDesk.
-chat-abrir-aqui = Burada aç
 
 # The seven mini-apps from the phone, and their panel.
 mini-moneda = USD
@@ -811,15 +687,6 @@ chat-voz-fallo = Sesli not kaydedilemedi.
 # Shrinking an attached PDF: it lowers the photos inside, and never for the worse.
 pdf-aligerado = Küçültüldü: { $antes } → { $despues }
 pdf-aligerar-cifrado = PDF şifreli ve risk almadan yeniden yazılamaz.
-pdf-aligerar-indice-comprimido = Bu PDF dizinini sıkıştırılmış tutuyor ve bunu yeniden oluşturmak burada henüz desteklenmiyor.
-pdf-aligerar-objetos-comprimidos = Bu PDF nesnelerini sıkıştırılmış tutuyor ve bunları yeniden oluşturmak burada henüz desteklenmiyor.
-pdf-aligerar-sin-trailer = PDF'nin okunabilir bir trailer bölümü yok.
-pdf-aligerar-sin-objetos = PDF'nin içindeki hiçbir nesne tanınmadı.
-pdf-aligerar-largo-indirecto = PDF'deki bir akış uzunluğunu belirtmiyor.
-pdf-aligerar-objetos-sin-entender = PDF'de bu okuyucunun anlamadığı kısımlar var; yeniden yazmak onları kaybettirebilir.
-pdf-aligerar-sin-fotos = Küçültülecek fotoğraf yok: ağırlık metin veya vektörlerden geliyor.
-pdf-aligerar-ya-al-minimo = Fotoğraflar zaten en düşük seviyede.
-pdf-aligerar-no-compensa = Yalnızca { $antes } boyutundan { $despues } boyutuna düşer: değmez.
 pdf-aligerar-no-se-lee = Küçültülen dosya düzgün okunamadı; özgün dosya kalır.
 aligerar-progreso = Hafifletiliyor… %{ $por }
 aligerar-empezado = PDF hafifletiliyor…
@@ -838,7 +705,6 @@ chat-recordatorio-quitado = Hatırlatıcı kaldırıldı
 chat-recordatorio-titulo = Hatırlatıcı
 
 # A message menu entry: send the attachment to someone over Wi-Fi.
-chat-enviar-wifi = Wi-Fi üzerinden gönder
 
 # Turning a voice note into text with Vosk. What is missing is named with its
 # file and link: PinDesk never downloads anything on its own.
@@ -864,7 +730,6 @@ musica-sinc-empieza = Her satır başladığı anda Space'e (veya “İşaretle�
 musica-sinc-siguiente = Sonraki: { $linea }
 musica-sinc-todas = Tüm satırlar işaretlendi. Sözleri kaydedin.
 musica-sinc-marcar = İşaretle { $n }/{ $total }
-musica-sinc-deshacer = Geri al
 musica-sinc-guardar = Kaydet
 musica-sinc-cancelar = İptal
 musica-sinc-guardada = Sözler eşitlendi
@@ -980,7 +845,6 @@ exportar-tipo-pdf = PDF belgesi
 exportar-tipo-html = Tek dosyalık web sayfası
 exportar-vacio = Bununla dışa aktarılacak bir şey yok.
 exportar-fallo = Tuval dışa aktarılamadı.
-exportar-hecho = Dışa aktarıldı: { $nombre }
 imprimir-menu = Yazdır…	Ctrl+P
 imprimir-vacio = Yazdırılacak bir şey yok.
 imprimir-fallo = Tuval yazdırılamadı.
@@ -1028,8 +892,6 @@ compartir-texto = Metin
 compartir-csv = Tablo (CSV)
 compartir-pindesk = PinDesk (.pindesk)
 compartir-dxf = DXF
-compartir-xlsx = Excel (xlsx)
-compartir-docx = Word (docx)
 compartir-md = Markdown
 compartir-exportar = Dışa aktar…
 compartir-paginas-de = Neler dahil · { $marcadas } / { $total }
@@ -1041,7 +903,6 @@ compartir-preparando = Hazırlanıyor…
 compartir-marca-alguna = Bir sayfa işaretleyin
 compartir-en-cuanto-este = Hazır olur olmaz
 compartir-peso-ficheros = { $peso } · { $n } dosya
-compartir-panel-abierto = Nereye gönderileceğini seçin
 compartir-guardado = Kaydedildi: { $nombre }
 compartir-copiado = Panoya kopyalandı
 compartir-no-se-pudo = Hazırlanamadı
@@ -1063,7 +924,6 @@ compartir-tipo-nota = Not
 
 # Drawing tools: the ones shown in the canvas, the reader, pins and the
 # screen annotator. Turning one off removes it from the bar and its key.
-ajustes-pestana-herramientas = Araçlar
 herramientas-lazo = Kement
 herramientas-rectangulo = Dikdörtgen
 herramientas-rombo = Eşkenar dörtgen
@@ -1134,11 +994,6 @@ chat-fecha-corta = { $dia } { $mes }
 chat-enlace-no-abre = Bağlantı açılamadı
 
 ## D11: a spreadsheet in the chat is a book of tables (ventana_chat/libro.rs)
-libro-titulo = Elektronik tablo
-libro-xls-antiguo = Eski .xls dosyaları okunamaz: açıp .xlsx olarak kaydedin
-libro-abrir-fuera = Başka bir uygulamayla açılsın mı?
-libro-no-es = Dosya geçerli bir elektronik tablo değil
-libro-sin-hojas = Çalışma kitabında veri içeren sayfa yok
 hoja-preparando = Sayfa düzenlemeye hazırlanıyor…
 hoja-editar-aviso = Değişiklikler sohbet sayfasına kaydedilir; özgün dosya aynı kalır
 hoja-editando = Düzenleniyor · Görüntülemek için Esc
@@ -1444,8 +1299,6 @@ chat-insertar-en-nota = Bir nota ekle
 ## Canvas: weld vertices and number points (lienzo-geometria, 26-sep)
 herramientas-nudo = Köşeleri kaynakla
 herramientas-bolita = Top: seçmek için üzerinden geçirin
-lienzo-nudo = Köşeleri kaynakla
-lienzo-nudo-ayuda = İki şeklin değdiği yere tıklayın, birbirine iğnelenirler: artık ayrılmazlar ve tek iğneyle onun etrafında dönerler. Kaldırmak için iğneye tıklayın; iğnelenmiş şekilleri götürmek için elle sürükleyin.
 lienzo-punto-serie = Nokta etiketleri
 lienzo-cota-pedir = Çizerken uzunluğu sor
 lienzo-panel-dureza = Kalem sertliği
@@ -1493,7 +1346,6 @@ funciones-figuras-detalle = Tuvaller için şekil kitaplığınız
 figuras-mias = Şekillerim
 figuras-todas = Tümü
 figuras-vacia = Henüz şekil yok. Bir tuvalde bir şey seçip “Şekil olarak kaydet”i kullanın.
-figuras-cerrar = Kapat
 figuras-borrar = Şekli sil
 figuras-borrar-seguro = Silmek için yeniden basın
 figuras-elegir-para = “{ $chat }” için bir şekil seçin
@@ -1752,12 +1604,8 @@ galeria-borrada = PinDesk geri dönüşüm kutusuna taşındı
 galeria-no-se-pudo = Yapılamadı: { $motivo }
 galeria-conservada-aviso = Saklandı: Kayıtlı mesajlarda ve silinmeyecek
 bandeja-galeria-capturas = Yakalama galerisi…
-chat-galeria-capturas = Yakalama galerisi
 # Lessons learned (3-oct, as on the phone)
-chat-lecciones = Dersler
-chat-leccion-nueva = Yeni ders
 chat-hacer-leccion = Ders çıkar
-bandeja-lecciones = 💡 Dersler…
 bandeja-leccion-nueva = Yeni ders…
 bandeja-tareas = ☑ Görevler…
 bandeja-timeline = 🕒 Zaman çizelgesi ve dersler…
@@ -1977,7 +1825,6 @@ ajustes2-auto = Otomatik
 comando-buscar = 🔍 PinDesk'te ara…
 comando-grabar-clase = 🎙 Ders veya toplantı kaydet…
 clase-titulo = Ders veya toplantı kaydet
-clase-sub = Sesi kaydeder ve ekran görüntülerini dakikalarına yerleştirir
 clase-microfono = Mikrofon
 clase-equipo = Bilgisayar sesi (Meet, Zoom…)
 clase-guardar-en = Kaydedilecek yer: { $proyecto }
@@ -1986,7 +1833,6 @@ clase-nada = Mikrofonu, bilgisayar sesini veya ikisini seçin
 clase-captura = Yakala
 clase-terminar = Bitir
 clase-capturas = Ekran görüntüleri: { $n } · tek tıklama alanı tekrarlar
-clase-pista = “Yakala”, ekranın bir alanını bu dakikada kaydeder
 clase-elige-zona = Ekranda alanı seçin…
 clase-captura-hecha = Ekran görüntüsü { $minuto } dakikasına kaydedildi
 clase-zona-cambiada = Alan değişti
@@ -2005,7 +1851,6 @@ clase-listo = Bitti
 clase-nombre = Ders { $fecha }
 clase-sin-sonido-equipo = Bilgisayardan ses gelmiyor: etkin hoparlör veya kulaklık yok
 clase-video = Bu ekranın videosu
-clase-video-corto = Video kaydediliyor
 clase-video-roto = Video durdu; ses kaydı sürüyor
 clase-video-guardado = Ekran videosuyla.
 clase-calidad-ligero = Hafif
@@ -2031,13 +1876,6 @@ clase-recuperar-sin-nada = “{ $nombre }” kaydından yalnızca açılamayan b
 clase-recuperar-descartar = “{ $nombre }” silinsin mi? Kayıt silinecek ve kurtarılamayacak.
 clase-recuperar-fallo = “{ $nombre }” kurtarılamadı. Kayıt hâlâ güvende ve PinDesk açıldığında yeniden önerilecek.
 clase-texto-de-fondo = Kapat (devam eder)
-clase-modo-pantalla = Ekran ve ses
-clase-modo-capturas = Ses ve ekran görüntüleri
-clase-modo-pantalla-sub = Bu ekranın videosunu seçtiğiniz seslerle kaydeder
-clase-modo-capturas-sub = Sesi kaydeder; “Yakala” tüm ekranı kaydeder
-clase-captura-entera = Yakala: tüm ekran, anında
-clase-pista-entera = “Yakala” tüm ekranı bu dakikada kaydeder; alan düğmesi yalnızca bir kısmını
-clase-capturas-entera = Ekran görüntüleri: { $n } · tüm ekran
 clase-abrir-para-estudiar = Çalışmak için aç
 clase-camara-movil = 📱 Telefon kamerası
 clase-camara-movil-n = 📱 Telefon kamerası · { $n }
@@ -2060,14 +1898,10 @@ clase-hora-sin-comprobar = saat doğrulanmadı
 baliza-movil-aislado = Aynı ağda olmanıza rağmen telefonunuz görünmüyor: bu Wi-Fi cihazları birbirinden ayırıyor olabilir (misafir, otel ve ofis ağları bunu yapar) veya bir güvenlik duvarı PinDesk'i engelliyor olabilir. Bilgisayarı telefonun erişim noktasına veya ikisini başka bir Wi-Fi'ye bağlayın. Çektiğiniz fotoğraflar telefonda bekler ve birbirlerini bulduklarında dakikalarına yerleşir.
 baliza-movil-otra-red = Telefonunuz bu bilgisayardan farklı bir ağda. İkisini aynı Wi-Fi'ye (veya bilgisayarı telefonun erişim noktasına) bağlayın. Çektiğiniz fotoğraflar telefonda bekler ve birbirlerini bulduklarında dakikalarına yerleşir.
 # In-person meeting (27-oct-2026): the computer's camera, photos and clips.
-clase-modo-presencial = Yüz yüze
-clase-modo-presencial-sub = Mikrofonu kaydeder; “Fotoğraf” kamerayı tam çözünürlükte kullanır
 clase-camara = Kamera: { $camara }
 clase-camara-buscando = Kameralar aranıyor…
 clase-camara-ninguna = Kamera yok: Fotoğraf ve Klip çalışmaz (ses yine de kaydedilir)
 clase-foto = Fotoğraf
-clase-fotos = Fotoğraflar: { $n } · kamerayla, tam çözünürlükte
-clase-pista-foto = “Fotoğraf” bu dakikada kamerayla bir fotoğraf çeker; video kamera bir klip kaydeder
 clase-foto-hecha = Fotoğraf { $minuto } dakikasına kaydedildi
 clase-camara-abriendo = Kamera açılıyor…
 clase-camara-lista = Kamera hazır: { $medida } fotoğraflar
@@ -2253,128 +2087,6 @@ buscar-todo-deshacer = Geri al
 buscar-todo-copiado = Kopyalandı
 ## v2-lecciones
 # The lessons window of the v2 redesign (Lecciones2.dc.html and Lecciones2-repaso.dc.html).
-lec2-que-aprendiste = Ne öğrendiniz? Yazın veya dikte edin ve Enter'a basın
-lec2-guardar = Kaydet
-lec2-rellena-solo = Sizin için dolduruldu, bir tıklamayla değiştirin:
-lec2-rellena-solo-vacio = Alan, proje ve önem derecesi siz yazarken kendiliğinden dolar.
-lec2-area-de = Alan: { $area }
-lec2-proyecto-de = Proje: { $proyecto }
-lec2-ya-la-tienes = Bu zaten sizde var: “{ $titulo }” · Yine oldu
-lec2-pega-capturas = ekran görüntüsü yapıştırır
-lec2-guardada = Ders { $donde } içine kaydedildi
-lec2-apuntado-otra-vez = Not edildi: yine oldu
-lec2-no-se-pudo = Olmadı. Yeniden deneyin.
-lec2-solo-imagenes = Bir derse yalnızca görüntü eklenebilir.
-lec2-sin-area = Alan yok
-lec2-sin-proyecto = Proje yok (genel sohbet)
-lec2-buscar = Ara: kelime, durum, etiket…
-lec2-todas = Tümü
-lec2-repetidas = Tekrarlananlar
-lec2-graves = Ciddi olanlar
-lec2-para-repasar = Bugün tekrar edilecek · { $n }
-lec2-que-harias-si = Yine olsa ne yapardınız?
-lec2-repasar = Tekrar et
-lec2-este-mes = Bu ay
-lec2-antes = Daha önce
-lec2-lista-vacia = Henüz ders yok. Öğrendiklerinizi yukarıya yazın.
-lec2-nada-con-filtro = Bu filtreyle hiçbir şey yok.
-lec2-nada-con = “{ $q }” ile hiçbir şey yok. Başka bir kelime deneyin veya yukarıya not edin.
-lec2-moverse = gezin
-lec2-leve = Hafif
-lec2-importante = Önemli
-lec2-grave = Ciddi
-lec2-hoy = bugün
-lec2-ayer = dün
-lec2-manana = yarın
-lec2-hace-dias = { $n } gün önce
-lec2-hace-semanas = { $n ->
-    [one] 1 hafta önce
-   *[other] { $n } hafta önce
-  }
-lec2-hace-meses = { $n ->
-    [one] 1 ay önce
-   *[other] { $n } ay önce
-  }
-lec2-hace-anios = { $n ->
-    [one] 1 yıl önce
-   *[other] { $n } yıl önce
-  }
-lec2-en-dias = { $n } gün içinde
-lec2-meses = Oca Şub Mar Nis May Haz Tem Ağu Eyl Eki Kas Ara
-lec2-clic-para-editar = Düzenlemek için herhangi bir metne tıklayın · kendiliğinden kaydedilir
-lec2-mas-campos = Diğer alanlar…
-lec2-que-paso = Ne oldu
-lec2-por-que = Neden
-lec2-proxima = Bir dahaki sefere
-lec2-que-paso-vacio = Ne olduğunu ekleyin…
-lec2-por-que-vacio = Neden olduğunu ekleyin…
-lec2-proxima-vacio = Bir dahaki sefere neyi farklı yapacağınızı ekleyin…
-lec2-editar = Düzenle
-lec2-escribe-aqui = Buraya yazın
-lec2-ayuda-linea = Enter kaydeder · Esc bitirir
-lec2-ayuda-bloque = Enter kaydeder · Shift+Enter yeni satır · Tab sonrakine geçer
-lec2-nota-de-voz = Sesli not
-lec2-anadir-foto = Fotoğraf ekle
-lec2-ver-en-chat = Sohbette gör
-lec2-pinear = Sabitle
-lec2-pineado = Ekrana sabitlendi
-lec2-borrar = Sil
-lec2-borrada = Ders silindi
-lec2-deshacer = Geri al
-lec2-veces = { $n ->
-    [one] kez yaşandı
-   *[other] kez yaşandı
-  }
-lec2-la-ultima = Son kez: { $fecha }
-lec2-me-volvio = Yine oldu
-lec2-gravedad = Önem derecesi
-lec2-area = Alan
-lec2-proyecto = Proje
-lec2-etiquetas = Etiketler
-lec2-anadir = + Ekle
-lec2-nueva-etiqueta = etiket ve Enter
-lec2-relacionadas = İlgili
-lec2-proximo-repaso = Sonraki tekrar: { $cuando }
-lec2-vacia-titulo = Hataları tekrarlamamak için öğrendiklerinizi not edin
-lec2-vacia-texto = Yukarıya tek seferde yazın: “ne oldu…, çünkü…, bir dahaki sefere…”. PinDesk bunu böler; alanı, projeyi ve önem derecesini belirler ve daha önce olup olmadığını söyler.
-lec2-comprobacion = Başlamadan önce kontrol edin: { $hechas } / { $total }
-lec2-comprobacion-vacia = “Bir dahaki sefere…” altında henüz bir şey yok. Her dersin üçüncü bölümüdür.
-lec2-nada-que-repasar = Bugün tekrar edilecek bir şey yok.
-lec2-repaso-titulo = Bugünün tekrarı
-lec2-repaso-de = { $va } / { $total }
-lec2-salir = Çık
-lec2-paso-pensar = Ne yapacağınızı düşünün
-lec2-paso-mirar = Not ettiğinize bakın
-lec2-paso-recordar = Hatırladınız mı?
-lec2-situacion = Durum
-lec2-repaso-cuando = { $pista } olduğunda…
-lec2-repaso-recuerda = Bu dersi hatırlayın
-lec2-repaso-veces = { $n } kez yaşandı
-lec2-que-harias = Ne yapardınız?
-lec2-escribe-o-dicta = Yazın veya dikte edin
-lec2-dictar = Dikte et
-lec2-mostrar = Cevabı göster
-lec2-mostrada = Cevap gösterildi
-lec2-lo-que-apuntaste = Not ettiğiniz
-lec2-oculta = Bakmadan önce düşünün: hatırlamak, yeniden okumaktan çok daha kalıcıdır.
-lec2-por-que-paso = Neden oldu: { $causa }
-lec2-abrir-completa = Dersin tamamını aç
-lec2-lo-recordabas = Hatırladınız mı? Fareyle veya şununla seçin:
-lec2-nota-recordaba = Hatırladım
-lec2-nota-a-medias = Kısmen
-lec2-nota-olvide = Unuttum
-lec2-vuelve-manana = Yarın geri gelir
-lec2-vuelve-en = { $dias } gün sonra geri gelir
-lec2-saltar = Bunu atla
-lec2-repaso-pie = Cevabınız karşılaştırma içindir: kaydedilmez.
-lec2-siguiente = Sonraki
-lec2-repaso-elige = 1, 2 veya 3'ü seçin: hatırladınız mı?
-lec2-repaso-hecho = Tekrar tamamlandı
-lec2-repaso-hechas = { $n ->
-    [one] 1 dersi tekrar ettiniz. Zamanı gelince geri gelin.
-   *[other] { $n } dersi tekrar ettiniz. Zamanı gelince geri gelirler.
-  }
-lec2-repaso-volver = Listeye dön
 ## v2-galeria
 galeria-subtitulo = { $cuantas } · 7 gün saklanır
 galeria-buscar = Yakalamalardaki metin dahil ara
@@ -2600,9 +2312,13 @@ timeline-ayer = Dün
 timeline-exportar = Dışa aktar
 timeline-volver = Geri
 timeline-pista = Neler oluyor? Yazın veya dikte edin…
+timeline-frase-titulo = şöyle oldu
+timeline-frase-titulo-corta = olan şu
+timeline-frase-descripcion = ve sana şöyle anlatayım
+timeline-frase-descripcion-corta = sana anlatayım
 timeline-vacio = Son 24 saatte henüz bir şey yok.
     Neler olduğunu yazın veya dikte edin ve Enter'a basın.
-    Dikte ederken «con esto pasó…» başlığı, «y así te lo cuento…» açıklamayı başlatır.
+    Dikte ederken «{ timeline-frase-titulo }…» başlığı, «{ timeline-frase-descripcion }…» açıklamayı başlatır.
 timeline-vacio-dia = O gün hiçbir şey not edilmedi.
 timeline-nota-de-voz = Sesli not
 timeline-sin-titulo-voz = Sesli not
@@ -2648,8 +2364,6 @@ timeline-mic-sin-texto = Anlaşılmadı: yalnızca ses tutuldu
 
 
 ## simple-lecciones
-lecs-menos-campos = Daha az alan
-lecs-ficha-completa = Tür, nedenler ve anahtar kelimeler…
 
 ## galeria-menu (5-oct-2026, right click)
 galeria-guardar-como = Farklı kaydet…
@@ -2681,7 +2395,6 @@ timeline-momentos-vacio = Seçtiğiniz anlar buraya gelir. "Bugün" sekmesinde b
 timeline-a-momentos = Anlar'a gönderildi
 timeline-fuera-de-momentos = Anlar'dan kaldırıldı
 timeline-estado-sobre-todo = Çoğunlukla
-timeline-estado-lo-mas = "{ $que }"
 timeline-exportar-busqueda = Arama: "{ $que }"
 timeline-pestana-lecciones = Dersler
 timeline-sub-lecciones = { $n ->
@@ -2693,7 +2406,6 @@ timeline-lecciones-vacio = Henüz ders yok. Bir anı derse dönüştürmek için
 timeline-gravedad-leve = Hafif
 timeline-gravedad-importante = Önemli
 timeline-gravedad-grave = Ciddi
-timeline-otra-vez = Yine oldu +1
 timeline-otra-vez-hecho = Not edildi: şimdiye kadar { $n } kez
 timeline-leccion = Ders
 timeline-leccion-hecha = 💡 Ders çıkarıldı: "Dersler"de
@@ -2759,7 +2471,6 @@ tareas5-corregir-pista = Görev metni…
 tareas5-imagen-pista = Görüntü ekle · Ctrl+V kopyalanmış olanı yapıştırır
 tareas5-guardar = Kaydet
 tareas5-corregida = Görev güncellendi
-tareas5-vista-lista = Liste · Ctrl+L
 tareas5-vista-tarjetas = Kartlar · Ctrl+T
 tareas5-vista-horario = Program · Ctrl+H
 tareas5-vista-kanban = Kanban panosu · Ctrl+K
@@ -2777,7 +2488,6 @@ tareas5-quitar = Kaldır
 ## salida (6-oct-2026): the floating window to drag out what was exported
 salida-titulo = Paylaşmaya hazır
 salida-titulo-exportado = Dışa aktarıldı
-salida-titulo-guardado = Kaydedildi
 salida-pista = Bir dosyayı başka bir uygulamaya veya klasöre sürükleyin
 salida-todos = { $n } dosyanın hepsini birlikte sürükleyin
 salida-arrastra-todos = Hepsini almak için basılı tutup sürükleyin
@@ -2785,13 +2495,11 @@ salida-soltado = Bırakıldı · başka bir yere de bırakabilirsiniz
 salida-copiado = Panoya kopyalandı
 salida-pineado = Sabitlendi
 salida-no-se-pudo = Yapılamadı
-salida-compartir = Paylaş
 salida-copiar = Kopyala
 salida-abrir = Aç
 salida-carpeta = Klasörde göster
 salida-pinear = Sabitle
 salida-compartir-menu = Paylaş…
-compartir-arrastrar = Buradan başka bir uygulamaya sürükleyin · ekranda tutmak için tıklayın
 
 ## al-movil (6-oct-2026): a photo from the Flow plugin to the phone's open canvas
 al-movil-lienzo = { $n ->
@@ -3030,8 +2738,6 @@ asistente-voz-sin-whisper = Bu bilgisayar sesi metne dönüştüremiyor: Windows
 asistente-voz-fallo = Sesiniz metne dönüştürülemedi.
 asistente-voz-cancelado = İptal edildi: hiçbir şey gönderilmedi.
 asistente-voz-nada-que-leer = Bu yanıtta okunacak metin yok.
-asistente-voz-leer = Sesli oku
-asistente-voz-callar = Okumayı durdur
 
 # The buttons of the Windows notifications (15-oct).
 notif-hecha = Bitti
@@ -3090,7 +2796,6 @@ horario-sin-clases = Programda henüz ders yok: “Ders programı…”nı açı
 horario-guardada = Bunu bir sonraki { $clase } dersinde duyacaksınız
 
 ## Weekly timetable window and subjects (18-oct-2026)
-horario-titulo = Ders programı
 horario-subtitulo = { $asignaturas } ders · { $clases } oturum
 horario-nueva = Yeni ders (@derslik isteğe bağlı)
 horario-domingo = Pazar
@@ -3113,15 +2818,12 @@ horario-asignatura-borrada = “{ $asignatura }” programdan kaldırıldı (gö
 horario-repetida = “{ $asignatura }” zaten listede
 horario-arrastra = “{ $asignatura }” dersini haftanın üzerine sürükleyin
 horario-no-guardado = Program kaydedilemedi
-tareas-asignatura-pista = Görevin dersi
 tareas-destino-pista = Görevin listesi veya dersi
 tareas-sin-asignatura = Ders yok (Gelen kutusuna)
-tareas-sin-asignaturas = Henüz ders yok: “Ders programı…” içinde oluşturun
 tareas-apuntar-en-asignatura = Yeni { $asignatura } görevi…
 
 # Viewers: the frame to print (2026-10-19)
 marco-imprimir-pista = Yazdırmak istediğinizin üzerine bir kutu sürükleyin · Enter: tümü · Esc: çık
-lector-marco = Yazdırılacak çerçeve (P)
 marcos-pista = Çerçevelemek için sürükleyin · bir sayı: o çerçeveye git · Ctrl+P: tümünü yazdır · Del: sonuncuyu kaldır · I veya Esc: çık
 marcos-imprimir = Çerçeveleri yazdır (Ctrl+P)
 marcos-borrar = Çerçeveleri temizle
@@ -3150,7 +2852,6 @@ barra-cerrar = Kapat (Esc)
 visor-letra = Yazı tipi ve aralık (T / B)
 lector-mas = Diğer seçenekler (G)
 visor-indice-pista = İçindekiler (C)
-riel-hojita = Not defteri (Ctrl+Shift+N)
 riel-editar = Düzenle (Alt+R)
 riel-mirar = Görüntülemeye dön (Alt+R veya Esc)
 
@@ -3203,10 +2904,6 @@ carpeta-exportando = PDF dışa aktarılıyor…
 carpeta-exportado = PDF kaydedildi: { $nombre }
 carpeta-no-se-exporto = Dışa aktarılamadı: hiçbir sayfada bir şey yok
 carpeta-vacia = Bu klasör boş. “Yeni sayfa”ya basın veya sohbette bir tuvalin ya da görüntünün menüsünden “Klasöre ekle…”yi seçin.
-carpeta-antes = Önceki
-carpeta-despues = Sonraki
-carpeta-renombrar = Yeniden adlandır
-carpeta-quitar = Klasörden kaldır
 carpeta-no-esta = O klasör artık sohbette değil
 carpeta-pista = Taşımak için bir sayfayı sürükleyin · F2 başlığını değiştirir · Del kaldırır (sohbette yeniden görünür)
 carpeta-escribe-titulo = Başlığı yazıp Enter'a basın
@@ -3216,8 +2913,6 @@ carpeta-grabacion-detalle = { $duracion } · { $capturas ->
    *[other] { $capturas } yakalama
 }
 carpeta-estudiar = Çalış
-carpeta-de-la-grabacion = Kayıttan
-carpeta-adjuntos = Derse eklenenler
 carpeta-adjunto-insignia = Ek · kaydın parçası değil
 carpeta-adjuntar = Derse ekle
 carpeta-adjuntado = Derse eklendi: { $nombre }
@@ -3245,7 +2940,6 @@ clase-importante-decision = Karar
 clase-importante-pregunta = Soru
 clase-importante-examen = Sınav
 clase-importante-buscando = Önemli olanlar aranıyor…
-clase-importante-nada = Derste bunlardan hiçbiri yok
 clase-importante-tareas = + { $n } görev Görevler'e
 clase-importante-anadidas = Görevler gelen kutusuna { $n } görev eklendi
 tareas-prioridad-urgente = Acil
