@@ -520,6 +520,8 @@ pub fn abrir(
     let mut imprimir_al_abrir =
         std::env::var_os("PINDESK_IMPRIMIR_MARCOS_AL_ABRIR").map(|_| ahora_ms() + 2000);
     let mut vivo = true;
+    // «En línea / Sin conexión», si el documento es de un chat de la nube.
+    let en_linea = crate::en_linea::EnLinea::de(ruta);
     // La ruta puede cambiar al renombrar un documento suelto (D5): cada
     // vuelta trabaja con la de ahora.
     let mut ruta_viva = ruta.to_path_buf();
@@ -586,6 +588,12 @@ pub fn abrir(
             }
             hay_que_pintar = true;
             let local = |p: pindesk_geom::Punto| ((p.x - area.x) as f32, (p.y - area.y) as f32);
+            if let EventoOverlay::BotonPulsado(q) = &evento {
+                let (x, y) = local(*q);
+                if en_linea.pulsar(x, y) {
+                    continue;
+                }
+            }
             // **Anotando, la tinta primero**: son las herramientas del lienzo
             // (`lector_tinta::Tinta`) y responden igual que alli. El clic
             // mira antes el riel y los botones del lector (ver
@@ -932,6 +940,7 @@ pub fn abrir(
                     }
                     acotar(&mut e, marco);
                     pintar(&mut e, p, marco, textos);
+                    en_linea.pintar(p, 14.0 * marco.e, 14.0 * marco.e, marco.e, textos);
                 });
                 let _ = superficie.presentar();
             }
@@ -962,6 +971,7 @@ pub fn abrir(
     guardar_ajustes(&e, ruta);
     guardar_capa(&mut e, ruta);
     dejar_medidas(&e, ruta);
+    en_linea.al_cerrar(textos);
     // La voz sigue con el lector cerrado (es de la app): solo se suelta, ya
     // guardado lo de aqui, y desde ahora el verde lo apunta ella.
     e.voz = None;
