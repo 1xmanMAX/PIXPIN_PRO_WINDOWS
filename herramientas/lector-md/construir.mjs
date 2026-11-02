@@ -97,7 +97,7 @@ const html = `<!doctype html>
 </nav>
 <main class="papel" id="papel"></main>
 <div class="flotante" id="flotante" hidden>
-  <button class="b" data-f="comentar">${svg.comentar}</button>
+  <button class="b" data-f="comentar">${svg.comentar}<span class="rotulo" data-t="comentar">Comentar</span></button>
   <button class="b" data-f="emoji">${svg.emoji}</button>
   <span class="sep"></span>
   <button class="b" data-f="aa" style="width:46px">Aa ▾</button>

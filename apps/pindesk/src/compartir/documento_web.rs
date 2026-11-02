@@ -475,7 +475,13 @@ pub(crate) fn pagina(hojas: &[HojaDocumento], titulo: &str) -> Option<String> {
 /// **La pagina web de un Word o un libro con lo anotado**, leyendo todo del
 /// disco: lo que usa la hoja de compartir, venga del chat o del lector.
 pub(crate) fn web_de_texto(ruta: &Path) -> Result<String> {
-    web_de_texto_con(ruta, &medir_ahora)
+    web_de_texto_con(ruta, &medir_ahora, false)
+}
+
+/// [`web_de_texto`] de una nota hecha Word: sin anotar, y su titulo es el
+/// de su primer `#`, que ya va en el texto: no se pone dos veces.
+pub(crate) fn web_de_nota(ruta: &Path) -> Result<String> {
+    web_de_texto_con(ruta, &medir_ahora, true)
 }
 
 /// [`web_de_texto`] con la forma de medir aparte: las pruebas miden sin
@@ -483,8 +489,16 @@ pub(crate) fn web_de_texto(ruta: &Path) -> Result<String> {
 pub(crate) fn web_de_texto_con(
     ruta: &Path,
     medir: &dyn Fn(&Documento, &lectura::Ajustes, f32, crate::visor::Hoja) -> Result<Medidas>,
+    sin_titulo_repetido: bool,
 ) -> Result<String> {
-    let doc = pindesk_docs::abrir(ruta).map_err(|e| anyhow::anyhow!("{e}"))?;
+    let mut doc = pindesk_docs::abrir(ruta).map_err(|e| anyhow::anyhow!("{e}"))?;
+    if sin_titulo_repetido
+        && doc.bloques.iter().find(|b| !b.vacio()).is_some_and(|b| {
+            matches!(b.clase, pindesk_docs::Clase::Titulo(_)) && b.texto().trim() == doc.titulo.trim()
+        })
+    {
+        doc.titulo.clear();
+    }
     let ajustes = crate::anotado_del_adjunto::leer(ruta);
     let capa = crate::anotado_del_adjunto::leer_capa(ruta);
     let guardadas = medidas_guardadas(ruta, &ajustes);

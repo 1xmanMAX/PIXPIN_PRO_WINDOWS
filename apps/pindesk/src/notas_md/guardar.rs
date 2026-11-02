@@ -25,11 +25,14 @@ pub fn leer_texto(raiz: &Path, destino: &Destino) -> Option<String> {
     match destino {
         Destino::Nueva { .. } => Some(String::new()),
         Destino::Fichero { ruta } => std::fs::read(ruta).ok().map(|b| {
-            if super::es_markdown(ruta) {
-                return String::from_utf8_lossy(&b).into_owned();
-            }
-            // Un texto llano (tambien en UTF-16, como los de Windows).
+            // Sin la marca de orden del principio (la del Bloc de notas): con
+            // ella el primer `#` no estaba al principio del renglon y el
+            // titulo salia con su almohadilla (1-nov-2026). Y en UTF-16 o en
+            // Latin-1, tambien, como cualquier texto de Windows.
             let texto = pindesk_docs::texto_de(&b);
+            if super::es_markdown(ruta) {
+                return texto;
+            }
             match lenguaje_de(ruta) {
                 Some(l) => envolver(l, &texto),
                 None => texto,
@@ -561,5 +564,19 @@ mod pruebas {
         guardar(&c.0, &d, "- [ ] despues", "K7Q2", 1).unwrap();
         assert_eq!(std::fs::read_to_string(&ruta).unwrap(), "- [ ] despues");
         assert!(!c.0.join("apuntes.md.tmp").exists());
+    }
+
+    #[test]
+    fn un_md_con_la_marca_del_bloc_de_notas_empieza_por_su_titulo() {
+        let c = carpeta("fichero-bom");
+        let ruta = c.0.join("bom.md");
+        std::fs::write(&ruta, b"\xEF\xBB\xBF# Titulo\n\nTexto").unwrap();
+        let d = Destino::Fichero { ruta: ruta.clone() };
+        assert_eq!(leer_texto(&c.0, &d).as_deref(), Some("# Titulo\n\nTexto"));
+        // Y uno en UTF-16, como los guarda Windows.
+        let mut u16 = vec![0xFF, 0xFE];
+        u16.extend("# Hola".encode_utf16().flat_map(u16::to_le_bytes));
+        std::fs::write(&ruta, u16).unwrap();
+        assert_eq!(leer_texto(&c.0, &d).as_deref(), Some("# Hola"));
     }
 }

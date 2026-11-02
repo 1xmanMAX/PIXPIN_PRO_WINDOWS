@@ -368,7 +368,10 @@ const ORDENES = {
     mandar({ tipo: 'lectura_veloz', texto: texto(), titulo: tituloDe(texto()) })
   },
   cambiarTitulo: () => editarTitulo(),
-  comentar: () => com.comentar(),
+  comentar: () => {
+    flotante.hidden = true
+    com.comentar(rangoElegido())
+  },
   buscar: () => openSearchPanel(vista),
   cortar: () => {
     vista.focus()
@@ -578,6 +581,24 @@ function menuMas() {
 
 // El menu del boton derecho.
 function menuContextual(x, y) {
+  // Leyendo no se cambia el texto: comentar, copiar, buscar y pasar a
+  // escribir (1-nov-2026; antes salian la negrita, los titulos... y
+  // cambiaban la nota que solo se estaba leyendo).
+  if (leyendo) {
+    const elegido = seleccionLeyendo()
+    const copiado = window.getSelection()?.toString() || ''
+    return abrirMenu(
+      [
+        { icono: '💬', texto: tx.comentar, atajo: 'Ctrl+Alt+M', accion: () => com.comentar(elegido || vista.state.selection.main) },
+        ...(copiado ? [{ texto: tx.copiar, atajo: 'Ctrl+C', accion: () => navigator.clipboard.writeText(copiado) }] : []),
+        { texto: tx.buscar, atajo: 'Ctrl+F', accion: ORDENES.buscar },
+        'linea',
+        { icono: '✎', texto: tx.editar, accion: () => ponerLectura(false) },
+      ],
+      x,
+      y,
+    )
+  }
   const filas = []
   if (enTabla()) {
     filas.push(
@@ -711,11 +732,38 @@ function filtrarBarra() {
 // ------------------------------------------------------------------ barra flotante
 
 const flotante = $('flotante')
+
+/**
+ * Lo seleccionado leyendo (1-nov-2026). Leyendo, el editor no se puede
+ * tocar y CodeMirror no sigue la seleccion del raton (se queda con la de
+ * antes): lo elegido es la del navegador, pasada a posiciones del texto.
+ */
+function seleccionLeyendo() {
+  const s = window.getSelection()
+  if (!vista || !s || s.isCollapsed || !s.rangeCount) return null
+  const r = s.getRangeAt(0)
+  if (!vista.contentDOM.contains(r.startContainer) || !vista.contentDOM.contains(r.endContainer)) return null
+  try {
+    const a = vista.posAtDOM(r.startContainer, r.startOffset)
+    const b = vista.posAtDOM(r.endContainer, r.endOffset)
+    if (a === b) return null
+    return { from: Math.min(a, b), to: Math.max(a, b), empty: false }
+  } catch {
+    return null
+  }
+}
+
+/** Lo elegido ahora: el del raton leyendo, el del editor escribiendo. */
+function rangoElegido() {
+  return leyendo ? seleccionLeyendo() || vista.state.selection.main : vista.state.selection.main
+}
+
 function mostrarFlotante() {
   if (!vista) return
   const st = vista.state
-  const r = st.selection.main
-  if (r.empty || !vista.hasFocus || menuActual || leyendo) {
+  const r = leyendo ? seleccionLeyendo() : st.selection.main
+  // Leyendo solo sale «Comentar» (la barra de formato es para escribir).
+  if (!r || r.empty || (!leyendo && !vista.hasFocus) || menuActual) {
     flotante.hidden = true
     return
   }
@@ -737,6 +785,14 @@ function mostrarFlotante() {
   flotante.querySelector('[data-f="tachado"]').classList.toggle('puesto', rodea('~~'))
   flotante.querySelector('[data-f="codigo"]').classList.toggle('puesto', rodea('`'))
 }
+// Leyendo, CodeMirror no avisa de la seleccion: sale al soltar el raton y
+// se va cuando ya no hay nada elegido.
+document.addEventListener('mouseup', () => {
+  if (leyendo) requestAnimationFrame(mostrarFlotante)
+})
+document.addEventListener('selectionchange', () => {
+  if (leyendo && !flotante.hidden && !seleccionLeyendo()) flotante.hidden = true
+})
 flotante.addEventListener('mousedown', e => e.preventDefault())
 flotante.addEventListener('click', e => {
   const b = e.target.closest('[data-f]')
@@ -1140,7 +1196,7 @@ document.addEventListener(
     } else if (e.ctrlKey && e.altKey && e.key.toLowerCase() === 'm') {
       e.preventDefault()
       e.stopPropagation()
-      com.comentar()
+      ORDENES.comentar()
     } else if (e.ctrlKey && e.key.toLowerCase() === 'w') {
       e.preventDefault()
       mandar({ tipo: 'cerrar' })

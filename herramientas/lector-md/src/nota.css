@@ -312,6 +312,25 @@ body.en-tabla .de-tabla {
 .papel ::selection {
   background: color-mix(in srgb, var(--acento) 38%, transparent) !important;
 }
+/* La seleccion, ENCIMA del texto (1-nov-2026): CodeMirror la pinta en una
+   capa por debajo y el fondo de las cajas (codigo, citas, codigo en linea)
+   la tapaba: seleccionando dentro de una caja no se veia nada. Es
+   translucida, el texto se sigue leyendo a traves. */
+.papel .cm-selectionLayer {
+  z-index: 2 !important;
+  pointer-events: none;
+}
+/* Leyendo, CodeMirror no sigue al raton (su capa se queda con lo de antes):
+   se ve la seleccion del navegador, que va pintada con el texto, por encima
+   del fondo de las cajas. */
+body.leyendo .papel .cm-selectionLayer {
+  display: none !important;
+}
+body.leyendo .papel .cm-content ::selection,
+body.leyendo .papel .cm-line::selection,
+body.leyendo .papel .cm-line ::selection {
+  background: color-mix(in srgb, var(--acento) 38%, transparent) !important;
+}
 .papel .cm-scroller::-webkit-scrollbar {
   width: 10px;
 }
@@ -885,6 +904,22 @@ body.ctrl .pp-enlace {
 }
 .flotante[hidden] {
   display: none;
+}
+/* Leyendo, la burbuja solo comenta (con su nombre al lado del icono). */
+.flotante .rotulo {
+  display: none;
+}
+body.leyendo .flotante .b:not([data-f='comentar']),
+body.leyendo .flotante .sep {
+  display: none;
+}
+body.leyendo .flotante .b[data-f='comentar'] {
+  display: flex;
+  gap: 6px;
+  padding: 0 10px 0 8px;
+}
+body.leyendo .flotante .rotulo {
+  display: inline;
 }
 .flotante .b {
   height: 30px;

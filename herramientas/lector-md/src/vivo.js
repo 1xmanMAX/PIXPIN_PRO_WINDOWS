@@ -378,7 +378,13 @@ function construir(state) {
   const doc = state.doc
   const arbol = ensureSyntaxTree(state, doc.length, 200) || syntaxTree(state)
   const sel = state.selection.main
-  const lineaCursor = doc.lineAt(sel.head).number
+  // El renglon donde se escribe enseña sus marcas (las vallas, la formula
+  // tal cual) y no encoge si esta vacio. Leyendo no hay renglon donde se
+  // escriba; escribiendo cuenta el ancla de la seleccion, que no se mueve
+  // al arrastrar: nada cambia al seleccionar (1-nov-2026, el usuario: al
+  // seleccionar «aparece un salto de linea y desaparece», y al final del
+  // texto salian las vallas del codigo).
+  const lineaCursor = state.readOnly ? -1 : doc.lineAt(sel.anchor).number
   const decos = []
   const pon = (desde, hasta, d) => {
     if (hasta >= desde) decos.push(d.range(desde, hasta))

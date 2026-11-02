@@ -90,10 +90,11 @@ export function crearComentarios({ mandar, vistaDe, tx: txDe, abrirMenu, insigni
     vistaDe().scrollDOM.append(panel)
   }
 
-  /** Comentar lo elegido (o la palabra del cursor). */
-  function comentar() {
+  /** Comentar lo elegido (o la palabra del cursor). `rango`: lo elegido
+   * leyendo, que no es la seleccion del editor (ver `seleccionLeyendo`). */
+  function comentar(rango) {
     const v = vistaDe()
-    const r = v.state.selection.main
+    const r = rango || v.state.selection.main
     componiendo = { tipo: 'nuevo', desde: r.from, hasta: r.to }
     activo = null
     abrir(true)
