@@ -2567,9 +2567,13 @@ timeline-ayer = أمس
 timeline-exportar = تصدير
 timeline-volver = رجوع
 timeline-pista = ماذا يحدث؟ اكتب أو أملِ…
+timeline-frase-titulo = إليك ما حدث
+timeline-frase-titulo-corta = الذي حدث هو
+timeline-frase-descripcion = وإليك التفاصيل
+timeline-frase-descripcion-corta = بالتفصيل
 timeline-vacio = لا شيء في آخر 24 ساعة بعد.
     اكتب أو أملِ ما يحدث واضغط Enter.
-    عند الإملاء، «con esto pasó…» يبدأ العنوان و«y así te lo cuento…» يبدأ الوصف.
+    عند الإملاء، «{ timeline-frase-titulo }…» يبدأ العنوان و«{ timeline-frase-descripcion }…» يبدأ الوصف.
 timeline-vacio-dia = لم يُدوَّن شيء في ذلك اليوم.
 timeline-nota-de-voz = ملاحظة صوتية
 timeline-sin-titulo-voz = ملاحظة صوتية

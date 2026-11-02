@@ -2657,9 +2657,13 @@ timeline-ayer = Вчера
 timeline-exportar = Экспорт
 timeline-volver = Назад
 timeline-pista = Что происходит? Введите или продиктуйте…
+timeline-frase-titulo = вот что случилось
+timeline-frase-titulo-corta = случилось то что
+timeline-frase-descripcion = и вот как это было
+timeline-frase-descripcion-corta = рассказываю
 timeline-vacio = За последние 24 часа пока ничего нет.
     Введите или продиктуйте, что происходит, и нажмите Enter.
-    При диктовке «con esto pasó…» начинает заголовок, а «y así te lo cuento…» — описание.
+    При диктовке «{ timeline-frase-titulo }…» начинает заголовок, а «{ timeline-frase-descripcion }…» — описание.
 timeline-vacio-dia = В этот день ничего не записано.
 timeline-nota-de-voz = Голосовая заметка
 timeline-sin-titulo-voz = Голосовая заметка

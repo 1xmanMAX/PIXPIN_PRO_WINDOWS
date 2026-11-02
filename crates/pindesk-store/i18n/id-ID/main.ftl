@@ -2570,9 +2570,13 @@ timeline-ayer = Kemarin
 timeline-exportar = Ekspor
 timeline-volver = Kembali
 timeline-pista = Apa yang sedang terjadi? Ketik atau diktekan…
+timeline-frase-titulo = begini kejadiannya
+timeline-frase-titulo-corta = yang terjadi adalah
+timeline-frase-descripcion = dan ceritanya begini
+timeline-frase-descripcion-corta = ceritanya begini
 timeline-vacio = Belum ada apa pun dalam 24 jam terakhir.
     Ketik atau diktekan apa yang sedang terjadi lalu tekan Enter.
-    Saat mendikte, «con esto pasó…» memulai judul dan «y así te lo cuento…» deskripsinya.
+    Saat mendikte, «{ timeline-frase-titulo }…» memulai judul dan «{ timeline-frase-descripcion }…» deskripsinya.
 timeline-vacio-dia = Tidak ada yang dicatat pada hari itu.
 timeline-nota-de-voz = Catatan suara
 timeline-sin-titulo-voz = Catatan suara

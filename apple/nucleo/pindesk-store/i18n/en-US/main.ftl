@@ -2540,9 +2540,13 @@ timeline-ayer = Yesterday
 timeline-exportar = Export
 timeline-volver = Back
 timeline-pista = What's happening? Type or dictate…
+timeline-frase-titulo = here's what happened
+timeline-frase-titulo-corta = what happened is
+timeline-frase-descripcion = and here's the story
+timeline-frase-descripcion-corta = let me tell you
 timeline-vacio = Nothing in the last 24 hours yet.
     Type or dictate what's happening and press Enter.
-    When dictating, «con esto pasó…» starts the title and «y así te lo cuento…» the description.
+    When dictating, «{ timeline-frase-titulo }…» starts the title and «{ timeline-frase-descripcion }…» the description.
 timeline-vacio-dia = Nothing was noted that day.
 timeline-nota-de-voz = Voice note
 timeline-sin-titulo-voz = Voice note

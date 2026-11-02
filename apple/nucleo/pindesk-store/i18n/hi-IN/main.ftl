@@ -2443,9 +2443,13 @@ timeline-ayer = कल
 timeline-exportar = एक्सपोर्ट करें
 timeline-volver = वापस
 timeline-pista = क्या हो रहा है? लिखें या बोलकर लिखवाएँ…
+timeline-frase-titulo = यह हुआ कि
+timeline-frase-titulo-corta = हुआ यह कि
+timeline-frase-descripcion = और विस्तार से बताऊँ तो
+timeline-frase-descripcion-corta = विस्तार से
 timeline-vacio = पिछले 24 घंटों में अभी कुछ नहीं।
     लिखें या बोलकर बताएँ कि क्या हो रहा है और Enter दबाएँ।
-    बोलकर लिखवाते समय, «con esto pasó…» शीर्षक शुरू करता है और «y así te lo cuento…» विवरण।
+    बोलकर लिखवाते समय, «{ timeline-frase-titulo }…» शीर्षक शुरू करता है और «{ timeline-frase-descripcion }…» विवरण।
 timeline-vacio-dia = उस दिन कुछ नोट नहीं किया गया।
 timeline-nota-de-voz = वॉइस नोट
 timeline-sin-titulo-voz = वॉइस नोट

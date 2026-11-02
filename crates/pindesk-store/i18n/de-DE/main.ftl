@@ -2600,9 +2600,13 @@ timeline-ayer = Gestern
 timeline-exportar = Exportieren
 timeline-volver = Zurück
 timeline-pista = Was passiert gerade? Schreiben oder diktieren…
+timeline-frase-titulo = folgendes ist passiert
+timeline-frase-titulo-corta = passiert ist
+timeline-frase-descripcion = und das erzähl ich dir
+timeline-frase-descripcion-corta = ich erzähl dir
 timeline-vacio = In den letzten 24 Stunden noch nichts.
     Schreiben oder diktieren Sie, was passiert, und drücken Sie Eingabe.
-    Beim Diktieren beginnt „con esto pasó…“ den Titel und „y así te lo cuento…“ die Beschreibung.
+    Beim Diktieren beginnt „{ timeline-frase-titulo }…“ den Titel und „{ timeline-frase-descripcion }…“ die Beschreibung.
 timeline-vacio-dia = An diesem Tag wurde nichts notiert.
 timeline-nota-de-voz = Sprachnachricht
 timeline-sin-titulo-voz = Sprachnachricht

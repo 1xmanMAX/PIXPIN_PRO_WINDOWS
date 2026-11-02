@@ -2569,9 +2569,13 @@ timeline-ayer = 昨日
 timeline-exportar = エクスポート
 timeline-volver = 戻る
 timeline-pista = 今何が起きていますか？入力または音声入力…
+timeline-frase-titulo = こんなことがあった
+timeline-frase-titulo-corta = あったのは
+timeline-frase-descripcion = 詳しく言うと
+timeline-frase-descripcion-corta = 詳しくは
 timeline-vacio = 過去 24 時間にはまだ何もありません。
     起きていることを入力または音声入力して Enter を押してください。
-    音声入力では、«con esto pasó…» でタイトル、«y así te lo cuento…» で説明が始まります。
+    音声入力では、«{ timeline-frase-titulo }…» でタイトル、«{ timeline-frase-descripcion }…» で説明が始まります。
 timeline-vacio-dia = その日は何も記録されていません。
 timeline-nota-de-voz = ボイスメモ
 timeline-sin-titulo-voz = ボイスメモ

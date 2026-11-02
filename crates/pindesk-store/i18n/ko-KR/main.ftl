@@ -2569,9 +2569,13 @@ timeline-ayer = 어제
 timeline-exportar = 내보내기
 timeline-volver = 뒤로
 timeline-pista = 무슨 일이 있나요? 입력하거나 받아쓰세요…
+timeline-frase-titulo = 이런 일이 있었어
+timeline-frase-titulo-corta = 있었던 일은
+timeline-frase-descripcion = 자세히 말하면
+timeline-frase-descripcion-corta = 자세히는
 timeline-vacio = 최근 24시간 동안 아직 아무것도 없습니다.
     무슨 일이 있는지 입력하거나 받아쓰고 Enter를 누르세요.
-    받아쓸 때 «con esto pasó…»는 제목을, «y así te lo cuento…»는 설명을 시작합니다.
+    받아쓸 때 «{ timeline-frase-titulo }…» 다음은 제목, «{ timeline-frase-descripcion }…» 다음은 설명이 됩니다.
 timeline-vacio-dia = 그날은 기록된 내용이 없습니다.
 timeline-nota-de-voz = 음성 메모
 timeline-sin-titulo-voz = 음성 메모

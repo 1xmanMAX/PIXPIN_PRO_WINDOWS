@@ -2541,9 +2541,15 @@ timeline-ayer = Ayer
 timeline-exportar = Exportar
 timeline-volver = Volver
 timeline-pista = ¿Qué está pasando? Escribe o dicta…
+# Las frases que parten lo dictado en titulo y descripcion, una por clave
+# (las de español valen siempre). Ver `pindesk_timeline::frases`.
+timeline-frase-titulo = con esto pasó
+timeline-frase-titulo-corta = pasó que
+timeline-frase-descripcion = y así te lo cuento
+timeline-frase-descripcion-corta = te cuento
 timeline-vacio = Aún no hay nada en las últimas 24 horas.
     Escribe o dicta lo que está pasando y pulsa Intro.
-    Al dictar, «con esto pasó…» es el título y «y así te lo cuento…» la descripción.
+    Al dictar, «{ timeline-frase-titulo }…» es el título y «{ timeline-frase-descripcion }…» la descripción.
 timeline-vacio-dia = Ese día no tiene nada apuntado.
 timeline-nota-de-voz = Nota de voz
 timeline-sin-titulo-voz = Nota de voz

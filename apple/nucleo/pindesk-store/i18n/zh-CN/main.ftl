@@ -2412,9 +2412,13 @@ timeline-ayer = 昨天
 timeline-exportar = 导出
 timeline-volver = 返回
 timeline-pista = 正在发生什么？输入或口述…
+timeline-frase-titulo = 事情是这样的
+timeline-frase-titulo-corta = 情况是
+timeline-frase-descripcion = 具体来说
+timeline-frase-descripcion-corta = 详细地说
 timeline-vacio = 最近 24 小时还没有内容。
     输入或口述正在发生的事，然后按 Enter。
-    口述时，«con esto pasó…» 开始标题，«y así te lo cuento…» 开始描述。
+    口述时，«{ timeline-frase-titulo }…» 开始标题，«{ timeline-frase-descripcion }…» 开始描述。
 timeline-vacio-dia = 那天没有记录任何内容。
 timeline-nota-de-voz = 语音消息
 timeline-sin-titulo-voz = 语音消息

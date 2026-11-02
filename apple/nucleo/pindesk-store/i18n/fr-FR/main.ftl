@@ -2443,9 +2443,13 @@ timeline-ayer = Hier
 timeline-exportar = Exporter
 timeline-volver = Retour
 timeline-pista = Que se passe-t-il ? Écrivez ou dictez…
+timeline-frase-titulo = voilà ce qui s’est passé
+timeline-frase-titulo-corta = il s’est passé que
+timeline-frase-descripcion = et je te raconte
+timeline-frase-descripcion-corta = je te raconte
 timeline-vacio = Rien dans les dernières 24 heures pour l’instant.
     Écrivez ou dictez ce qui se passe et appuyez sur Entrée.
-    En dictée, « con esto pasó… » commence le titre et « y así te lo cuento… » la description.
+    En dictée, « { timeline-frase-titulo }… » commence le titre et « { timeline-frase-descripcion }… » la description.
 timeline-vacio-dia = Rien n’a été noté ce jour-là.
 timeline-nota-de-voz = Note vocale
 timeline-sin-titulo-voz = Note vocale

@@ -334,6 +334,31 @@ mod pruebas {
     }
 
     #[test]
+    fn cada_idioma_ensena_sus_frases_del_timeline() {
+        // La pista del timeline vacio cita las frases clave del propio
+        // idioma (`pindesk_timeline::frases`), no las de español.
+        for idioma in Idioma::TODOS {
+            let c = Catalogo::nuevo(idioma);
+            for clave in [
+                "timeline-frase-titulo",
+                "timeline-frase-titulo-corta",
+                "timeline-frase-descripcion",
+                "timeline-frase-descripcion-corta",
+            ] {
+                assert!(c.traducida(clave), "falta {clave} en {idioma:?}");
+            }
+            let pista = c.t("timeline-vacio");
+            assert!(!pista.contains('{'), "{idioma:?}: {pista}");
+            for clave in ["timeline-frase-titulo", "timeline-frase-descripcion"] {
+                assert!(pista.contains(&c.t(clave)), "{idioma:?}: {pista}");
+            }
+            if idioma != Idioma::Espanol {
+                assert!(!pista.contains("con esto pasó"), "{idioma:?}: {pista}");
+            }
+        }
+    }
+
+    #[test]
     fn los_rotulos_de_la_web_del_asistente_llevan_el_dominio() {
         let mut args = FluentArgs::new();
         args.set("dominio", "ugr.es");

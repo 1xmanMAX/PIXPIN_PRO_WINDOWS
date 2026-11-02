@@ -2599,9 +2599,13 @@ timeline-ayer = Dün
 timeline-exportar = Dışa aktar
 timeline-volver = Geri
 timeline-pista = Neler oluyor? Yazın veya dikte edin…
+timeline-frase-titulo = şöyle oldu
+timeline-frase-titulo-corta = olan şu
+timeline-frase-descripcion = ve sana şöyle anlatayım
+timeline-frase-descripcion-corta = sana anlatayım
 timeline-vacio = Son 24 saatte henüz bir şey yok.
     Neler olduğunu yazın veya dikte edin ve Enter'a basın.
-    Dikte ederken «con esto pasó…» başlığı, «y así te lo cuento…» açıklamayı başlatır.
+    Dikte ederken «{ timeline-frase-titulo }…» başlığı, «{ timeline-frase-descripcion }…» açıklamayı başlatır.
 timeline-vacio-dia = O gün hiçbir şey not edilmedi.
 timeline-nota-de-voz = Sesli not
 timeline-sin-titulo-voz = Sesli not

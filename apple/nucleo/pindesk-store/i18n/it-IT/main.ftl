@@ -2443,9 +2443,13 @@ timeline-ayer = Ieri
 timeline-exportar = Esporta
 timeline-volver = Indietro
 timeline-pista = Cosa sta succedendo? Scrivi o detta…
+timeline-frase-titulo = con questo è successo
+timeline-frase-titulo-corta = è successo che
+timeline-frase-descripcion = e così te lo racconto
+timeline-frase-descripcion-corta = te lo racconto
 timeline-vacio = Non c'è ancora niente nelle ultime 24 ore.
     Scrivi o detta cosa sta succedendo e premi Invio.
-    Quando detti, «con questo è successo…» è il titolo e «e così te lo racconto…» la descrizione.
+    Quando detti, «{ timeline-frase-titulo }…» è il titolo e «{ timeline-frase-descripcion }…» la descrizione.
 timeline-vacio-dia = Quel giorno non ha niente di annotato.
 timeline-nota-de-voz = Nota vocale
 timeline-sin-titulo-voz = Nota vocale
