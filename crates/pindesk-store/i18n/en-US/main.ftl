@@ -109,9 +109,6 @@ cuenta-atras-cancelar = Esc to stop
 comando-pinear-seleccion = Pin the Explorer selection
 
 # The settings window (P6).
-ajustes-pestana-atajos = Shortcuts
-ajustes-pestana-general = General
-ajustes-pestana-captura = Capture
 ajustes-pestana-dibujo = Drawing
 ajustes-iman = Snap to notable points
 ajustes-iman-esquinas = Corners and endpoints
@@ -121,26 +118,17 @@ ajustes-iman-radio = Grab distance (px)
 ajustes-idioma = Language
 ajustes-idioma-sistema = Same as Windows
 ajustes-arranque = Start with Windows
-ajustes-color = Color picker format
-ajustes-nivel = Performance
 ajustes-nivel-auto = Automatic
 ajustes-nivel-completo = Full
 ajustes-nivel-ligero = Light
 ajustes-pdf-aligerar = Make PDFs lighter when added to the chat
-ajustes-pdf-nivel = How much lighter (Small and Max: by hand only)
 ajustes-pdf-nivel-sin-perdida = Exact
 ajustes-pdf-nivel-equilibrado = Medium
 ajustes-pdf-nivel-pequeno = Small
 ajustes-pdf-nivel-extremo = Max
-ajustes-retardo-captura = Countdown seconds before capturing
-ajustes-limite-scroll = Maximum height of a scrolling capture, in pixels
-ajustes-gif-ritmo = Frames per second when recording
-ajustes-gif-retardo = Grace seconds before recording
 ajustes-sin-atajo = No shortcut
 ajustes-pulsa-combinacion = Press the combination…
 ajustes-choca = duplicate
-ajustes-cerrar = Close
-ajustes-abrir-fichero = Open the settings file
 
 # Reading the text of a pin (P4.2).
 pin-copiar-texto = Copy the text in the image
@@ -175,10 +163,6 @@ chat-clase-proyecto = Project
 chat-clase-miniapp = Mini app
 chat-escribe = Write something…
 # The chat, like PinDesk Android's (guardados/MensajesActivity.kt).
-chat-cosas = { $n ->
-    [one] 1 thing
-   *[other] { $n } things
-}
 chat-elegidos = { $n ->
     [one] 1 selected
    *[other] { $n } selected
@@ -186,7 +170,6 @@ chat-elegidos = { $n ->
 chat-lienzo = Canvas
 chat-tabla = Table
 chat-viene-de = Comes from
-chat-comentar = Comment on this
 chat-copiar = Copy
 chat-fijar = Pin to top
 chat-soltar = Unpin from top
@@ -208,13 +191,10 @@ chat-recordar = Remind me
 chat-rescatar = Keep this
 chat-solo-la-foto = Show only the photo
 chat-ver-hilo = See comments
-chat-etiquetar = Add a tag
-chat-quitar-etiqueta = Remove the tag
 chat-reenviar = Forward
 chat-unir = Add to project
 chat-transcribir = Convert to text
 chat-letra = Lyrics or text
-chat-elegir = Select
 chat-borrar = Delete
 chat-borrar-aviso = It will be removed from the conversation. An attached file is deleted with it. Continue?
 chat-biblioteca-audio = Audio library
@@ -226,30 +206,18 @@ chat-fondo-brezo = Heather
 chat-fondo-bosque = Forest
 chat-fondo-ocaso = Sunset
 chat-fondo-pizarra = Slate
-chat-adj-archivo = A file
-chat-adj-pagina = A page from a project
-chat-adj-proyecto = A whole project
-chat-adj-conversacion = A conversation
 chat-adj-telepronter = Teleprompter
 chat-adj-pronunciar = Pronunciation
-chat-adj-miniapp = A mini-app
 chat-reenviado = Forwarded
 chat-copiado = Copied
-chat-compartido = Copied to the clipboard: paste it wherever you want to share it
 chat-compartir-sin-panel = Windows did not open the Share panel: it is on the clipboard so you can paste it wherever you want
 chat-pineado = Pinned
 chat-foto-en-la-nota = Photo added to your text: it is all sent as one note
 chat-sin-archivo = This message has no file on this computer
 chat-sin-origen = That canvas is not in this project
 chat-sin-proyectos-otros = There is no other project to send it to
-chat-proyectos-lista = Projects are the list on the left
-chat-no-hay-voz = Recording voice notes does not exist on Windows yet
-chat-no-hay-aligerar = Making a PDF lighter does not exist on Windows yet
 chat-no-hay-unir = On Windows every chat is already a project: use Forward to take it to another
-chat-no-hay-biblioteca = The audio library does not exist on Windows yet
 chat-ver-dibujo-entero = Show the whole drawing
-chat-no-hay-pagina = Attaching a page from a project does not exist on Windows yet
-chat-no-hay-telepronter = The teleprompter does not exist on Windows yet
 chat-no-se-pudo = It could not be done: check the PinDesk log
 chat-fecha = { $mes } { $dia }
 chat-fecha-con-ano = { $mes } { $dia }, { $ano }
@@ -297,22 +265,12 @@ info-vacia-voz = Voice notes will show up here
 info-vacia-dibujos = Drawings from this chat will show up here
 info-vacia-fijados = What you pin will show up here
 info-vacia-buzon = The inbox is empty
-info-abrir = Open
-info-abrir-enlace = Open link
-info-reproducir = Play
-info-ver-en-el-chat = Show in chat
 info-titulo = Info
 adjuntar-imagen = Photo or video
 adjuntar-archivo = File
 adjuntar-lienzo = New canvas
-confirmar-titulo = { $cuantos ->
-    [one] Add one file
-   *[other] Add { $cuantos } files
-}
-confirmar-resto = and { $cuantos } more
 confirmar-pie = Add a caption…
 confirmar-cancelar = Cancel
-confirmar-aceptar = Add
 adjuntar-tabla = New table
 tabla-nueva = Table
 chat-nombre-nuevo = Project name…
@@ -328,11 +286,7 @@ recibir-salir = Escape to close
 comando-recibir-del-movil = Receive from phone…
 comando-sincronizar = Sync
 adjuntar-del-movil = Bring from phone…
-menu-foto-aqui = Draw right here
 proyecto-renombrar = Rename
-proyecto-logo-poner = Set logo image…
-proyecto-logo-quitar = Remove logo image
-proyecto-logo-error = Couldn't set that logo image
 # The chat photo (25-oct-2026): image, emoji or colour in the circle.
 foto-chat-menu = Change chat photo…
 foto-chat-titulo = Chat photo
@@ -590,7 +544,6 @@ papelera-no-se-pudo = Could not recover «{ $nombre }»: { $motivo }
 papelera-recuperados = Recovered { $n } of { $total } projects
 
 ## The document viewer: Word, EPUB books and web pages (task 2.1)
-visor-html-titulo = PinDesk — page
 ## The Office pin: Office's preview as a pin (2026-10-10)
 office-titulo = Office preview
 office-abriendo = Opening with the Office preview…
@@ -598,8 +551,6 @@ office-tarda = Office is taking a while (it has to start). You can wait, or choo
 office-fallo = Office couldn't preview this file. Open it in another app with “Open with…” (the ↗ button on the bar).
 office-internet = This file comes from the internet and, for safety, Windows doesn't allow previewing it. Open it in another app with “Open with…” (the ↗ button on the bar), or unblock it in its Properties.
 visor-titulo = PinDesk viewer
-visor-marcador = Bookmark here
-visor-ajustes = Reading settings
 visor-tamano = Text size
 visor-quitar-marcadores = Remove bookmarks
 visor-guardar-pagina = Save as a web page
@@ -608,15 +559,10 @@ visor-abrir-carpeta = Open the folder
 visor-guardado = Saved to "{ $nombre }"
 visor-no-guardado = Could not save it
 visor-vacio = This document has no text to show
-visor-ayuda = Wheel to read · +/− size · M bookmark · G settings · Esc to leave
-visor-elige-emoticono = What do you mark it with?
-visor-sin-marcadores = No bookmarks yet
 
 ## The readers: comfortable reading, annotating on top and the PDF reader
-lector-listo = Done
 lector-indice = Contents
 lector-letra-fijada = The type is locked: there are notes drawn on top
-lector-letra-normal = Normal type
 lector-letra-fija = Monospace
 lector-grosor-normal = Regular
 lector-grosor-gruesa = Bold
@@ -630,11 +576,8 @@ lector-pdf-reconociendo = Recognising the text on the page…
 lector-pdf-reconocido = Text recognised: you can now select and mark it
 lector-pdf-sin-texto = No text was found on this page
 lector-exportando = Saving the annotated PDF… { $hechas } of { $total }
-lector-exportar-pdf = Save the PDF with the notes
 lector-anotado = annotated
-lector-ayuda-pdf = Wheel to turn pages · Ctrl+wheel zoom · Ctrl+[ Ctrl+] space to annotate · L listen · A annotate · M bookmark · Esc to leave
 lector-office-titulo = Word and PowerPoint in PinDesk
-lector-ayuda-office = Wheel to turn pages · Ctrl+wheel zoom · drag over text to select · Ctrl+C copy · Ctrl+F find · Ctrl+P print · F5 present · A annotate · N negative · Esc to leave
 lector-presentar = Present (F5)
 lector-modo-lectura = Reading mode (reflowed text)
 lector-imprimir = Print… (Ctrl+P)
@@ -658,7 +601,6 @@ lector-voz-parrafo = Paragraph { $n } of { $total }
 lector-voz-preparando = Getting the voice ready…
 lector-voz-no-respondio = Microsoft did not answer
 lector-voz-sin-voz = No voice
-lector-verde-aqui = Green bookmark here: reading will start from this point
 lector-espacio-tope = No more room on that side
 lector-espacio-nada = That side has no space left
 lector-sin-lado = Sideways locked: it only scrolls up and down
@@ -693,78 +635,12 @@ sinc-presencia-apagada = Presence is off in the settings ([sincro] presencia = f
 bandeja-abrir-documento = Open a document…
 
 ## Canvas shapes and ink: arrowheads, fills and text style (group A)
-lienzo-punta-ninguna = No arrowhead
-lienzo-punta-flecha = Arrow
-lienzo-punta-barra = Bar
-lienzo-punta-circulo = Circle
-lienzo-punta-circulo-hueco = Circle outline
-lienzo-punta-triangulo = Triangle
-lienzo-punta-triangulo-hueco = Triangle outline
-lienzo-punta-rombo = Diamond
-lienzo-punta-rombo-hueco = Diamond outline
-lienzo-punta-inicio = Start arrowhead
-lienzo-punta-fin = End arrowhead
-lienzo-trama-zigzag = Zigzag
-lienzo-trama-tiralineas = Ruled lines
-lienzo-texto-negrita = Bold
-lienzo-texto-cursiva = Italic
-lienzo-texto-tachado = Strikethrough
-lienzo-presion-firme = Fixed-width stroke
-lienzo-flecha-codos = Elbow arrow
-lienzo-flecha-libre = Freehand arrow
-lienzo-arco-guia = Guide oval, not traced yet
-lienzo-luces-fuerza = Light strength
 
 ## Build and measure: fill, trim, extend, points and angles (group C)
-lienzo-bote = Fill bucket
-lienzo-bote-ayuda = Click inside a closed gap and it gets filled, even if several different shapes form it.
-lienzo-bote-abierto = This gap is not closed: the paint would leak out through a crack.
-lienzo-recortar = Trim
-lienzo-recortar-ayuda = Click the leftover piece of a stroke and it goes, up to where the others cross it.
-lienzo-extender = Extend
-lienzo-extender-ayuda = Click the end that falls short and it reaches the first thing in its way.
-lienzo-extender-sin-tope = Nothing in its way: a line stretched into the void is not an extended line.
-lienzo-punto = Labelled point
-lienzo-punto-ayuda = Click a crossing, an endpoint or the centre of a circle and the point appears with its letter.
-lienzo-punto-sin-sitio = There is nothing to name there: a point goes on a crossing, an endpoint or a centre.
-lienzo-punto-serie-mayusculas = Capital letters (A, B, C…)
-lienzo-punto-serie-minusculas = Small letters (a, b, c…)
-lienzo-punto-serie-numeros = Numbers (1, 2, 3…)
-lienzo-angulos = Live angles
-lienzo-angulos-ayuda = While you move something, it shows how big the corners you are touching are.
-lienzo-area = Area
 
 ## Select, transform and bind (group B)
-lienzo-lazo = Lasso
-lienzo-lazo-ayuda = Draw around whatever you want to pick. What falls fully inside is taken; with Shift, whatever the stroke touches too.
-lienzo-lazo-encerrar = Only what falls inside
-lienzo-lazo-rozar = Whatever the stroke touches too
-lienzo-voltear-horizontal = Flip horizontally
-lienzo-voltear-vertical = Flip vertically
-lienzo-voltear-ayuda = Mirrors the selection about the centre of the whole group, not each shape about itself.
-lienzo-rejilla = Ruled paper
-lienzo-rejilla-ninguna = Plain
-lienzo-rejilla-lineas = Squares
-lienzo-rejilla-puntos = Dots
-lienzo-rejilla-imanta = Snap the cursor to the squares
-lienzo-rejilla-ayuda = The reference that is there before the first stroke. It does not show up when exporting.
-lienzo-iman-intersecciones = Crossings between shapes
-lienzo-iman-intersecciones-ayuda = The point where two strokes cut each other, which exists as a corner of neither.
-lienzo-iman-bordes = Shape edges
-lienzo-iman-bordes-ayuda = The set square: the cursor slides along the whole edge, not just its corners.
-lienzo-iman-eje = Origin and coordinate axes
-lienzo-enganche = Bind the arrow to the shape
-lienzo-enganche-ayuda = Drop the tip on a shape and the arrow will follow it when you move it.
-lienzo-enganche-soltar = Release the tip
-lienzo-tirador-punta = Move the end
-lienzo-tirador-anadir = Bend here
-lienzo-copiar-estilo = Copy style
-lienzo-copiar-estilo-ayuda = Take the colour, stroke and fill from one shape and paste them on others. Only what both types accept travels.
-lienzo-estilo-tomado = Style taken
-lienzo-estilo-sin-tomar = You have not taken a style yet.
 
 # The attachment the document viewer can open without leaving PinDesk.
-chat-abrir-aqui = Open here
 
 # The seven mini-apps from the phone, and their panel.
 mini-moneda = USD
@@ -811,15 +687,6 @@ chat-voz-fallo = The voice note couldn't be recorded.
 # Shrinking an attached PDF: it lowers the photos inside, and never for the worse.
 pdf-aligerado = Shrunk: from { $antes } to { $despues }
 pdf-aligerar-cifrado = The PDF is encrypted and can't be rewritten without risking it.
-pdf-aligerar-indice-comprimido = This PDF keeps its index compressed, and rebuilding that isn't supported here yet.
-pdf-aligerar-objetos-comprimidos = This PDF keeps its objects compressed, and rebuilding those isn't supported here yet.
-pdf-aligerar-sin-trailer = The PDF has no readable trailer.
-pdf-aligerar-sin-objetos = No object inside the PDF was recognised.
-pdf-aligerar-largo-indirecto = A stream in the PDF doesn't state its length.
-pdf-aligerar-objetos-sin-entender = There are parts of the PDF this reader does not understand; rewriting it could drop them.
-pdf-aligerar-sin-fotos = It has no photos to lower: the weight is text or vectors.
-pdf-aligerar-ya-al-minimo = The photos are already at the minimum.
-pdf-aligerar-no-compensa = It would only drop from { $antes } to { $despues }: not worth it.
 pdf-aligerar-no-se-lee = The shrunk file didn't read back properly; the original stays.
 aligerar-progreso = Making lighter… { $por }%
 aligerar-empezado = Making the PDF lighter…
@@ -838,7 +705,6 @@ chat-recordatorio-quitado = Reminder removed
 chat-recordatorio-titulo = Reminder
 
 # A message menu entry: send the attachment to someone over Wi-Fi.
-chat-enviar-wifi = Send over Wi-Fi
 
 # Turning a voice note into text with Vosk. What is missing is named with its
 # file and link: PinDesk never downloads anything on its own.
@@ -864,7 +730,6 @@ musica-sinc-empieza = Press Space (or “Mark”) right as each line starts
 musica-sinc-siguiente = Next: { $linea }
 musica-sinc-todas = All lines marked. Save the lyrics.
 musica-sinc-marcar = Mark { $n }/{ $total }
-musica-sinc-deshacer = Undo
 musica-sinc-guardar = Save
 musica-sinc-cancelar = Cancel
 musica-sinc-guardada = Lyrics synced
@@ -980,7 +845,6 @@ exportar-tipo-pdf = PDF document
 exportar-tipo-html = Single-file web page
 exportar-vacio = There is nothing to export with this.
 exportar-fallo = The canvas could not be exported.
-exportar-hecho = Exported: { $nombre }
 imprimir-menu = Print…	Ctrl+P
 imprimir-vacio = There is nothing to print.
 imprimir-fallo = The canvas could not be printed.
@@ -1028,8 +892,6 @@ compartir-texto = Text
 compartir-csv = Table (CSV)
 compartir-pindesk = PinDesk (.pindesk)
 compartir-dxf = DXF
-compartir-xlsx = Excel (xlsx)
-compartir-docx = Word (docx)
 compartir-md = Markdown
 compartir-exportar = Export…
 compartir-paginas-de = What to include · { $marcadas } of { $total }
@@ -1041,7 +903,6 @@ compartir-preparando = Preparing…
 compartir-marca-alguna = Tick some page
 compartir-en-cuanto-este = As soon as it is ready
 compartir-peso-ficheros = { $peso } · { $n } files
-compartir-panel-abierto = Choose where to send it
 compartir-guardado = Saved: { $nombre }
 compartir-copiado = Copied to the clipboard
 compartir-no-se-pudo = It could not be prepared
@@ -1063,7 +924,6 @@ compartir-tipo-nota = Note
 
 # Drawing tools: the ones shown in the canvas, the reader, pins and the
 # screen annotator. Turning one off removes it from the bar and its key.
-ajustes-pestana-herramientas = Tools
 herramientas-lazo = Lasso
 herramientas-rectangulo = Rectangle
 herramientas-rombo = Diamond
@@ -1134,11 +994,6 @@ chat-fecha-corta = { $mes } { $dia }
 chat-enlace-no-abre = The link could not be opened
 
 ## D11: a spreadsheet in the chat is a book of tables (ventana_chat/libro.rs)
-libro-titulo = Spreadsheet
-libro-xls-antiguo = Old .xls files can't be read: open it and save it as .xlsx
-libro-abrir-fuera = Open it with another app?
-libro-no-es = The file isn't a valid spreadsheet
-libro-sin-hojas = The workbook has no sheet with data
 hoja-preparando = Getting the sheet ready to edit…
 hoja-editar-aviso = Changes are saved in the chat sheet; the original file stays the same
 hoja-editando = Editing · Esc to view
@@ -1445,8 +1300,6 @@ chat-insertar-en-nota = Insert into a note
 ## Canvas: weld vertices and number points (lienzo-geometria, 26-sep)
 herramientas-nudo = Weld vertices
 herramientas-bolita = Ball: sweep over to select
-lienzo-nudo = Weld vertices
-lienzo-nudo-ayuda = Click where two shapes touch and they are pinned together: they no longer come apart and, with a single pin, they turn around it. Click the pin to remove it; drag it with the hand to take the pinned shapes along.
 lienzo-punto-serie = Point labels
 lienzo-cota-pedir = Ask for the length when drawn
 lienzo-panel-dureza = Pencil grade
@@ -1494,7 +1347,6 @@ funciones-figuras-detalle = Your shape library for canvases
 figuras-mias = My shapes
 figuras-todas = All
 figuras-vacia = No shapes yet. On a canvas, select something and “Save as a shape”.
-figuras-cerrar = Close
 figuras-borrar = Delete the shape
 figuras-borrar-seguro = Press again to delete
 figuras-elegir-para = Pick a shape for “{ $chat }”
@@ -1753,12 +1605,8 @@ galeria-borrada = Moved to PinDesk's recycle bin
 galeria-no-se-pudo = Couldn't do it: { $motivo }
 galeria-conservada-aviso = Kept: it is in Saved messages and won't be deleted
 bandeja-galeria-capturas = Capture gallery…
-chat-galeria-capturas = Capture gallery
 # Lessons learned (3-oct, as on the phone)
-chat-lecciones = Lessons
-chat-leccion-nueva = New lesson
 chat-hacer-leccion = Make a lesson
-bandeja-lecciones = 💡 Lessons…
 bandeja-leccion-nueva = New lesson…
 bandeja-tareas = ☑ Tasks…
 bandeja-timeline = 🕒 Timeline and lessons…
@@ -1978,7 +1826,6 @@ ajustes2-auto = Auto
 comando-buscar = 🔍 Search PinDesk…
 comando-grabar-clase = 🎙 Record class or meeting…
 clase-titulo = Record a class or meeting
-clase-sub = Records the audio and puts screenshots at their minute
 clase-microfono = Microphone
 clase-equipo = Computer sound (Meet, Zoom…)
 clase-guardar-en = Save to: { $proyecto }
@@ -1987,7 +1834,6 @@ clase-nada = Choose the microphone, the computer sound or both
 clase-captura = Capture
 clase-terminar = Finish
 clase-capturas = Screenshots: { $n } · one click repeats the area
-clase-pista = “Capture” saves an area of the screen at this minute
 clase-elige-zona = Pick the area on the screen…
 clase-captura-hecha = Screenshot saved at { $minuto }
 clase-zona-cambiada = Area changed
@@ -2006,7 +1852,6 @@ clase-listo = Done
 clase-nombre = Class { $fecha }
 clase-sin-sonido-equipo = Nothing is heard from the computer: no speakers or headphones are active
 clase-video = Video of this screen
-clase-video-corto = Recording video
 clase-video-roto = The video stopped; the audio is still recording
 clase-video-guardado = With the screen video.
 clase-calidad-ligero = Light
@@ -2032,13 +1877,6 @@ clase-recuperar-sin-nada = Only a video that cannot be opened is left of “{ $n
 clase-recuperar-descartar = Discard “{ $nombre }”? The recording will be deleted and cannot be recovered.
 clase-recuperar-fallo = “{ $nombre }” could not be recovered. The recording is still safe and will be offered again when PinDesk opens.
 clase-texto-de-fondo = Close (keeps going)
-clase-modo-pantalla = Screen and sound
-clase-modo-capturas = Audio and screenshots
-clase-modo-pantalla-sub = Records this screen's video with the sounds you choose
-clase-modo-capturas-sub = Records the audio; “Capture” saves the whole screen
-clase-captura-entera = Capture: the whole screen, instantly
-clase-pista-entera = “Capture” saves the whole screen at this minute; the area button, just a part
-clase-capturas-entera = Screenshots: { $n } · the whole screen
 clase-abrir-para-estudiar = Open to study
 clase-camara-movil = 📱 Phone camera
 clase-camara-movil-n = 📱 Phone camera · { $n }
@@ -2061,14 +1899,10 @@ clase-hora-sin-comprobar = time not verified
 baliza-movil-aislado = Your phone isn’t showing up, though you’re on the same network: this Wi-Fi may keep devices apart (guest, hotel and office networks do) or a firewall may be blocking PinDesk. Connect the PC to the phone’s hotspot, or both to another Wi-Fi. Photos you take wait on the phone and go in at their minute once they find each other.
 baliza-movil-otra-red = Your phone is on a different network from this PC. Connect both to the same Wi-Fi (or the PC to the phone’s hotspot). Photos you take wait on the phone and go in at their minute once they find each other.
 # In-person meeting (27-oct-2026): the computer's camera, photos and clips.
-clase-modo-presencial = In person
-clase-modo-presencial-sub = Records the microphone; “Photo” uses the camera at full resolution
 clase-camara = Camera: { $camara }
 clase-camara-buscando = Looking for cameras…
 clase-camara-ninguna = No camera: Photo and Clip won't work (the audio is recorded anyway)
 clase-foto = Photo
-clase-fotos = Photos: { $n } · with the camera, at full resolution
-clase-pista-foto = “Photo” takes a picture with the camera at this minute; the video camera records a clip
 clase-foto-hecha = Photo saved at { $minuto }
 clase-camara-abriendo = Opening the camera…
 clase-camara-lista = Camera ready: photos at { $medida }
@@ -2254,128 +2088,6 @@ buscar-todo-deshacer = Undo
 buscar-todo-copiado = Copied
 ## v2-lecciones
 # The lessons window of the v2 redesign (Lecciones2.dc.html and Lecciones2-repaso.dc.html).
-lec2-que-aprendiste = What did you learn? Type or dictate it and press Enter
-lec2-guardar = Save
-lec2-rellena-solo = Filled in for you, change it with a click:
-lec2-rellena-solo-vacio = Area, project and severity fill in by themselves as you type.
-lec2-area-de = Area: { $area }
-lec2-proyecto-de = Project: { $proyecto }
-lec2-ya-la-tienes = You already have it: “{ $titulo }” · It happened again
-lec2-pega-capturas = pastes screenshots
-lec2-guardada = Lesson saved in { $donde }
-lec2-apuntado-otra-vez = Noted: it happened again
-lec2-no-se-pudo = That didn’t work. Try again.
-lec2-solo-imagenes = Only images can be added to a lesson.
-lec2-sin-area = No area
-lec2-sin-proyecto = No project (general chat)
-lec2-buscar = Search: word, situation, tag…
-lec2-todas = All
-lec2-repetidas = Repeated
-lec2-graves = Serious
-lec2-para-repasar = To review today · { $n }
-lec2-que-harias-si = What would you do if it happened again?
-lec2-repasar = Review
-lec2-este-mes = This month
-lec2-antes = Earlier
-lec2-lista-vacia = No lessons yet. Write what you learned above.
-lec2-nada-con-filtro = Nothing with this filter.
-lec2-nada-con = Nothing with “{ $q }”. Try another word or note it above.
-lec2-moverse = move
-lec2-leve = Minor
-lec2-importante = Important
-lec2-grave = Serious
-lec2-hoy = today
-lec2-ayer = yesterday
-lec2-manana = tomorrow
-lec2-hace-dias = { $n } days ago
-lec2-hace-semanas = { $n ->
-    [one] 1 week ago
-   *[other] { $n } weeks ago
-  }
-lec2-hace-meses = { $n ->
-    [one] 1 month ago
-   *[other] { $n } months ago
-  }
-lec2-hace-anios = { $n ->
-    [one] 1 year ago
-   *[other] { $n } years ago
-  }
-lec2-en-dias = in { $n } days
-lec2-meses = Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec
-lec2-clic-para-editar = Click any text to edit it · saves by itself
-lec2-mas-campos = More fields…
-lec2-que-paso = What happened
-lec2-por-que = Why
-lec2-proxima = Next time
-lec2-que-paso-vacio = Add what happened…
-lec2-por-que-vacio = Add why it happened…
-lec2-proxima-vacio = Add what you’ll do differently next time…
-lec2-editar = Edit
-lec2-escribe-aqui = Type here
-lec2-ayuda-linea = Enter saves · Esc finishes
-lec2-ayuda-bloque = Enter saves · Shift+Enter new line · Tab to the next one
-lec2-nota-de-voz = Voice note
-lec2-anadir-foto = Add a photo
-lec2-ver-en-chat = See in chat
-lec2-pinear = Pin
-lec2-pineado = Pinned on screen
-lec2-borrar = Delete
-lec2-borrada = Lesson deleted
-lec2-deshacer = Undo
-lec2-veces = { $n ->
-    [one] time it happened
-   *[other] times it happened
-  }
-lec2-la-ultima = Last time: { $fecha }
-lec2-me-volvio = It happened again
-lec2-gravedad = Severity
-lec2-area = Area
-lec2-proyecto = Project
-lec2-etiquetas = Tags
-lec2-anadir = + Add
-lec2-nueva-etiqueta = tag and Enter
-lec2-relacionadas = Related
-lec2-proximo-repaso = Next review: { $cuando }
-lec2-vacia-titulo = Note what you learn so you don’t repeat mistakes
-lec2-vacia-texto = Write it above in one go: “what happened…, because…, next time…”. PinDesk splits it, sets area, project and severity, and tells you if it happened before.
-lec2-comprobacion = Before you start, check: { $hechas } of { $total }
-lec2-comprobacion-vacia = Nothing under “next time…” yet. It’s the third block of each lesson.
-lec2-nada-que-repasar = Nothing to review today.
-lec2-repaso-titulo = Today’s review
-lec2-repaso-de = { $va } of { $total }
-lec2-salir = Exit
-lec2-paso-pensar = Think what you’d do
-lec2-paso-mirar = Look at what you noted
-lec2-paso-recordar = Did you remember?
-lec2-situacion = The situation
-lec2-repaso-cuando = When { $pista }…
-lec2-repaso-recuerda = Remember this lesson
-lec2-repaso-veces = it happened { $n } times
-lec2-que-harias = What would you do?
-lec2-escribe-o-dicta = Type or dictate
-lec2-dictar = Dictate
-lec2-mostrar = Show the answer
-lec2-mostrada = Answer shown
-lec2-lo-que-apuntaste = What you noted
-lec2-oculta = Think before looking: recalling sticks much better than rereading.
-lec2-por-que-paso = Why it happened: { $causa }
-lec2-abrir-completa = Open the full lesson
-lec2-lo-recordabas = Did you remember? Choose with the mouse or with
-lec2-nota-recordaba = I remembered
-lec2-nota-a-medias = Partly
-lec2-nota-olvide = I forgot
-lec2-vuelve-manana = Back tomorrow
-lec2-vuelve-en = Back in { $dias } days
-lec2-saltar = Skip this one
-lec2-repaso-pie = Your answer is for comparing: it isn’t saved.
-lec2-siguiente = Next
-lec2-repaso-elige = Choose 1, 2 or 3: did you remember?
-lec2-repaso-hecho = Review done
-lec2-repaso-hechas = { $n ->
-    [one] You reviewed 1 lesson. Come back when it’s due.
-   *[other] You reviewed { $n } lessons. They come back when due.
-  }
-lec2-repaso-volver = Back to the list
 ## v2-galeria
 galeria-subtitulo = { $cuantas } · kept for 7 days
 galeria-buscar = Search, including the text in captures
@@ -2652,8 +2364,6 @@ timeline-mic-sin-texto = Not understood: only the audio is kept
 
 
 ## simple-lecciones
-lecs-menos-campos = Fewer fields
-lecs-ficha-completa = Type, causes and keywords…
 
 ## galeria-menu (5-oct-2026, right click)
 galeria-guardar-como = Save as…
@@ -2685,7 +2395,6 @@ timeline-momentos-vacio = The moments you pick go here. In "Today", hover a card
 timeline-a-momentos = Sent to Moments
 timeline-fuera-de-momentos = Removed from Moments
 timeline-estado-sobre-todo = Mostly
-timeline-estado-lo-mas = "{ $que }"
 timeline-exportar-busqueda = Search: "{ $que }"
 timeline-pestana-lecciones = Lessons
 timeline-sub-lecciones = { $n ->
@@ -2697,7 +2406,6 @@ timeline-lecciones-vacio = No lessons yet. Press a moment's light bulb to make i
 timeline-gravedad-leve = Minor
 timeline-gravedad-importante = Important
 timeline-gravedad-grave = Serious
-timeline-otra-vez = It happened again +1
 timeline-otra-vez-hecho = Noted: { $n } times now
 timeline-leccion = Lesson
 timeline-leccion-hecha = 💡 Made a lesson: it is in "Lessons"
@@ -2763,7 +2471,6 @@ tareas5-corregir-pista = Task text…
 tareas5-imagen-pista = Add images · Ctrl+V pastes a copied one
 tareas5-guardar = Save
 tareas5-corregida = Task updated
-tareas5-vista-lista = List · Ctrl+L
 tareas5-vista-tarjetas = Cards · Ctrl+T
 tareas5-vista-horario = Timetable · Ctrl+H
 tareas5-vista-kanban = Kanban board · Ctrl+K
@@ -2781,7 +2488,6 @@ tareas5-quitar = Remove
 ## salida (6-oct-2026): the floating window to drag out what was exported
 salida-titulo = Ready to share
 salida-titulo-exportado = Exported
-salida-titulo-guardado = Saved
 salida-pista = Drag a file to another app or a folder
 salida-todos = Drag all { $n } together
 salida-arrastra-todos = Hold and drag to take them all
@@ -2789,13 +2495,11 @@ salida-soltado = Dropped · you can drop it somewhere else too
 salida-copiado = Copied to the clipboard
 salida-pineado = Pinned
 salida-no-se-pudo = Couldn't do it
-salida-compartir = Share
 salida-copiar = Copy
 salida-abrir = Open
 salida-carpeta = Show in folder
 salida-pinear = Pin
 salida-compartir-menu = Share…
-compartir-arrastrar = Drag from here to another app · click to keep it on screen
 
 ## al-movil (6-oct-2026): a photo from the Flow plugin to the phone's open canvas
 al-movil-lienzo = { $n ->
@@ -3034,8 +2738,6 @@ asistente-voz-sin-whisper = This PC can't turn voice into text: Windows' ONNX Ru
 asistente-voz-fallo = Your voice couldn't be turned into text.
 asistente-voz-cancelado = Cancelled: nothing was sent.
 asistente-voz-nada-que-leer = This answer has no text to read.
-asistente-voz-leer = Read aloud
-asistente-voz-callar = Stop reading
 
 # The buttons of the Windows notifications (15-oct).
 notif-hecha = Done
@@ -3094,7 +2796,6 @@ horario-sin-clases = There are no classes in the timetable yet: open “Class ti
 horario-guardada = You will hear it at the next { $clase } class
 
 ## Weekly timetable window and subjects (18-oct-2026)
-horario-titulo = Timetable
 horario-subtitulo = { $asignaturas } subjects · { $clases } classes
 horario-nueva = New subject (@room optional)
 horario-domingo = Sunday
@@ -3117,15 +2818,12 @@ horario-asignatura-borrada = “{ $asignatura }” removed from the timetable (i
 horario-repetida = “{ $asignatura }” is already in the list
 horario-arrastra = Drag “{ $asignatura }” onto the week
 horario-no-guardado = The timetable could not be saved
-tareas-asignatura-pista = Task subject
 tareas-destino-pista = Task list or subject
 tareas-sin-asignatura = No subject (to the Inbox)
-tareas-sin-asignaturas = No subjects yet: create them in “Class timetable…”
 tareas-apuntar-en-asignatura = New { $asignatura } task…
 
 # Viewers: the frame to print (2026-10-19)
 marco-imprimir-pista = Drag a box over what you want to print · Enter: everything · Esc: leave
-lector-marco = Frame to print (P)
 marcos-pista = Drag to frame · a number: go to that frame · Ctrl+P: print all · Del: remove the last one · I or Esc: leave
 marcos-imprimir = Print the frames (Ctrl+P)
 marcos-borrar = Clear frames
@@ -3154,7 +2852,6 @@ barra-cerrar = Close (Esc)
 visor-letra = Font and spacing (T / B)
 lector-mas = More options (G)
 visor-indice-pista = Contents (C)
-riel-hojita = Notepad (Ctrl+Shift+N)
 riel-editar = Edit (Alt+R)
 riel-mirar = Back to viewing (Alt+R or Esc)
 
@@ -3207,10 +2904,6 @@ carpeta-exportando = Exporting the PDF…
 carpeta-exportado = PDF saved: { $nombre }
 carpeta-no-se-exporto = Could not export: no page has anything on it
 carpeta-vacia = This folder is empty. Press “New page”, or in the chat choose “Add to folder…” in the menu of a canvas or an image.
-carpeta-antes = Earlier
-carpeta-despues = Later
-carpeta-renombrar = Rename
-carpeta-quitar = Remove from folder
 carpeta-no-esta = That folder is no longer in the chat
 carpeta-pista = Drag a page to move it · F2 changes its title · Del removes it (it shows in the chat again)
 carpeta-escribe-titulo = Type the title and press Enter
@@ -3220,8 +2913,6 @@ carpeta-grabacion-detalle = { $duracion } · { $capturas ->
    *[other] { $capturas } captures
 }
 carpeta-estudiar = Study
-carpeta-de-la-grabacion = From the recording
-carpeta-adjuntos = Attached to the class
 carpeta-adjunto-insignia = Attachment · not part of the recording
 carpeta-adjuntar = Attach to the class
 carpeta-adjuntado = Attached to the class: { $nombre }
@@ -3249,7 +2940,6 @@ clase-importante-decision = Decision
 clase-importante-pregunta = Question
 clase-importante-examen = Exam
 clase-importante-buscando = Looking for what matters…
-clase-importante-nada = None of this in the class
 clase-importante-tareas = + { $n } tasks to Tasks
 clase-importante-anadidas = { $n } tasks added to the Tasks inbox
 tareas-prioridad-urgente = Urgent

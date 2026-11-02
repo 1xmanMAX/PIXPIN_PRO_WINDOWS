@@ -88,9 +88,6 @@ aviso-atajos-activos-detalle = عادت { $cuantos } اختصارات إلى ا�
 comando-capturar-con-retardo = التقاط بعد عدّ تنازلي
 cuenta-atras-cancelar = Esc للإيقاف
 comando-pinear-seleccion = تثبيت تحديد المستكشف
-ajustes-pestana-atajos = الاختصارات
-ajustes-pestana-general = عام
-ajustes-pestana-captura = الالتقاط
 ajustes-pestana-dibujo = الرسم
 ajustes-iman = الالتصاق بالنقاط البارزة
 ajustes-iman-esquinas = الزوايا والنهايات
@@ -100,26 +97,17 @@ ajustes-iman-radio = مسافة الالتقاط (px)
 ajustes-idioma = اللغة
 ajustes-idioma-sistema = مثل Windows
 ajustes-arranque = التشغيل مع Windows
-ajustes-color = صيغة منتقي الألوان
-ajustes-nivel = الأداء
 ajustes-nivel-auto = تلقائي
 ajustes-nivel-completo = كامل
 ajustes-nivel-ligero = خفيف
 ajustes-pdf-aligerar = تخفيف ملفات PDF عند إضافتها إلى الدردشة
-ajustes-pdf-nivel = مقدار التخفيف (صغير وأقصى: يدويًا فقط)
 ajustes-pdf-nivel-sin-perdida = دقيق
 ajustes-pdf-nivel-equilibrado = متوسط
 ajustes-pdf-nivel-pequeno = صغير
 ajustes-pdf-nivel-extremo = أقصى
-ajustes-retardo-captura = ثواني العدّ التنازلي قبل الالتقاط
-ajustes-limite-scroll = أقصى ارتفاع لالتقاط التمرير، بالبكسل
-ajustes-gif-ritmo = الإطارات في الثانية عند التسجيل
-ajustes-gif-retardo = ثواني المهلة قبل التسجيل
 ajustes-sin-atajo = بلا اختصار
 ajustes-pulsa-combinacion = اضغط المجموعة…
 ajustes-choca = مكرر
-ajustes-cerrar = إغلاق
-ajustes-abrir-fichero = فتح ملف الإعدادات
 pin-copiar-texto = نسخ النص الموجود في الصورة
 pin-abrir-en-lienzo = فتح في اللوحة
 pin-congelar = تجميد كصورة
@@ -151,14 +139,6 @@ chat-clase-pagina = صفحة
 chat-clase-proyecto = مشروع
 chat-clase-miniapp = تطبيق مصغّر
 chat-escribe = اكتب شيئًا…
-chat-cosas = { $n ->
-    [zero] لا عناصر
-    [one] عنصر واحد
-    [two] عنصران
-    [few] { $n } عناصر
-    [many] { $n } عنصرًا
-   *[other] { $n } عنصر
-}
 chat-elegidos = { $n ->
     [zero] لم يُحدَّد شيء
     [one] عنصر واحد محدد
@@ -170,7 +150,6 @@ chat-elegidos = { $n ->
 chat-lienzo = لوحة
 chat-tabla = جدول
 chat-viene-de = مصدره
-chat-comentar = التعليق على هذا
 chat-copiar = نسخ
 chat-fijar = تثبيت في الأعلى
 chat-soltar = إلغاء التثبيت في الأعلى
@@ -192,13 +171,10 @@ chat-recordar = ذكّرني
 chat-rescatar = الاحتفاظ بهذا
 chat-solo-la-foto = عرض الصورة فقط
 chat-ver-hilo = عرض التعليقات
-chat-etiquetar = إضافة وسم
-chat-quitar-etiqueta = إزالة الوسم
 chat-reenviar = إعادة توجيه
 chat-unir = إضافة إلى مشروع
 chat-transcribir = تحويل إلى نص
 chat-letra = كلمات أو نص
-chat-elegir = تحديد
 chat-borrar = حذف
 chat-borrar-aviso = ستُزال من المحادثة، ويُحذف معها أي ملف مرفق. هل تريد المتابعة؟
 chat-biblioteca-audio = مكتبة الصوت
@@ -210,16 +186,10 @@ chat-fondo-brezo = الخلنج
 chat-fondo-bosque = الغابة
 chat-fondo-ocaso = الغروب
 chat-fondo-pizarra = الأردواز
-chat-adj-archivo = ملف
-chat-adj-pagina = صفحة من مشروع
-chat-adj-proyecto = مشروع كامل
-chat-adj-conversacion = محادثة
 chat-adj-telepronter = الملقّن
 chat-adj-pronunciar = النطق
-chat-adj-miniapp = تطبيق مصغّر
 chat-reenviado = أُعيد توجيهه
 chat-copiado = نُسخ
-chat-compartido = نُسخ إلى الحافظة: الصقه حيث تريد مشاركته
 chat-compartir-sin-panel = لم يفتح Windows لوحة المشاركة: المحتوى في الحافظة لتلصقه حيث تريد
 chat-pineado = مُثبّت
 chat-foto-en-la-nota = أُضيفت الصورة إلى نصك: يُرسل كله كملاحظة واحدة
@@ -233,14 +203,8 @@ chat-escaneado = ممسوح ضوئيًا
 chat-sin-origen = تلك اللوحة ليست في هذا المشروع
 chat-sin-proyectos-otros = لا يوجد مشروع آخر لإرساله إليه
 chat-ajustes-bandeja = تُفتح الإعدادات من أيقونة PinDesk في علبة النظام
-chat-proyectos-lista = المشاريع هي القائمة على اليسار
-chat-no-hay-voz = تسجيل الملاحظات الصوتية غير متاح على Windows بعد
-chat-no-hay-aligerar = تخفيف ملفات PDF غير متاح على Windows بعد
 chat-no-hay-unir = على Windows كل دردشة هي مشروع بالفعل: استخدم إعادة التوجيه لنقلها إلى آخر
-chat-no-hay-biblioteca = مكتبة الصوت غير متاحة على Windows بعد
 chat-ver-dibujo-entero = عرض الرسم كاملًا
-chat-no-hay-pagina = إرفاق صفحة من مشروع غير متاح على Windows بعد
-chat-no-hay-telepronter = الملقّن غير متاح على Windows بعد
 chat-no-se-pudo = تعذّر التنفيذ: راجع سجل PinDesk
 chat-fecha = { $dia } { $mes }
 chat-fecha-con-ano = { $dia } { $mes } { $ano }
@@ -291,26 +255,12 @@ info-vacia-voz = ستظهر الملاحظات الصوتية هنا
 info-vacia-dibujos = ستظهر رسومات هذه الدردشة هنا
 info-vacia-fijados = سيظهر ما تثبّته هنا
 info-vacia-buzon = صندوق الوارد فارغ
-info-abrir = فتح
-info-abrir-enlace = فتح الرابط
-info-reproducir = تشغيل
-info-ver-en-el-chat = عرض في الدردشة
 info-titulo = معلومات
 adjuntar-imagen = صورة أو فيديو
 adjuntar-archivo = ملف
 adjuntar-lienzo = لوحة جديدة
-confirmar-titulo = { $cuantos ->
-    [zero] لا ملفات للإضافة
-    [one] إضافة ملف واحد
-    [two] إضافة ملفين
-    [few] إضافة { $cuantos } ملفات
-    [many] إضافة { $cuantos } ملفًا
-   *[other] إضافة { $cuantos } ملف
-}
-confirmar-resto = و{ $cuantos } أخرى
 confirmar-pie = أضف وصفًا…
 confirmar-cancelar = إلغاء
-confirmar-aceptar = إضافة
 adjuntar-tabla = جدول جديد
 tabla-nueva = جدول
 chat-nombre-nuevo = اسم المشروع…
@@ -326,11 +276,7 @@ recibir-salir = Esc للإغلاق
 comando-recibir-del-movil = استلام من الهاتف…
 comando-sincronizar = مزامنة
 adjuntar-del-movil = جلب من الهاتف…
-menu-foto-aqui = الرسم هنا مباشرةً
 proyecto-renombrar = إعادة التسمية
-proyecto-logo-poner = تعيين صورة الشعار…
-proyecto-logo-quitar = إزالة صورة الشعار
-proyecto-logo-error = تعذّر تعيين صورة الشعار هذه
 foto-chat-menu = تغيير صورة الدردشة…
 foto-chat-titulo = صورة الدردشة
 foto-chat-imagen = اختيار صورة…
@@ -594,9 +540,6 @@ papelera-ha-vuelto = عاد «{ $nombre }» كاملًا
 papelera-no-se-pudo = تعذّرت استعادة «{ $nombre }»: { $motivo }
 papelera-recuperados = استُعيد { $n } من { $total } مشروع
 
-## The document viewer: Word, EPUB books and web pages (task 2.1)
-visor-html-titulo = PinDesk — صفحة
-
 ## The Office pin: Office's preview as a pin (2026-10-10)
 office-titulo = معاينة Office
 office-abriendo = جارٍ الفتح بمعاينة Office…
@@ -604,8 +547,6 @@ office-tarda = يستغرق Office بعض الوقت (يجب أن يبدأ). ي�
 office-fallo = تعذّر على Office معاينة هذا الملف. افتحه في تطبيق آخر عبر «فتح باستخدام…» (زر ↗ في الشريط).
 office-internet = هذا الملف من الإنترنت، ولأسباب أمنية لا يسمح Windows بمعاينته. افتحه في تطبيق آخر عبر «فتح باستخدام…» (زر ↗ في الشريط)، أو ألغِ حظره من خصائصه.
 visor-titulo = عارض PinDesk
-visor-marcador = إضافة علامة هنا
-visor-ajustes = إعدادات القراءة
 visor-tamano = حجم النص
 visor-quitar-marcadores = إزالة العلامات
 visor-guardar-pagina = حفظ كصفحة ويب
@@ -614,15 +555,10 @@ visor-abrir-carpeta = فتح المجلد
 visor-guardado = حُفظ في «{ $nombre }»
 visor-no-guardado = تعذّر الحفظ
 visor-vacio = لا يحتوي هذا المستند على نص لعرضه
-visor-ayuda = العجلة للقراءة · +/− الحجم · M علامة · G الإعدادات · Esc للخروج
-visor-elige-emoticono = بماذا تريد تعليمه؟
-visor-sin-marcadores = لا توجد علامات بعد
 
 ## The readers: comfortable reading, annotating on top and the PDF reader
-lector-listo = تم
 lector-indice = المحتويات
 lector-letra-fijada = الخط مقفل: توجد ملاحظات مرسومة فوقه
-lector-letra-normal = خط عادي
 lector-letra-fija = خط ثابت العرض
 lector-grosor-normal = عادي
 lector-grosor-gruesa = عريض
@@ -633,11 +569,8 @@ lector-pdf-titulo = قارئ PDF في PinDesk
 lector-pdf-no-se-abre = تعذّر فتح ملف PDF
 lector-pdf-abriendo = جارٍ فتح ملف PDF…
 lector-exportando = جارٍ حفظ ملف PDF المعلَّق عليه… { $hechas } من { $total }
-lector-exportar-pdf = حفظ ملف PDF مع الملاحظات
 lector-anotado = معلَّق عليه
-lector-ayuda-pdf = العجلة لتقليب الصفحات · Ctrl+العجلة للتكبير · Ctrl+[ Ctrl+] مساحة للتعليق · L استماع · A تعليق · M علامة · Esc للخروج
 lector-office-titulo = Word وPowerPoint في PinDesk
-lector-ayuda-office = العجلة لتقليب الصفحات · Ctrl+العجلة للتكبير · اسحب فوق النص لتحديده · Ctrl+C نسخ · Ctrl+F بحث · Ctrl+P طباعة · F5 عرض تقديمي · A تعليق · N سالب · Esc للخروج
 lector-presentar = عرض تقديمي (F5)
 lector-modo-lectura = وضع القراءة (نص مُعاد تدفقه)
 lector-imprimir = طباعة… (Ctrl+P)
@@ -661,7 +594,6 @@ lector-voz-parrafo = الفقرة { $n } من { $total }
 lector-voz-preparando = جارٍ تجهيز الصوت…
 lector-voz-no-respondio = لم تستجب Microsoft
 lector-voz-sin-voz = لا يوجد صوت
-lector-verde-aqui = علامة خضراء هنا: ستبدأ القراءة من هذه النقطة
 lector-espacio-tope = لا مزيد من المساحة في ذلك الجانب
 lector-espacio-nada = لم تتبقَّ مساحة في ذلك الجانب
 lector-sin-lado = الحركة الجانبية مقفلة: التمرير لأعلى ولأسفل فقط
@@ -682,77 +614,7 @@ lector-hoja = صفحة
 sinc-presencia-apagada = الظهور متوقف في الإعدادات ([sincro] presencia = false): يمكنك المزامنة من هنا، لكن الهاتف لن يعثر على هذا الكمبيوتر ولن يتمكن من الاتصال به.
 bandeja-abrir-documento = فتح مستند…
 
-## Canvas shapes and ink: arrowheads, fills and text style (group A)
-lienzo-punta-ninguna = بلا رأس سهم
-lienzo-punta-flecha = سهم
-lienzo-punta-barra = شريط
-lienzo-punta-circulo = دائرة
-lienzo-punta-circulo-hueco = دائرة مفرغة
-lienzo-punta-triangulo = مثلث
-lienzo-punta-triangulo-hueco = مثلث مفرغ
-lienzo-punta-rombo = معيّن
-lienzo-punta-rombo-hueco = معيّن مفرغ
-lienzo-punta-inicio = رأس البداية
-lienzo-punta-fin = رأس النهاية
-lienzo-trama-zigzag = متعرّج
-lienzo-trama-tiralineas = خطوط مسطّرة
-lienzo-texto-negrita = عريض
-lienzo-texto-cursiva = مائل
-lienzo-texto-tachado = يتوسطه خط
-lienzo-presion-firme = خط بعرض ثابت
-lienzo-flecha-codos = سهم بزوايا
-lienzo-flecha-libre = سهم حر
-lienzo-arco-guia = شكل بيضاوي إرشادي، لم يُرسم بعد
-lienzo-luces-fuerza = شدة الإضاءة
-
-## Build and measure: fill, trim, extend, points and angles (group C)
-lienzo-bote = دلو التعبئة
-lienzo-bote-ayuda = انقر داخل فراغ مغلق ليُملأ، حتى لو كوّنته عدة أشكال مختلفة.
-lienzo-bote-abierto = هذا الفراغ غير مغلق: سيتسرّب الطلاء من شق.
-lienzo-recortar = اقتطاع
-lienzo-recortar-ayuda = انقر الجزء الزائد من خط ليُزال، حتى حيث تتقاطع معه الخطوط الأخرى.
-lienzo-extender = تمديد
-lienzo-extender-ayuda = انقر الطرف القصير ليصل إلى أول شيء في طريقه.
-lienzo-extender-sin-tope = لا شيء في طريقه: الخط الممدود في الفراغ ليس خطًا ممددًا.
-lienzo-punto = نقطة بتسمية
-lienzo-punto-ayuda = انقر تقاطعًا أو طرفًا أو مركز دائرة لتظهر النقطة بحرفها.
-lienzo-punto-sin-sitio = لا شيء هناك لتسميته: توضع النقطة على تقاطع أو طرف أو مركز.
-lienzo-punto-serie-mayusculas = أحرف كبيرة (A، B، C…)
-lienzo-punto-serie-minusculas = أحرف صغيرة (a، b، c…)
-lienzo-punto-serie-numeros = أرقام (1، 2، 3…)
-lienzo-angulos = زوايا مباشرة
-lienzo-angulos-ayuda = أثناء تحريك شيء، يعرض قياس الزوايا التي تلمسها.
-lienzo-area = المساحة
-
 ## Select, transform and bind (group B)
-lienzo-lazo = اللاسو
-lienzo-lazo-ayuda = ارسم حول ما تريد تحديده. يُؤخذ ما يقع بالكامل داخله؛ ومع Shift، يُؤخذ أيضًا ما يلمسه الخط.
-lienzo-lazo-encerrar = ما يقع داخله فقط
-lienzo-lazo-rozar = وما يلمسه الخط أيضًا
-lienzo-voltear-horizontal = قلب أفقي
-lienzo-voltear-vertical = قلب رأسي
-lienzo-voltear-ayuda = يعكس التحديد حول مركز المجموعة كلها، لا كل شكل حول نفسه.
-lienzo-rejilla = ورق مسطّر
-lienzo-rejilla-ninguna = سادة
-lienzo-rejilla-lineas = مربعات
-lienzo-rejilla-puntos = نقاط
-lienzo-rejilla-imanta = إلصاق المؤشر بالمربعات
-lienzo-rejilla-ayuda = المرجع الموجود قبل أول خط. لا يظهر عند التصدير.
-lienzo-iman-intersecciones = التقاطعات بين الأشكال
-lienzo-iman-intersecciones-ayuda = النقطة التي يتقاطع فيها خطان، وليست زاوية لأي منهما.
-lienzo-iman-bordes = حواف الأشكال
-lienzo-iman-bordes-ayuda = المسطرة: ينزلق المؤشر على طول الحافة كلها، لا عند زواياها فقط.
-lienzo-iman-eje = نقطة الأصل ومحاور الإحداثيات
-lienzo-enganche = ربط السهم بالشكل
-lienzo-enganche-ayuda = أفلت الرأس على شكل وسيتبعه السهم عند تحريكه.
-lienzo-enganche-soltar = تحرير الرأس
-lienzo-tirador-punta = تحريك الطرف
-lienzo-tirador-anadir = الثني هنا
-lienzo-copiar-estilo = نسخ النمط
-lienzo-copiar-estilo-ayuda = خذ اللون والخط والتعبئة من شكل والصقها على أشكال أخرى. لا ينتقل إلا ما يقبله النوعان.
-lienzo-estilo-tomado = أُخذ النمط
-lienzo-estilo-sin-tomar = لم تأخذ نمطًا بعد.
-chat-abrir-aqui = فتح هنا
 mini-moneda = USD
 mini-tareas = قائمة المهام
 mini-gastos = المصروفات
@@ -797,15 +659,6 @@ chat-voz-sin-codec = لا يحتوي Windows هذا على مُرمِّز صوت
 chat-voz-fallo = تعذّر تسجيل الملاحظة الصوتية.
 pdf-aligerado = خُفّف: من { $antes } إلى { $despues }
 pdf-aligerar-cifrado = ملف PDF مشفّر ولا يمكن إعادة كتابته دون المخاطرة به.
-pdf-aligerar-indice-comprimido = يحفظ ملف PDF هذا فهرسه مضغوطًا، وإعادة بنائه غير مدعومة هنا بعد.
-pdf-aligerar-objetos-comprimidos = يحفظ ملف PDF هذا كائناته مضغوطة، وإعادة بنائها غير مدعومة هنا بعد.
-pdf-aligerar-sin-trailer = لا يحتوي ملف PDF على مقطع ختامي (trailer) مقروء.
-pdf-aligerar-sin-objetos = لم يُتعرّف على أي كائن داخل ملف PDF.
-pdf-aligerar-largo-indirecto = يوجد تدفق في ملف PDF لا يذكر طوله.
-pdf-aligerar-objetos-sin-entender = في ملف PDF أجزاء لا يفهمها هذا القارئ؛ وقد تضيع عند إعادة كتابته.
-pdf-aligerar-sin-fotos = لا يحتوي على صور لتخفيفها: الحجم ناتج عن النص أو الرسومات المتجهة.
-pdf-aligerar-ya-al-minimo = الصور في حدّها الأدنى بالفعل.
-pdf-aligerar-no-compensa = سينخفض فقط من { $antes } إلى { $despues }: لا يستحق ذلك.
 pdf-aligerar-no-se-lee = لم يُقرأ الملف المخفف بشكل صحيح؛ يبقى الأصلي.
 aligerar-progreso = جارٍ التخفيف… { $por }%
 aligerar-empezado = جارٍ تخفيف ملف PDF…
@@ -819,7 +672,6 @@ chat-recordatorio-puesto = سأذكّرك في { $cuando }
 chat-recordatorio-quitar = إزالة التذكير
 chat-recordatorio-quitado = أُزيل التذكير
 chat-recordatorio-titulo = تذكير
-chat-enviar-wifi = إرسال عبر Wi-Fi
 chat-transcribiendo = جارٍ التحويل إلى نص… { $pct }%
 chat-transcribir-hecha = حُوّلت الملاحظة الصوتية إلى نص
 chat-transcribir-en-marcha = يجري تحويل ملاحظة أخرى بالفعل؛ انتظر حتى تنتهي
@@ -842,7 +694,6 @@ musica-sinc-empieza = اضغط Space (أو «تعليم») لحظة بدء كل 
 musica-sinc-siguiente = التالي: { $linea }
 musica-sinc-todas = عُلّمت كل الأسطر. احفظ الكلمات.
 musica-sinc-marcar = تعليم { $n }/{ $total }
-musica-sinc-deshacer = تراجع
 musica-sinc-guardar = حفظ
 musica-sinc-cancelar = إلغاء
 musica-sinc-guardada = زُومنت الكلمات
@@ -950,7 +801,6 @@ exportar-tipo-pdf = مستند PDF
 exportar-tipo-html = صفحة ويب في ملف واحد
 exportar-vacio = لا يوجد ما يُصدَّر بهذا.
 exportar-fallo = تعذّر تصدير اللوحة.
-exportar-hecho = صُدّر: { $nombre }
 imprimir-menu = طباعة…	Ctrl+P
 imprimir-vacio = لا يوجد ما يُطبع.
 imprimir-fallo = تعذّرت طباعة اللوحة.
@@ -995,8 +845,6 @@ compartir-texto = نص
 compartir-csv = جدول (CSV)
 compartir-pindesk = PinDesk (.pindesk)
 compartir-dxf = DXF
-compartir-xlsx = Excel (xlsx)
-compartir-docx = Word (docx)
 compartir-md = Markdown
 compartir-exportar = تصدير…
 compartir-paginas-de = ما يُضمَّن · { $marcadas } من { $total }
@@ -1008,7 +856,6 @@ compartir-preparando = جارٍ التحضير…
 compartir-marca-alguna = حدّد صفحة ما
 compartir-en-cuanto-este = بمجرد أن يجهز
 compartir-peso-ficheros = { $peso } · الملفات: { $n }
-compartir-panel-abierto = اختر وجهة الإرسال
 compartir-guardado = حُفظ: { $nombre }
 compartir-copiado = نُسخ إلى الحافظة
 compartir-no-se-pudo = تعذّر التحضير
@@ -1027,7 +874,6 @@ compartir-tipo-tabla = جدول
 compartir-tipo-miniapp = تطبيق مصغّر
 compartir-tipo-voz = ملاحظة صوتية
 compartir-tipo-nota = ملاحظة
-ajustes-pestana-herramientas = الأدوات
 herramientas-lazo = اللاسو
 herramientas-rectangulo = مستطيل
 herramientas-rombo = معيّن
@@ -1100,11 +946,6 @@ chat-fecha-corta = { $dia } { $mes }
 chat-enlace-no-abre = تعذّر فتح الرابط
 
 ## D11: a spreadsheet in the chat is a book of tables (ventana_chat/libro.rs)
-libro-titulo = جدول بيانات
-libro-xls-antiguo = لا يمكن قراءة ملفات .xls القديمة: افتحه واحفظه بصيغة .xlsx
-libro-abrir-fuera = هل تريد فتحه بتطبيق آخر؟
-libro-no-es = الملف ليس جدول بيانات صالحًا
-libro-sin-hojas = لا يحتوي المصنف على ورقة بها بيانات
 hoja-preparando = جارٍ تجهيز الورقة للتعديل…
 hoja-editar-aviso = تُحفظ التغييرات في ورقة الدردشة؛ ويبقى الملف الأصلي كما هو
 hoja-editando = تعديل · Esc للعرض
@@ -1389,8 +1230,6 @@ chat-insertar-en-nota = إدراج في ملاحظة
 ## Canvas: weld vertices and number points (lienzo-geometria, 26-sep)
 herramientas-nudo = لحام الرؤوس
 herramientas-bolita = الكرة: مرّر فوق العناصر لتحديدها
-lienzo-nudo = لحام الرؤوس
-lienzo-nudo-ayuda = انقر حيث يتلامس شكلان ليُثبَّتا معًا: لا ينفصلان بعد ذلك، ومع دبوس واحد يدوران حوله. انقر الدبوس لإزالته؛ واسحبه باليد لتحريك الأشكال المثبتة معه.
 lienzo-punto-serie = تسميات النقاط
 lienzo-cota-pedir = طلب الطول عند الرسم
 lienzo-panel-dureza = درجة قلم الرصاص
@@ -1438,7 +1277,6 @@ funciones-figuras-detalle = مكتبة أشكالك للوحات
 figuras-mias = أشكالي
 figuras-todas = الكل
 figuras-vacia = لا توجد أشكال بعد. في لوحة، حدّد شيئًا ثم «حفظ كشكل».
-figuras-cerrar = إغلاق
 figuras-borrar = حذف الشكل
 figuras-borrar-seguro = اضغط مجددًا للحذف
 figuras-elegir-para = اختر شكلًا لـ«{ $chat }»
@@ -1655,11 +1493,7 @@ galeria-borrada = نُقلت إلى سلة محذوفات PinDesk
 galeria-no-se-pudo = تعذّر التنفيذ: { $motivo }
 galeria-conservada-aviso = محفوظة: إنها في الرسائل المحفوظة ولن تُحذف
 bandeja-galeria-capturas = معرض اللقطات…
-chat-galeria-capturas = معرض اللقطات
-chat-lecciones = الدروس
-chat-leccion-nueva = درس جديد
 chat-hacer-leccion = إنشاء درس
-bandeja-lecciones = 💡 الدروس…
 bandeja-leccion-nueva = درس جديد…
 bandeja-tareas = ☑ المهام…
 bandeja-timeline = 🕒 الخط الزمني والدروس…
@@ -1893,7 +1727,6 @@ ajustes2-auto = تلقائي
 comando-buscar = 🔍 البحث في PinDesk…
 comando-grabar-clase = 🎙 تسجيل درس أو اجتماع…
 clase-titulo = تسجيل درس أو اجتماع
-clase-sub = يسجّل الصوت ويضع لقطات الشاشة في دقيقتها
 clase-microfono = الميكروفون
 clase-equipo = صوت الكمبيوتر (Meet، Zoom…)
 clase-guardar-en = الحفظ في: { $proyecto }
@@ -1902,7 +1735,6 @@ clase-nada = اختر الميكروفون أو صوت الكمبيوتر أو �
 clase-captura = التقاط
 clase-terminar = إنهاء
 clase-capturas = لقطات الشاشة: { $n } · نقرة واحدة تكرر المنطقة
-clase-pista = «التقاط» يحفظ منطقة من الشاشة في هذه الدقيقة
 clase-elige-zona = اختر المنطقة على الشاشة…
 clase-captura-hecha = حُفظت لقطة الشاشة عند { $minuto }
 clase-zona-cambiada = تغيّرت المنطقة
@@ -1921,7 +1753,6 @@ clase-listo = تم
 clase-nombre = درس { $fecha }
 clase-sin-sonido-equipo = لا يُسمع شيء من الكمبيوتر: لا توجد مكبرات صوت أو سماعات نشطة
 clase-video = فيديو هذه الشاشة
-clase-video-corto = جارٍ تسجيل الفيديو
 clase-video-roto = توقف الفيديو؛ ما زال الصوت يُسجَّل
 clase-video-guardado = مع فيديو الشاشة.
 clase-calidad-ligero = خفيف
@@ -1947,13 +1778,6 @@ clase-recuperar-sin-nada = لم يتبقَّ من «{ $nombre }» إلا فيد�
 clase-recuperar-descartar = تجاهل «{ $nombre }»؟ سيُحذف التسجيل ولا يمكن استعادته.
 clase-recuperar-fallo = تعذّرت استعادة «{ $nombre }». ما زال التسجيل آمنًا وسيُعرض مجددًا عند فتح PinDesk.
 clase-texto-de-fondo = إغلاق (يستمر)
-clase-modo-pantalla = الشاشة والصوت
-clase-modo-capturas = الصوت ولقطات الشاشة
-clase-modo-pantalla-sub = يسجّل فيديو هذه الشاشة مع الأصوات التي تختارها
-clase-modo-capturas-sub = يسجّل الصوت؛ و«التقاط» يحفظ الشاشة كاملة
-clase-captura-entera = التقاط: الشاشة كاملة، فورًا
-clase-pista-entera = «التقاط» يحفظ الشاشة كاملة في هذه الدقيقة؛ وزر المنطقة يحفظ جزءًا فقط
-clase-capturas-entera = لقطات الشاشة: { $n } · الشاشة كاملة
 clase-abrir-para-estudiar = فتح للمذاكرة
 clase-camara-movil = 📱 كاميرا الهاتف
 clase-camara-movil-n = 📱 كاميرا الهاتف · { $n }
@@ -1974,14 +1798,10 @@ chat-colaboradores-nadie = صوري فقط في هذا التسجيل
 clase-hora-sin-comprobar = وقت غير متحقَّق منه
 baliza-movil-aislado = هاتفك لا يظهر رغم أنكما على الشبكة نفسها: ربما تعزل شبكة Wi-Fi هذه الأجهزة عن بعضها (كما تفعل شبكات الضيوف والفنادق والمكاتب) أو يحظر جدار حماية PinDesk. وصّل الكمبيوتر بنقطة اتصال الهاتف، أو كليهما بشبكة Wi-Fi أخرى. تنتظر الصور التي تلتقطها على الهاتف وتدخل في دقيقتها بمجرد أن يجد الجهازان بعضهما.
 baliza-movil-otra-red = هاتفك على شبكة مختلفة عن هذا الكمبيوتر. وصّل الجهازين بشبكة Wi-Fi نفسها (أو الكمبيوتر بنقطة اتصال الهاتف). تنتظر الصور التي تلتقطها على الهاتف وتدخل في دقيقتها بمجرد أن يجد الجهازان بعضهما.
-clase-modo-presencial = حضوري
-clase-modo-presencial-sub = يسجّل الميكروفون؛ و«صورة» تستخدم الكاميرا بأعلى دقة
 clase-camara = الكاميرا: { $camara }
 clase-camara-buscando = جارٍ البحث عن الكاميرات…
 clase-camara-ninguna = لا توجد كاميرا: لن يعمل «صورة» و«مقطع» (يُسجَّل الصوت على أي حال)
 clase-foto = صورة
-clase-fotos = الصور: { $n } · بالكاميرا، بأعلى دقة
-clase-pista-foto = «صورة» تلتقط صورة بالكاميرا في هذه الدقيقة؛ وكاميرا الفيديو تسجّل مقطعًا
 clase-foto-hecha = حُفظت الصورة عند { $minuto }
 clase-camara-abriendo = جارٍ فتح الكاميرا…
 clase-camara-lista = الكاميرا جاهزة: صور بدقة { $medida }
@@ -2170,150 +1990,6 @@ buscar-todo-conservar = احتفاظ
 buscar-todo-borrada = حُذفت لقطة الشاشة
 buscar-todo-deshacer = تراجع
 buscar-todo-copiado = نُسخ
-
-## v2-lecciones
-lec2-que-aprendiste = ماذا تعلّمت؟ اكتبه أو أمله واضغط Enter
-lec2-guardar = حفظ
-lec2-rellena-solo = مُلئ تلقائيًا، غيّره بنقرة:
-lec2-rellena-solo-vacio = تُملأ المنطقة والمشروع والخطورة تلقائيًا أثناء الكتابة.
-lec2-area-de = المنطقة: { $area }
-lec2-proyecto-de = المشروع: { $proyecto }
-lec2-ya-la-tienes = لديك هذا الدرس بالفعل: «{ $titulo }» · حدث مجددًا
-lec2-pega-capturas = يلصق لقطات الشاشة
-lec2-guardada = حُفظ الدرس في { $donde }
-lec2-apuntado-otra-vez = دُوّن: حدث مجددًا
-lec2-no-se-pudo = لم ينجح ذلك. حاول مجددًا.
-lec2-solo-imagenes = لا يمكن إضافة إلا الصور إلى درس.
-lec2-sin-area = بلا منطقة
-lec2-sin-proyecto = بلا مشروع (دردشة عامة)
-lec2-buscar = بحث: كلمة، موقف، وسم…
-lec2-todas = الكل
-lec2-repetidas = المتكررة
-lec2-graves = الخطيرة
-lec2-para-repasar = للمراجعة اليوم · { $n }
-lec2-que-harias-si = ماذا ستفعل لو حدث مجددًا؟
-lec2-repasar = مراجعة
-lec2-este-mes = هذا الشهر
-lec2-antes = سابقًا
-lec2-lista-vacia = لا توجد دروس بعد. اكتب ما تعلّمته في الأعلى.
-lec2-nada-con-filtro = لا شيء بهذا المرشّح.
-lec2-nada-con = لا شيء بـ «{ $q }». جرّب كلمة أخرى أو دوّنه في الأعلى.
-lec2-moverse = تنقّل
-lec2-leve = بسيطة
-lec2-importante = مهمة
-lec2-grave = خطيرة
-lec2-hoy = اليوم
-lec2-ayer = أمس
-lec2-manana = غدًا
-lec2-hace-dias = منذ { $n } يوم
-lec2-hace-semanas = { $n ->
-    [zero] منذ 0 أسابيع
-    [one] منذ أسبوع
-    [two] منذ أسبوعين
-    [few] منذ { $n } أسابيع
-    [many] منذ { $n } أسبوعًا
-   *[other] منذ { $n } أسبوع
-  }
-lec2-hace-meses = { $n ->
-    [zero] منذ 0 أشهر
-    [one] منذ شهر
-    [two] منذ شهرين
-    [few] منذ { $n } أشهر
-    [many] منذ { $n } شهرًا
-   *[other] منذ { $n } شهر
-  }
-lec2-hace-anios = { $n ->
-    [zero] منذ 0 سنوات
-    [one] منذ سنة
-    [two] منذ سنتين
-    [few] منذ { $n } سنوات
-    [many] منذ { $n } سنة
-   *[other] منذ { $n } سنة
-  }
-lec2-en-dias = بعد { $n } يوم
-lec2-meses = يناير فبراير مارس أبريل مايو يونيو يوليو أغسطس سبتمبر أكتوبر نوفمبر ديسمبر
-lec2-clic-para-editar = انقر أي نص لتعديله · يُحفظ تلقائيًا
-lec2-mas-campos = حقول إضافية…
-lec2-que-paso = ما الذي حدث
-lec2-por-que = لماذا
-lec2-proxima = في المرة القادمة
-lec2-que-paso-vacio = أضف ما الذي حدث…
-lec2-por-que-vacio = أضف لماذا حدث…
-lec2-proxima-vacio = أضف ما ستفعله بشكل مختلف في المرة القادمة…
-lec2-editar = تعديل
-lec2-escribe-aqui = اكتب هنا
-lec2-ayuda-linea = Enter للحفظ · Esc للإنهاء
-lec2-ayuda-bloque = Enter للحفظ · Shift+Enter سطر جديد · Tab إلى التالي
-lec2-nota-de-voz = ملاحظة صوتية
-lec2-anadir-foto = إضافة صورة
-lec2-ver-en-chat = عرض في الدردشة
-lec2-pinear = تثبيت
-lec2-pineado = مثبّت على الشاشة
-lec2-borrar = حذف
-lec2-borrada = حُذف الدرس
-lec2-deshacer = تراجع
-lec2-veces = { $n ->
-    [zero] مرات حدث فيها
-    [one] مرة حدث فيها
-    [two] مرتان حدث فيهما
-    [few] مرات حدث فيها
-    [many] مرة حدث فيها
-   *[other] مرة حدث فيها
-  }
-lec2-la-ultima = آخر مرة: { $fecha }
-lec2-me-volvio = حدث مجددًا
-lec2-gravedad = الخطورة
-lec2-area = المنطقة
-lec2-proyecto = المشروع
-lec2-etiquetas = الوسوم
-lec2-anadir = + إضافة
-lec2-nueva-etiqueta = وسم ثم Enter
-lec2-relacionadas = ذات صلة
-lec2-proximo-repaso = المراجعة التالية: { $cuando }
-lec2-vacia-titulo = دوّن ما تتعلّمه كي لا تكرر الأخطاء
-lec2-vacia-texto = اكتبه في الأعلى دفعة واحدة: «ما حدث…، لأن…، في المرة القادمة…». يقسّمه PinDesk، ويحدد المنطقة والمشروع والخطورة، ويخبرك إن كان قد حدث من قبل.
-lec2-comprobacion = قبل أن تبدأ، تحقّق: { $hechas } من { $total }
-lec2-comprobacion-vacia = لا شيء تحت «في المرة القادمة…» بعد. إنه الجزء الثالث من كل درس.
-lec2-nada-que-repasar = لا شيء للمراجعة اليوم.
-lec2-repaso-titulo = مراجعة اليوم
-lec2-repaso-de = { $va } من { $total }
-lec2-salir = خروج
-lec2-paso-pensar = فكّر فيما ستفعله
-lec2-paso-mirar = انظر إلى ما دوّنته
-lec2-paso-recordar = هل تذكّرت؟
-lec2-situacion = الموقف
-lec2-repaso-cuando = عندما { $pista }…
-lec2-repaso-recuerda = تذكّر هذا الدرس
-lec2-repaso-veces = حدث { $n } مرة
-lec2-que-harias = ماذا ستفعل؟
-lec2-escribe-o-dicta = اكتب أو أملِ
-lec2-dictar = إملاء
-lec2-mostrar = إظهار الإجابة
-lec2-mostrada = ظهرت الإجابة
-lec2-lo-que-apuntaste = ما دوّنته
-lec2-oculta = فكّر قبل أن تنظر: الاسترجاع يرسخ أفضل بكثير من إعادة القراءة.
-lec2-por-que-paso = لماذا حدث: { $causa }
-lec2-abrir-completa = فتح الدرس كاملًا
-lec2-lo-recordabas = هل تذكّرت؟ اختر بالماوس أو بـ
-lec2-nota-recordaba = تذكّرت
-lec2-nota-a-medias = جزئيًا
-lec2-nota-olvide = نسيت
-lec2-vuelve-manana = يعود غدًا
-lec2-vuelve-en = يعود بعد { $dias } يوم
-lec2-saltar = تخطّي هذا
-lec2-repaso-pie = إجابتك للمقارنة فقط: لا تُحفظ.
-lec2-siguiente = التالي
-lec2-repaso-elige = اختر 1 أو 2 أو 3: هل تذكّرت؟
-lec2-repaso-hecho = اكتملت المراجعة
-lec2-repaso-hechas = { $n ->
-    [zero] لم تراجع أي درس.
-    [one] راجعت درسًا واحدًا. عد عندما يحين موعده.
-    [two] راجعت درسين. يعودان عندما يحين موعدهما.
-    [few] راجعت { $n } دروس. تعود عندما يحين موعدها.
-    [many] راجعت { $n } درسًا. تعود عندما يحين موعدها.
-   *[other] راجعت { $n } درس. تعود عندما يحين موعدها.
-  }
-lec2-repaso-volver = العودة إلى القائمة
 
 ## v2-galeria
 galeria-subtitulo = { $cuantas } · تُحفظ لمدة 7 أيام
@@ -2621,10 +2297,6 @@ timeline-mic-corto = قصير جدًا: تحدّث لمدة أطول قليلً�
 timeline-mic-error = تعذّر التسجيل: { $error }
 timeline-mic-sin-texto = لم يُفهم: يُحتفظ بالصوت فقط
 
-## simple-lecciones
-lecs-menos-campos = حقول أقل
-lecs-ficha-completa = النوع والأسباب والكلمات المفتاحية…
-
 ## galeria-menu (5-oct-2026, right click)
 galeria-guardar-como = حفظ باسم…
 galeria-mostrar-en-carpeta = إظهار في المجلد
@@ -2667,7 +2339,6 @@ timeline-momentos-vacio = تذهب إلى هنا اللحظات التي تخت�
 timeline-a-momentos = أُرسلت إلى اللحظات
 timeline-fuera-de-momentos = أُزيلت من اللحظات
 timeline-estado-sobre-todo = في الغالب
-timeline-estado-lo-mas = «{ $que }»
 timeline-exportar-busqueda = البحث: «{ $que }»
 timeline-pestana-lecciones = الدروس
 timeline-sub-lecciones = { $n ->
@@ -2683,7 +2354,6 @@ timeline-lecciones-vacio = لا توجد دروس بعد. اضغط المصبا�
 timeline-gravedad-leve = بسيطة
 timeline-gravedad-importante = مهمة
 timeline-gravedad-grave = خطيرة
-timeline-otra-vez = حدث مجددًا +1
 timeline-otra-vez-hecho = دُوّن: { $n } مرة حتى الآن
 timeline-leccion = درس
 timeline-leccion-hecha = 💡 أُنشئ درس: إنه في «الدروس»
@@ -2765,7 +2435,6 @@ tareas5-corregir-pista = نص المهمة…
 tareas5-imagen-pista = إضافة صور · Ctrl+V يلصق صورة منسوخة
 tareas5-guardar = حفظ
 tareas5-corregida = حُدّثت المهمة
-tareas5-vista-lista = قائمة · Ctrl+L
 tareas5-vista-tarjetas = بطاقات · Ctrl+T
 tareas5-vista-horario = جدول زمني · Ctrl+H
 tareas5-marcar = تعليم كمنجزة
@@ -2786,7 +2455,6 @@ tareas5-quitar = إزالة
 ## salida (6-oct-2026): the floating window to drag out what was exported
 salida-titulo = جاهز للمشاركة
 salida-titulo-exportado = صُدّر
-salida-titulo-guardado = حُفظ
 salida-pista = اسحب ملفًا إلى تطبيق آخر أو مجلد
 salida-todos = اسحب الكل ({ $n }) معًا
 salida-arrastra-todos = اضغط مطولًا واسحب لأخذها كلها
@@ -2794,13 +2462,11 @@ salida-soltado = أُفلت · يمكنك إفلاته في مكان آخر أي
 salida-copiado = نُسخ إلى الحافظة
 salida-pineado = ثُبّت
 salida-no-se-pudo = تعذّر التنفيذ
-salida-compartir = مشاركة
 salida-copiar = نسخ
 salida-abrir = فتح
 salida-carpeta = إظهار في المجلد
 salida-pinear = تثبيت
 salida-compartir-menu = مشاركة…
-compartir-arrastrar = اسحب من هنا إلى تطبيق آخر · انقر لإبقائه على الشاشة
 
 ## al-movil (6-oct-2026): a photo from the Flow plugin to the phone's open canvas
 al-movil-lienzo = { $n ->
@@ -3028,8 +2694,6 @@ asistente-voz-sin-whisper = لا يستطيع هذا الكمبيوتر تحوي
 asistente-voz-fallo = تعذّر تحويل صوتك إلى نص.
 asistente-voz-cancelado = أُلغي: لم يُرسل شيء.
 asistente-voz-nada-que-leer = لا تحتوي هذه الإجابة على نص لقراءته.
-asistente-voz-leer = القراءة بصوت عالٍ
-asistente-voz-callar = إيقاف القراءة
 
 ## Page folders in the chat (26-oct-2026): a named notebook
 carpeta-nueva = مجلد صفحات
@@ -3056,10 +2720,6 @@ carpeta-exportando = جارٍ تصدير ملف PDF…
 carpeta-exportado = حُفظ ملف PDF: { $nombre }
 carpeta-no-se-exporto = تعذّر التصدير: لا تحتوي أي صفحة على شيء
 carpeta-vacia = هذا المجلد فارغ. اضغط «صفحة جديدة»، أو في الدردشة اختر «إضافة إلى مجلد…» من قائمة لوحة أو صورة.
-carpeta-antes = السابقة
-carpeta-despues = التالية
-carpeta-renombrar = إعادة التسمية
-carpeta-quitar = إزالة من المجلد
 carpeta-no-esta = لم يعد ذلك المجلد في الدردشة
 carpeta-pista = اسحب صفحة لنقلها · F2 يغيّر عنوانها · Del يزيلها (تعود للظهور في الدردشة)
 carpeta-escribe-titulo = اكتب العنوان واضغط Enter
@@ -3073,8 +2733,6 @@ carpeta-grabacion-detalle = { $duracion } · { $capturas ->
    *[other] { $capturas } لقطة
 }
 carpeta-estudiar = مذاكرة
-carpeta-de-la-grabacion = من التسجيل
-carpeta-adjuntos = مرفقة بالدرس
 carpeta-adjunto-insignia = مرفق · ليس جزءًا من التسجيل
 carpeta-adjuntar = إرفاق بالدرس
 carpeta-adjuntado = أُرفق بالدرس: { $nombre }
@@ -3114,7 +2772,6 @@ clase-importante-decision = قرار
 clase-importante-pregunta = سؤال
 clase-importante-examen = امتحان
 clase-importante-buscando = جارٍ البحث عن المهم…
-clase-importante-nada = لا شيء من هذا في الدرس
 clase-importante-tareas = + { $n } مهمة إلى المهام
 clase-importante-anadidas = أُضيفت مهام ({ $n }) إلى وارد المهام
 tareas-prioridad-urgente = عاجلة

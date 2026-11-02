@@ -109,9 +109,6 @@ cuenta-atras-cancelar = 중지하려면 Esc
 comando-pinear-seleccion = 탐색기 선택 항목 고정
 
 # The settings window (P6).
-ajustes-pestana-atajos = 바로 가기 키
-ajustes-pestana-general = 일반
-ajustes-pestana-captura = 캡처
 ajustes-pestana-dibujo = 그리기
 ajustes-iman = 주요 지점에 맞추기
 ajustes-iman-esquinas = 모서리 및 끝점
@@ -121,26 +118,17 @@ ajustes-iman-radio = 맞춤 거리(px)
 ajustes-idioma = 언어
 ajustes-idioma-sistema = Windows와 동일
 ajustes-arranque = Windows 시작 시 실행
-ajustes-color = 색 추출기 형식
-ajustes-nivel = 성능
 ajustes-nivel-auto = 자동
 ajustes-nivel-completo = 전체
 ajustes-nivel-ligero = 가벼움
 ajustes-pdf-aligerar = 채팅에 추가할 때 PDF 용량 줄이기
-ajustes-pdf-nivel = 줄이는 정도(작게 및 최대: 수동으로만)
 ajustes-pdf-nivel-sin-perdida = 무손실
 ajustes-pdf-nivel-equilibrado = 보통
 ajustes-pdf-nivel-pequeno = 작게
 ajustes-pdf-nivel-extremo = 최대
-ajustes-retardo-captura = 캡처 전 카운트다운(초)
-ajustes-limite-scroll = 스크롤 캡처의 최대 높이(픽셀)
-ajustes-gif-ritmo = 녹화 시 초당 프레임 수
-ajustes-gif-retardo = 녹화 전 대기 시간(초)
 ajustes-sin-atajo = 바로 가기 키 없음
 ajustes-pulsa-combinacion = 키 조합을 누르세요…
 ajustes-choca = 중복
-ajustes-cerrar = 닫기
-ajustes-abrir-fichero = 설정 파일 열기
 
 # Reading the text of a pin (P4.2).
 pin-copiar-texto = 이미지의 텍스트 복사
@@ -174,16 +162,12 @@ chat-clase-proyecto = 프로젝트
 chat-clase-miniapp = 미니 앱
 chat-escribe = 메시지 입력…
 # The chat, like PinDesk Android's (guardados/MensajesActivity.kt).
-chat-cosas = { $n ->
-   *[other] { $n }개 항목
- }
 chat-elegidos = { $n ->
    *[other] { $n }개 선택됨
  }
 chat-lienzo = 캔버스
 chat-tabla = 표
 chat-viene-de = 출처
-chat-comentar = 댓글 달기
 chat-copiar = 복사
 chat-fijar = 맨 위에 고정
 chat-soltar = 맨 위 고정 해제
@@ -205,13 +189,10 @@ chat-recordar = 알림 설정
 chat-rescatar = 보관
 chat-solo-la-foto = 사진만 표시
 chat-ver-hilo = 댓글 보기
-chat-etiquetar = 태그 추가
-chat-quitar-etiqueta = 태그 제거
 chat-reenviar = 전달
 chat-unir = 프로젝트에 추가
 chat-transcribir = 텍스트로 변환
 chat-letra = 가사 또는 텍스트
-chat-elegir = 선택
 chat-borrar = 삭제
 chat-borrar-aviso = 대화에서 제거됩니다. 첨부 파일도 함께 삭제됩니다. 계속하시겠습니까?
 chat-biblioteca-audio = 오디오 라이브러리
@@ -223,30 +204,18 @@ chat-fondo-brezo = 히스
 chat-fondo-bosque = 숲
 chat-fondo-ocaso = 노을
 chat-fondo-pizarra = 슬레이트
-chat-adj-archivo = 파일
-chat-adj-pagina = 프로젝트의 페이지
-chat-adj-proyecto = 프로젝트 전체
-chat-adj-conversacion = 대화
 chat-adj-telepronter = 텔레프롬프터
 chat-adj-pronunciar = 발음
-chat-adj-miniapp = 미니 앱
 chat-reenviado = 전달됨
 chat-copiado = 복사됨
-chat-compartido = 클립보드에 복사했습니다. 공유하려는 곳에 붙여 넣으세요
 chat-compartir-sin-panel = Windows에서 공유 패널을 열지 못했습니다. 클립보드에 복사했으니 원하는 곳에 붙여 넣으세요
 chat-pineado = 고정됨
 chat-foto-en-la-nota = 사진을 텍스트에 추가했습니다. 하나의 메모로 함께 전송됩니다
 chat-sin-archivo = 이 메시지에는 이 컴퓨터에 있는 파일이 없습니다
 chat-sin-origen = 해당 캔버스가 이 프로젝트에 없습니다
 chat-sin-proyectos-otros = 보낼 다른 프로젝트가 없습니다
-chat-proyectos-lista = 프로젝트는 왼쪽 목록에 있습니다
-chat-no-hay-voz = Windows에서는 아직 음성 메모 녹음을 지원하지 않습니다
-chat-no-hay-aligerar = Windows에서는 아직 PDF 용량 줄이기를 지원하지 않습니다
 chat-no-hay-unir = Windows에서는 모든 채팅이 이미 프로젝트입니다. 다른 프로젝트로 옮기려면 전달을 사용하세요
-chat-no-hay-biblioteca = Windows에서는 아직 오디오 라이브러리를 지원하지 않습니다
 chat-ver-dibujo-entero = 그림 전체 보기
-chat-no-hay-pagina = Windows에서는 아직 프로젝트 페이지 첨부를 지원하지 않습니다
-chat-no-hay-telepronter = Windows에서는 아직 텔레프롬프터를 지원하지 않습니다
 chat-no-se-pudo = 작업을 완료할 수 없습니다. PinDesk 로그를 확인하세요
 chat-fecha = { $mes } { $dia }일
 chat-fecha-con-ano = { $ano }년 { $mes } { $dia }일
@@ -293,21 +262,12 @@ info-vacia-voz = 음성 메모가 여기에 표시됩니다
 info-vacia-dibujos = 이 채팅의 그림이 여기에 표시됩니다
 info-vacia-fijados = 고정한 항목이 여기에 표시됩니다
 info-vacia-buzon = 받은 편지함이 비어 있습니다
-info-abrir = 열기
-info-abrir-enlace = 링크 열기
-info-reproducir = 재생
-info-ver-en-el-chat = 채팅에서 보기
 info-titulo = 정보
 adjuntar-imagen = 사진 또는 동영상
 adjuntar-archivo = 파일
 adjuntar-lienzo = 새 캔버스
-confirmar-titulo = { $cuantos ->
-   *[other] 파일 { $cuantos }개 추가
- }
-confirmar-resto = 외 { $cuantos }개
 confirmar-pie = 설명 추가…
 confirmar-cancelar = 취소
-confirmar-aceptar = 추가
 adjuntar-tabla = 새 표
 tabla-nueva = 표
 chat-nombre-nuevo = 프로젝트 이름…
@@ -323,11 +283,7 @@ recibir-salir = 닫으려면 Esc
 comando-recibir-del-movil = 휴대폰에서 받기…
 comando-sincronizar = 동기화
 adjuntar-del-movil = 휴대폰에서 가져오기…
-menu-foto-aqui = 바로 여기에 그리기
 proyecto-renombrar = 이름 바꾸기
-proyecto-logo-poner = 로고 이미지 설정…
-proyecto-logo-quitar = 로고 이미지 제거
-proyecto-logo-error = 해당 로고 이미지를 설정할 수 없습니다
 # The chat photo (25-oct-2026): image, emoji or colour in the circle.
 foto-chat-menu = 채팅 사진 변경…
 foto-chat-titulo = 채팅 사진
@@ -580,7 +536,6 @@ papelera-no-se-pudo = «{ $nombre }»을(를) 복구할 수 없습니다: { $mot
 papelera-recuperados = 프로젝트 { $total }개 중 { $n }개를 복구했습니다
 
 ## The document viewer: Word, EPUB books and web pages (task 2.1)
-visor-html-titulo = PinDesk — 페이지
 ## The Office pin: Office's preview as a pin (2026-10-10)
 office-titulo = Office 미리 보기
 office-abriendo = Office 미리 보기로 여는 중…
@@ -588,8 +543,6 @@ office-tarda = Office가 시작되는 데 시간이 걸리고 있습니다. 기�
 office-fallo = Office에서 이 파일을 미리 볼 수 없습니다. “연결 프로그램…”(바의 ↗ 단추)으로 다른 앱에서 여세요.
 office-internet = 이 파일은 인터넷에서 받은 파일이라 보안상 Windows에서 미리 보기를 허용하지 않습니다. “연결 프로그램…”(바의 ↗ 단추)으로 다른 앱에서 열거나 속성에서 차단을 해제하세요.
 visor-titulo = PinDesk 뷰어
-visor-marcador = 여기에 책갈피
-visor-ajustes = 읽기 설정
 visor-tamano = 텍스트 크기
 visor-quitar-marcadores = 책갈피 제거
 visor-guardar-pagina = 웹 페이지로 저장
@@ -598,15 +551,10 @@ visor-abrir-carpeta = 폴더 열기
 visor-guardado = "{ $nombre }"에 저장했습니다
 visor-no-guardado = 저장할 수 없습니다
 visor-vacio = 이 문서에는 표시할 텍스트가 없습니다
-visor-ayuda = 휠: 읽기 · +/−: 크기 · M: 책갈피 · G: 설정 · Esc: 나가기
-visor-elige-emoticono = 무엇으로 표시할까요?
-visor-sin-marcadores = 아직 책갈피가 없습니다
 
 ## The readers: comfortable reading, annotating on top and the PDF reader
-lector-listo = 완료
 lector-indice = 목차
 lector-letra-fijada = 위에 그린 메모가 있어 글꼴이 고정되어 있습니다
-lector-letra-normal = 일반 글꼴
 lector-letra-fija = 고정 폭
 lector-grosor-normal = 보통
 lector-grosor-gruesa = 굵게
@@ -620,11 +568,8 @@ lector-pdf-reconociendo = 페이지의 텍스트를 인식하는 중…
 lector-pdf-reconocido = 텍스트 인식 완료: 이제 선택하고 표시할 수 있습니다
 lector-pdf-sin-texto = 이 페이지에서 텍스트를 찾지 못했습니다
 lector-exportando = 주석이 달린 PDF를 저장하는 중… { $hechas }/{ $total }
-lector-exportar-pdf = 메모와 함께 PDF 저장
 lector-anotado = 주석 포함
-lector-ayuda-pdf = 휠: 페이지 넘기기 · Ctrl+휠: 확대/축소 · Ctrl+[ Ctrl+]: 주석 공간 · L: 듣기 · A: 주석 · M: 책갈피 · Esc: 나가기
 lector-office-titulo = PinDesk의 Word 및 PowerPoint
-lector-ayuda-office = 휠: 페이지 넘기기 · Ctrl+휠: 확대/축소 · 텍스트 위로 드래그: 선택 · Ctrl+C: 복사 · Ctrl+F: 찾기 · Ctrl+P: 인쇄 · F5: 프레젠테이션 · A: 주석 · N: 반전 · Esc: 나가기
 lector-presentar = 프레젠테이션(F5)
 lector-modo-lectura = 읽기 모드(텍스트 재배치)
 lector-imprimir = 인쇄…(Ctrl+P)
@@ -648,7 +593,6 @@ lector-voz-parrafo = { $total }개 단락 중 { $n }번째
 lector-voz-preparando = 음성을 준비하는 중…
 lector-voz-no-respondio = Microsoft에서 응답하지 않았습니다
 lector-voz-sin-voz = 음성 없음
-lector-verde-aqui = 여기에 초록 책갈피: 이 지점부터 읽기 시작합니다
 lector-espacio-tope = 그쪽에는 더 이상 공간이 없습니다
 lector-espacio-nada = 그쪽에 남은 공간이 없습니다
 lector-sin-lado = 가로 이동 잠김: 위아래로만 스크롤됩니다
@@ -683,78 +627,12 @@ sinc-presencia-apagada = 설정에서 프레즌스가 꺼져 있습니다([sincr
 bandeja-abrir-documento = 문서 열기…
 
 ## Canvas shapes and ink: arrowheads, fills and text style (group A)
-lienzo-punta-ninguna = 화살촉 없음
-lienzo-punta-flecha = 화살표
-lienzo-punta-barra = 막대
-lienzo-punta-circulo = 원
-lienzo-punta-circulo-hueco = 원 윤곽선
-lienzo-punta-triangulo = 삼각형
-lienzo-punta-triangulo-hueco = 삼각형 윤곽선
-lienzo-punta-rombo = 마름모
-lienzo-punta-rombo-hueco = 마름모 윤곽선
-lienzo-punta-inicio = 시작 화살촉
-lienzo-punta-fin = 끝 화살촉
-lienzo-trama-zigzag = 지그재그
-lienzo-trama-tiralineas = 괘선
-lienzo-texto-negrita = 굵게
-lienzo-texto-cursiva = 기울임꼴
-lienzo-texto-tachado = 취소선
-lienzo-presion-firme = 고정 너비 선
-lienzo-flecha-codos = 꺾인 화살표
-lienzo-flecha-libre = 자유형 화살표
-lienzo-arco-guia = 안내 타원, 아직 그리지 않음
-lienzo-luces-fuerza = 조명 강도
 
 ## Build and measure: fill, trim, extend, points and angles (group C)
-lienzo-bote = 페인트 통
-lienzo-bote-ayuda = 닫힌 영역 안을 클릭하면 여러 도형으로 이루어져 있어도 채워집니다.
-lienzo-bote-abierto = 이 영역은 닫혀 있지 않습니다. 틈으로 색이 새어 나갑니다.
-lienzo-recortar = 자르기
-lienzo-recortar-ayuda = 선의 남는 부분을 클릭하면 다른 선과 교차하는 지점까지 제거됩니다.
-lienzo-extender = 연장
-lienzo-extender-ayuda = 모자라는 끝을 클릭하면 처음 만나는 대상까지 늘어납니다.
-lienzo-extender-sin-tope = 만나는 대상이 없습니다. 허공으로 늘인 선은 연장된 선이 아닙니다.
-lienzo-punto = 이름 붙은 점
-lienzo-punto-ayuda = 교차점, 끝점 또는 원의 중심을 클릭하면 문자와 함께 점이 나타납니다.
-lienzo-punto-sin-sitio = 거기에는 이름 붙일 것이 없습니다. 점은 교차점, 끝점 또는 중심에 놓입니다.
-lienzo-punto-serie-mayusculas = 대문자(A, B, C…)
-lienzo-punto-serie-minusculas = 소문자(a, b, c…)
-lienzo-punto-serie-numeros = 숫자(1, 2, 3…)
-lienzo-angulos = 실시간 각도
-lienzo-angulos-ayuda = 무언가를 움직이는 동안 닿아 있는 모서리의 각도를 표시합니다.
-lienzo-area = 면적
 
 ## Select, transform and bind (group B)
-lienzo-lazo = 올가미
-lienzo-lazo-ayuda = 선택할 대상 주위를 그리세요. 완전히 안에 들어간 것이 선택되고, Shift를 누르면 선에 닿은 것도 선택됩니다.
-lienzo-lazo-encerrar = 안에 들어간 것만
-lienzo-lazo-rozar = 선에 닿은 것도 포함
-lienzo-voltear-horizontal = 가로로 뒤집기
-lienzo-voltear-vertical = 세로로 뒤집기
-lienzo-voltear-ayuda = 각 도형을 개별로가 아니라 그룹 전체의 중심을 기준으로 선택 항목을 대칭 이동합니다.
-lienzo-rejilla = 모눈종이
-lienzo-rejilla-ninguna = 무지
-lienzo-rejilla-lineas = 모눈
-lienzo-rejilla-puntos = 점
-lienzo-rejilla-imanta = 커서를 모눈에 맞추기
-lienzo-rejilla-ayuda = 첫 번째 선을 긋기 전부터 있는 기준선입니다. 내보낼 때는 표시되지 않습니다.
-lienzo-iman-intersecciones = 도형 간 교차점
-lienzo-iman-intersecciones-ayuda = 두 선이 서로 교차하는 지점으로, 어느 쪽의 꼭짓점도 아닌 곳입니다.
-lienzo-iman-bordes = 도형 가장자리
-lienzo-iman-bordes-ayuda = 삼각자처럼 커서가 꼭짓점뿐 아니라 가장자리 전체를 따라 미끄러집니다.
-lienzo-iman-eje = 원점 및 좌표축
-lienzo-enganche = 화살표를 도형에 연결
-lienzo-enganche-ayuda = 끝을 도형 위에 놓으면 도형을 움직일 때 화살표가 따라갑니다.
-lienzo-enganche-soltar = 끝 분리
-lienzo-tirador-punta = 끝 이동
-lienzo-tirador-anadir = 여기서 구부리기
-lienzo-copiar-estilo = 스타일 복사
-lienzo-copiar-estilo-ayuda = 한 도형의 색, 선, 채우기를 가져와 다른 도형에 붙여 넣습니다. 두 유형이 모두 지원하는 속성만 복사됩니다.
-lienzo-estilo-tomado = 스타일을 가져왔습니다
-lienzo-estilo-sin-tomar = 아직 가져온 스타일이 없습니다.
 
 # The attachment the document viewer can open without leaving PinDesk.
-chat-abrir-aqui = 여기에서 열기
 
 # The seven mini-apps from the phone, and their panel.
 mini-moneda = KRW
@@ -800,15 +678,6 @@ chat-voz-fallo = 음성 메모를 녹음할 수 없습니다.
 # Shrinking an attached PDF: it lowers the photos inside, and never for the worse.
 pdf-aligerado = 축소됨: { $antes } → { $despues }
 pdf-aligerar-cifrado = PDF가 암호화되어 있어 손상 위험 없이 다시 쓸 수 없습니다.
-pdf-aligerar-indice-comprimido = 이 PDF는 색인이 압축되어 있으며, 여기서는 아직 재구성을 지원하지 않습니다.
-pdf-aligerar-objetos-comprimidos = 이 PDF는 개체가 압축되어 있으며, 여기서는 아직 재구성을 지원하지 않습니다.
-pdf-aligerar-sin-trailer = PDF에 읽을 수 있는 트레일러가 없습니다.
-pdf-aligerar-sin-objetos = PDF 안의 개체를 하나도 인식하지 못했습니다.
-pdf-aligerar-largo-indirecto = PDF의 스트림 하나가 길이를 명시하지 않습니다.
-pdf-aligerar-objetos-sin-entender = 이 리더가 이해하지 못하는 PDF 부분이 있습니다. 다시 쓰면 그 부분이 사라질 수 있습니다.
-pdf-aligerar-sin-fotos = 줄일 사진이 없습니다. 용량은 텍스트나 벡터에서 나옵니다.
-pdf-aligerar-ya-al-minimo = 사진이 이미 최소 크기입니다.
-pdf-aligerar-no-compensa = { $antes }에서 { $despues }(으)로만 줄어듭니다. 그럴 가치가 없습니다.
 pdf-aligerar-no-se-lee = 축소된 파일을 제대로 다시 읽을 수 없어 원본을 유지합니다.
 aligerar-progreso = 용량 줄이는 중… { $por }%
 aligerar-empezado = PDF 용량을 줄이는 중…
@@ -827,7 +696,6 @@ chat-recordatorio-quitado = 알림을 제거했습니다
 chat-recordatorio-titulo = 알림
 
 # A message menu entry: send the attachment to someone over Wi-Fi.
-chat-enviar-wifi = Wi-Fi로 보내기
 
 # Turning a voice note into text with Vosk. What is missing is named with its
 # file and link: PinDesk never downloads anything on its own.
@@ -853,7 +721,6 @@ musica-sinc-empieza = 각 줄이 시작될 때 Space(또는 “표시”)를 누
 musica-sinc-siguiente = 다음: { $linea }
 musica-sinc-todas = 모든 줄을 표시했습니다. 가사를 저장하세요.
 musica-sinc-marcar = 표시 { $n }/{ $total }
-musica-sinc-deshacer = 실행 취소
 musica-sinc-guardar = 저장
 musica-sinc-cancelar = 취소
 musica-sinc-guardada = 가사를 동기화했습니다
@@ -969,7 +836,6 @@ exportar-tipo-pdf = PDF 문서
 exportar-tipo-html = 단일 파일 웹 페이지
 exportar-vacio = 이 설정으로 내보낼 항목이 없습니다.
 exportar-fallo = 캔버스를 내보낼 수 없습니다.
-exportar-hecho = 내보냄: { $nombre }
 imprimir-menu = 인쇄…	Ctrl+P
 imprimir-vacio = 인쇄할 항목이 없습니다.
 imprimir-fallo = 캔버스를 인쇄할 수 없습니다.
@@ -1017,8 +883,6 @@ compartir-texto = 텍스트
 compartir-csv = 표(CSV)
 compartir-pindesk = PinDesk(.pindesk)
 compartir-dxf = DXF
-compartir-xlsx = Excel(xlsx)
-compartir-docx = Word(docx)
 compartir-md = Markdown
 compartir-exportar = 내보내기…
 compartir-paginas-de = 포함할 항목 · { $total }개 중 { $marcadas }개
@@ -1030,7 +894,6 @@ compartir-preparando = 준비 중…
 compartir-marca-alguna = 페이지를 하나 이상 선택하세요
 compartir-en-cuanto-este = 준비되는 즉시
 compartir-peso-ficheros = { $peso } · 파일 { $n }개
-compartir-panel-abierto = 보낼 곳을 선택하세요
 compartir-guardado = 저장됨: { $nombre }
 compartir-copiado = 클립보드에 복사했습니다
 compartir-no-se-pudo = 준비할 수 없습니다
@@ -1052,7 +915,6 @@ compartir-tipo-nota = 메모
 
 # Drawing tools: the ones shown in the canvas, the reader, pins and the
 # screen annotator. Turning one off removes it from the bar and its key.
-ajustes-pestana-herramientas = 도구
 herramientas-lazo = 올가미
 herramientas-rectangulo = 사각형
 herramientas-rombo = 마름모
@@ -1122,11 +984,6 @@ chat-fecha-corta = { $mes } { $dia }일
 chat-enlace-no-abre = 링크를 열 수 없습니다
 
 ## D11: a spreadsheet in the chat is a book of tables (ventana_chat/libro.rs)
-libro-titulo = 스프레드시트
-libro-xls-antiguo = 이전 .xls 파일은 읽을 수 없습니다. 열어서 .xlsx로 저장하세요
-libro-abrir-fuera = 다른 앱으로 여시겠습니까?
-libro-no-es = 올바른 스프레드시트 파일이 아닙니다
-libro-sin-hojas = 통합 문서에 데이터가 있는 시트가 없습니다
 hoja-preparando = 편집할 시트를 준비하는 중…
 hoja-editar-aviso = 변경 내용은 채팅 시트에 저장되며 원본 파일은 그대로 유지됩니다
 hoja-editando = 편집 중 · 보려면 Esc
@@ -1432,8 +1289,6 @@ chat-insertar-en-nota = 메모에 삽입
 ## Canvas: weld vertices and number points (lienzo-geometria, 26-sep)
 herramientas-nudo = 꼭짓점 결합
 herramientas-bolita = 공: 쓸어서 선택
-lienzo-nudo = 꼭짓점 결합
-lienzo-nudo-ayuda = 두 도형이 닿는 곳을 클릭하면 서로 고정됩니다. 더 이상 떨어지지 않으며, 고정점이 하나뿐이면 그 점을 중심으로 회전합니다. 고정점을 클릭하면 제거되고, 손 도구로 드래그하면 고정된 도형이 함께 움직입니다.
 lienzo-punto-serie = 점 레이블
 lienzo-cota-pedir = 그릴 때 길이 묻기
 lienzo-panel-dureza = 연필 경도
@@ -1481,7 +1336,6 @@ funciones-figuras-detalle = 캔버스용 도형 라이브러리
 figuras-mias = 내 도형
 figuras-todas = 모두
 figuras-vacia = 아직 도형이 없습니다. 캔버스에서 무언가를 선택하고 “도형으로 저장”을 누르세요.
-figuras-cerrar = 닫기
 figuras-borrar = 도형 삭제
 figuras-borrar-seguro = 삭제하려면 다시 누르세요
 figuras-elegir-para = “{ $chat }”에 넣을 도형 선택
@@ -1740,12 +1594,8 @@ galeria-borrada = PinDesk 휴지통으로 이동했습니다
 galeria-no-se-pudo = 실행할 수 없습니다: { $motivo }
 galeria-conservada-aviso = 보관됨: 저장된 메시지에 있으며 삭제되지 않습니다
 bandeja-galeria-capturas = 캡처 갤러리…
-chat-galeria-capturas = 캡처 갤러리
 # Lessons learned (3-oct, as on the phone)
-chat-lecciones = 교훈
-chat-leccion-nueva = 새 교훈
 chat-hacer-leccion = 교훈 만들기
-bandeja-lecciones = 💡 교훈…
 bandeja-leccion-nueva = 새 교훈…
 bandeja-tareas = ☑ 작업…
 bandeja-timeline = 🕒 타임라인 및 교훈…
@@ -1961,7 +1811,6 @@ ajustes2-auto = 자동
 comando-buscar = 🔍 PinDesk 검색…
 comando-grabar-clase = 🎙 수업 또는 회의 녹음…
 clase-titulo = 수업 또는 회의 녹음
-clase-sub = 오디오를 녹음하고 스크린샷을 해당 시점에 배치합니다
 clase-microfono = 마이크
 clase-equipo = 컴퓨터 소리(Meet, Zoom…)
 clase-guardar-en = 저장 위치: { $proyecto }
@@ -1970,7 +1819,6 @@ clase-nada = 마이크, 컴퓨터 소리 또는 둘 다 선택하세요
 clase-captura = 캡처
 clase-terminar = 마침
 clase-capturas = 스크린샷: { $n }개 · 한 번 클릭하면 같은 영역 반복
-clase-pista = “캡처”는 현재 시점의 화면 영역을 저장합니다
 clase-elige-zona = 화면에서 영역 선택…
 clase-captura-hecha = { $minuto }에 스크린샷을 저장했습니다
 clase-zona-cambiada = 영역이 변경되었습니다
@@ -1989,7 +1837,6 @@ clase-listo = 완료
 clase-nombre = 수업 { $fecha }
 clase-sin-sonido-equipo = 컴퓨터에서 소리가 들리지 않습니다. 활성화된 스피커나 헤드폰이 없습니다
 clase-video = 이 화면의 동영상
-clase-video-corto = 동영상 녹화 중
 clase-video-roto = 동영상이 중지되었습니다. 오디오는 계속 녹음 중입니다
 clase-video-guardado = 화면 동영상 포함.
 clase-calidad-ligero = 가벼움
@@ -2015,13 +1862,6 @@ clase-recuperar-sin-nada = “{ $nombre }”에는 열 수 없는 동영상만 �
 clase-recuperar-descartar = “{ $nombre }”을(를) 버리시겠습니까? 녹음이 삭제되며 복구할 수 없습니다.
 clase-recuperar-fallo = “{ $nombre }”을(를) 복구할 수 없습니다. 녹음은 안전하게 보관되어 있으며 PinDesk를 열 때 다시 제안됩니다.
 clase-texto-de-fondo = 닫기(계속 진행)
-clase-modo-pantalla = 화면 및 소리
-clase-modo-capturas = 오디오 및 스크린샷
-clase-modo-pantalla-sub = 선택한 소리와 함께 이 화면의 동영상을 녹화합니다
-clase-modo-capturas-sub = 오디오를 녹음합니다. “캡처”는 전체 화면을 저장합니다
-clase-captura-entera = 캡처: 전체 화면, 즉시
-clase-pista-entera = “캡처”는 현재 시점의 전체 화면을 저장합니다. 영역 단추는 일부만 저장합니다
-clase-capturas-entera = 스크린샷: { $n }개 · 전체 화면
 clase-abrir-para-estudiar = 열어서 공부하기
 clase-camara-movil = 📱 휴대폰 카메라
 clase-camara-movil-n = 📱 휴대폰 카메라 · { $n }
@@ -2044,14 +1884,10 @@ clase-hora-sin-comprobar = 시간 확인 안 됨
 baliza-movil-aislado = 같은 네트워크에 있지만 휴대폰이 보이지 않습니다. 이 Wi-Fi가 장치를 서로 격리하거나(게스트, 호텔, 사무실 네트워크) 방화벽이 PinDesk를 차단하고 있을 수 있습니다. PC를 휴대폰 핫스팟에 연결하거나 둘 다 다른 Wi-Fi에 연결하세요. 찍은 사진은 휴대폰에서 대기하다가 서로 연결되면 해당 시점에 들어갑니다.
 baliza-movil-otra-red = 휴대폰이 이 PC와 다른 네트워크에 있습니다. 둘 다 같은 Wi-Fi에 연결하세요(또는 PC를 휴대폰 핫스팟에 연결). 찍은 사진은 휴대폰에서 대기하다가 서로 연결되면 해당 시점에 들어갑니다.
 # In-person meeting (27-oct-2026): the computer's camera, photos and clips.
-clase-modo-presencial = 대면
-clase-modo-presencial-sub = 마이크를 녹음합니다. “사진”은 카메라를 최대 해상도로 사용합니다
 clase-camara = 카메라: { $camara }
 clase-camara-buscando = 카메라를 찾는 중…
 clase-camara-ninguna = 카메라 없음: 사진과 클립이 작동하지 않습니다(오디오는 녹음됩니다)
 clase-foto = 사진
-clase-fotos = 사진: { $n }장 · 카메라, 최대 해상도
-clase-pista-foto = “사진”은 현재 시점에 카메라로 사진을 찍습니다. 비디오 카메라 단추는 클립을 녹화합니다
 clase-foto-hecha = { $minuto }에 사진을 저장했습니다
 clase-camara-abriendo = 카메라를 여는 중…
 clase-camara-lista = 카메라 준비됨: 사진 크기 { $medida }
@@ -2235,123 +2071,6 @@ buscar-todo-deshacer = 실행 취소
 buscar-todo-copiado = 복사됨
 ## v2-lecciones
 # The lessons window of the v2 redesign (Lecciones2.dc.html and Lecciones2-repaso.dc.html).
-lec2-que-aprendiste = 무엇을 배웠나요? 입력하거나 받아쓰고 Enter를 누르세요
-lec2-guardar = 저장
-lec2-rellena-solo = 자동으로 채워졌습니다. 클릭하여 변경하세요:
-lec2-rellena-solo-vacio = 입력하는 동안 영역, 프로젝트, 심각도가 자동으로 채워집니다.
-lec2-area-de = 영역: { $area }
-lec2-proyecto-de = 프로젝트: { $proyecto }
-lec2-ya-la-tienes = 이미 있습니다: “{ $titulo }” · 또 발생했습니다
-lec2-pega-capturas = 스크린샷 붙여넣기
-lec2-guardada = { $donde }에 교훈을 저장했습니다
-lec2-apuntado-otra-vez = 기록함: 또 발생했습니다
-lec2-no-se-pudo = 실패했습니다. 다시 시도하세요.
-lec2-solo-imagenes = 교훈에는 이미지만 추가할 수 있습니다.
-lec2-sin-area = 영역 없음
-lec2-sin-proyecto = 프로젝트 없음(일반 채팅)
-lec2-buscar = 검색: 단어, 상황, 태그…
-lec2-todas = 모두
-lec2-repetidas = 반복됨
-lec2-graves = 심각
-lec2-para-repasar = 오늘 복습할 항목 · { $n }
-lec2-que-harias-si = 다시 발생하면 어떻게 하시겠습니까?
-lec2-repasar = 복습
-lec2-este-mes = 이번 달
-lec2-antes = 이전
-lec2-lista-vacia = 아직 교훈이 없습니다. 위에 배운 점을 쓰세요.
-lec2-nada-con-filtro = 이 필터에 해당하는 항목이 없습니다.
-lec2-nada-con = “{ $q }”에 해당하는 항목이 없습니다. 다른 단어로 시도하거나 위에 기록하세요.
-lec2-moverse = 이동
-lec2-leve = 경미
-lec2-importante = 중요
-lec2-grave = 심각
-lec2-hoy = 오늘
-lec2-ayer = 어제
-lec2-manana = 내일
-lec2-hace-dias = { $n }일 전
-lec2-hace-semanas = { $n ->
-   *[other] { $n }주 전
-  }
-lec2-hace-meses = { $n ->
-   *[other] { $n }개월 전
-  }
-lec2-hace-anios = { $n ->
-   *[other] { $n }년 전
-  }
-lec2-en-dias = { $n }일 후
-lec2-meses = 1월 2월 3월 4월 5월 6월 7월 8월 9월 10월 11월 12월
-lec2-clic-para-editar = 텍스트를 클릭하여 편집 · 자동 저장
-lec2-mas-campos = 추가 필드…
-lec2-que-paso = 무슨 일이 있었나
-lec2-por-que = 이유
-lec2-proxima = 다음에는
-lec2-que-paso-vacio = 무슨 일이 있었는지 추가…
-lec2-por-que-vacio = 왜 일어났는지 추가…
-lec2-proxima-vacio = 다음에 다르게 할 점 추가…
-lec2-editar = 편집
-lec2-escribe-aqui = 여기에 입력
-lec2-ayuda-linea = Enter: 저장 · Esc: 마침
-lec2-ayuda-bloque = Enter: 저장 · Shift+Enter: 줄 바꿈 · Tab: 다음 항목
-lec2-nota-de-voz = 음성 메모
-lec2-anadir-foto = 사진 추가
-lec2-ver-en-chat = 채팅에서 보기
-lec2-pinear = 고정
-lec2-pineado = 화면에 고정됨
-lec2-borrar = 삭제
-lec2-borrada = 교훈을 삭제했습니다
-lec2-deshacer = 실행 취소
-lec2-veces = { $n ->
-   *[other] 번 발생
-  }
-lec2-la-ultima = 마지막: { $fecha }
-lec2-me-volvio = 또 발생했습니다
-lec2-gravedad = 심각도
-lec2-area = 영역
-lec2-proyecto = 프로젝트
-lec2-etiquetas = 태그
-lec2-anadir = + 추가
-lec2-nueva-etiqueta = 태그 입력 후 Enter
-lec2-relacionadas = 관련 항목
-lec2-proximo-repaso = 다음 복습: { $cuando }
-lec2-vacia-titulo = 실수를 반복하지 않도록 배운 점을 기록하세요
-lec2-vacia-texto = 위에 한 번에 쓰세요: “무슨 일이 있었고…, 왜냐하면…, 다음에는…”. PinDesk가 나누어 영역, 프로젝트, 심각도를 정하고 전에 발생한 적이 있는지 알려 줍니다.
-lec2-comprobacion = 시작하기 전에 확인: { $total }개 중 { $hechas }개
-lec2-comprobacion-vacia = 아직 “다음에는…” 아래에 아무것도 없습니다. 각 교훈의 세 번째 블록입니다.
-lec2-nada-que-repasar = 오늘 복습할 항목이 없습니다.
-lec2-repaso-titulo = 오늘의 복습
-lec2-repaso-de = { $va }/{ $total }
-lec2-salir = 나가기
-lec2-paso-pensar = 어떻게 할지 생각하기
-lec2-paso-mirar = 기록한 내용 보기
-lec2-paso-recordar = 기억났나요?
-lec2-situacion = 상황
-lec2-repaso-cuando = { $pista }할 때…
-lec2-repaso-recuerda = 이 교훈을 떠올려 보세요
-lec2-repaso-veces = { $n }번 발생했습니다
-lec2-que-harias = 어떻게 하시겠습니까?
-lec2-escribe-o-dicta = 입력 또는 받아쓰기
-lec2-dictar = 받아쓰기
-lec2-mostrar = 답 보기
-lec2-mostrada = 답 표시됨
-lec2-lo-que-apuntaste = 기록한 내용
-lec2-oculta = 보기 전에 생각하세요. 다시 읽는 것보다 떠올리는 것이 훨씬 오래 남습니다.
-lec2-por-que-paso = 일어난 이유: { $causa }
-lec2-abrir-completa = 교훈 전체 열기
-lec2-lo-recordabas = 기억났나요? 마우스나 다음 키로 선택하세요:
-lec2-nota-recordaba = 기억났음
-lec2-nota-a-medias = 일부만
-lec2-nota-olvide = 잊었음
-lec2-vuelve-manana = 내일 다시
-lec2-vuelve-en = { $dias }일 후 다시
-lec2-saltar = 이 항목 건너뛰기
-lec2-repaso-pie = 답은 비교용이며 저장되지 않습니다.
-lec2-siguiente = 다음
-lec2-repaso-elige = 1, 2 또는 3을 선택하세요. 기억났나요?
-lec2-repaso-hecho = 복습 완료
-lec2-repaso-hechas = { $n ->
-   *[other] 교훈 { $n }개를 복습했습니다. 복습할 때가 되면 다시 나타납니다.
-  }
-lec2-repaso-volver = 목록으로 돌아가기
 ## v2-galeria
 galeria-subtitulo = { $cuantas } · 7일간 보관
 galeria-buscar = 캡처 속 텍스트까지 검색
@@ -2620,8 +2339,6 @@ timeline-mic-sin-texto = 인식하지 못했습니다. 오디오만 보관합니
 
 
 ## simple-lecciones
-lecs-menos-campos = 필드 줄이기
-lecs-ficha-completa = 유형, 원인, 키워드…
 
 ## galeria-menu (5-oct-2026, right click)
 galeria-guardar-como = 다른 이름으로 저장…
@@ -2650,7 +2367,6 @@ timeline-momentos-vacio = 선택한 순간이 여기에 들어갑니다. “오�
 timeline-a-momentos = 순간으로 보냈습니다
 timeline-fuera-de-momentos = 순간에서 제거했습니다
 timeline-estado-sobre-todo = 주로
-timeline-estado-lo-mas = "{ $que }"
 timeline-exportar-busqueda = 검색: "{ $que }"
 timeline-pestana-lecciones = 교훈
 timeline-sub-lecciones = { $n ->
@@ -2661,7 +2377,6 @@ timeline-lecciones-vacio = 아직 교훈이 없습니다. 순간의 전구를 �
 timeline-gravedad-leve = 경미
 timeline-gravedad-importante = 중요
 timeline-gravedad-grave = 심각
-timeline-otra-vez = 또 발생 +1
 timeline-otra-vez-hecho = 기록함: 지금까지 { $n }번
 timeline-leccion = 교훈
 timeline-leccion-hecha = 💡 교훈을 만들었습니다. “교훈”에 있습니다
@@ -2723,7 +2438,6 @@ tareas5-corregir-pista = 작업 텍스트…
 tareas5-imagen-pista = 이미지 추가 · Ctrl+V로 복사한 이미지 붙여넣기
 tareas5-guardar = 저장
 tareas5-corregida = 작업을 업데이트했습니다
-tareas5-vista-lista = 목록 · Ctrl+L
 tareas5-vista-tarjetas = 카드 · Ctrl+T
 tareas5-vista-horario = 시간표 · Ctrl+H
 tareas5-vista-kanban = Kanban 보드 · Ctrl+K
@@ -2740,7 +2454,6 @@ tareas5-quitar = 제거
 ## salida (6-oct-2026): the floating window to drag out what was exported
 salida-titulo = 공유 준비 완료
 salida-titulo-exportado = 내보냄
-salida-titulo-guardado = 저장됨
 salida-pista = 파일을 다른 앱이나 폴더로 끌어 놓으세요
 salida-todos = { $n }개 모두 함께 끌기
 salida-arrastra-todos = 길게 누른 채 끌면 모두 가져갑니다
@@ -2748,13 +2461,11 @@ salida-soltado = 놓았습니다 · 다른 곳에도 놓을 수 있습니다
 salida-copiado = 클립보드에 복사했습니다
 salida-pineado = 고정됨
 salida-no-se-pudo = 실행할 수 없습니다
-salida-compartir = 공유
 salida-copiar = 복사
 salida-abrir = 열기
 salida-carpeta = 폴더에서 보기
 salida-pinear = 고정
 salida-compartir-menu = 공유…
-compartir-arrastrar = 여기서 다른 앱으로 끌어 놓기 · 클릭하면 화면에 유지
 
 ## al-movil (6-oct-2026): a photo from the Flow plugin to the phone's open canvas
 al-movil-lienzo = { $n ->
@@ -2988,8 +2699,6 @@ asistente-voz-sin-whisper = 이 PC는 음성을 텍스트로 변환할 수 없�
 asistente-voz-fallo = 음성을 텍스트로 변환할 수 없습니다.
 asistente-voz-cancelado = 취소됨: 아무것도 보내지 않았습니다.
 asistente-voz-nada-que-leer = 이 답변에는 읽을 텍스트가 없습니다.
-asistente-voz-leer = 소리 내어 읽기
-asistente-voz-callar = 읽기 중지
 
 # The buttons of the Windows notifications (15-oct).
 notif-hecha = 완료
@@ -3047,7 +2756,6 @@ bandeja-horario-grabar = 🎙 다음 수업용 음성 메모
 horario-sin-clases = 아직 시간표에 수업이 없습니다. “수업 시간표…”를 열고 한 줄에 하나씩 입력하세요.
 horario-guardada = 다음 { $clase } 수업 때 들려 드립니다
 ## Weekly timetable window and subjects (18-oct-2026)
-horario-titulo = 시간표
 horario-subtitulo = 과목 { $asignaturas }개 · 수업 { $clases }개
 horario-nueva = 새 과목(@강의실 선택 사항)
 horario-domingo = 일요일
@@ -3070,15 +2778,12 @@ horario-asignatura-borrada = 시간표에서 “{ $asignatura }”을(를) 제�
 horario-repetida = “{ $asignatura }”은(는) 이미 목록에 있습니다
 horario-arrastra = “{ $asignatura }”을(를) 주간 표로 끌어 놓으세요
 horario-no-guardado = 시간표를 저장할 수 없습니다
-tareas-asignatura-pista = 작업 과목
 tareas-destino-pista = 작업의 목록 또는 과목
 tareas-sin-asignatura = 과목 없음(받은 편지함으로)
-tareas-sin-asignaturas = 아직 과목이 없습니다. “수업 시간표…”에서 만드세요
 tareas-apuntar-en-asignatura = 새 { $asignatura } 작업…
 
 # Viewers: the frame to print (2026-10-19)
 marco-imprimir-pista = 인쇄할 부분 위로 상자를 드래그하세요 · Enter: 전체 · Esc: 나가기
-lector-marco = 인쇄할 프레임(P)
 marcos-pista = 드래그하여 프레임 지정 · 숫자: 해당 프레임으로 이동 · Ctrl+P: 모두 인쇄 · Del: 마지막 프레임 제거 · I 또는 Esc: 나가기
 marcos-imprimir = 프레임 인쇄(Ctrl+P)
 marcos-borrar = 프레임 지우기
@@ -3107,7 +2812,6 @@ barra-cerrar = 닫기(Esc)
 visor-letra = 글꼴 및 간격(T / B)
 lector-mas = 추가 옵션(G)
 visor-indice-pista = 목차(C)
-riel-hojita = 메모장(Ctrl+Shift+N)
 riel-editar = 편집(Alt+R)
 riel-mirar = 보기로 돌아가기(Alt+R 또는 Esc)
 
@@ -3159,10 +2863,6 @@ carpeta-exportando = PDF를 내보내는 중…
 carpeta-exportado = PDF 저장됨: { $nombre }
 carpeta-no-se-exporto = 내보낼 수 없습니다. 내용이 있는 페이지가 없습니다
 carpeta-vacia = 이 폴더는 비어 있습니다. “새 페이지”를 누르거나, 채팅에서 캔버스나 이미지 메뉴의 “폴더에 추가…”를 선택하세요.
-carpeta-antes = 이전
-carpeta-despues = 이후
-carpeta-renombrar = 이름 바꾸기
-carpeta-quitar = 폴더에서 제거
 carpeta-no-esta = 해당 폴더가 더 이상 채팅에 없습니다
 carpeta-pista = 페이지를 드래그하여 이동 · F2: 제목 변경 · Del: 제거(채팅에 다시 표시됨)
 carpeta-escribe-titulo = 제목을 입력하고 Enter를 누르세요
@@ -3171,8 +2871,6 @@ carpeta-grabacion-detalle = { $duracion } · { $capturas ->
    *[other] 캡처 { $capturas }개
  }
 carpeta-estudiar = 공부하기
-carpeta-de-la-grabacion = 녹음에서
-carpeta-adjuntos = 수업에 첨부됨
 carpeta-adjunto-insignia = 첨부 파일 · 녹음의 일부 아님
 carpeta-adjuntar = 수업에 첨부
 carpeta-adjuntado = 수업에 첨부함: { $nombre }
@@ -3200,7 +2898,6 @@ clase-importante-decision = 결정
 clase-importante-pregunta = 질문
 clase-importante-examen = 시험
 clase-importante-buscando = 중요한 내용을 찾는 중…
-clase-importante-nada = 수업에 해당 항목이 없습니다
 clase-importante-tareas = + 작업 { $n }개를 작업으로
 clase-importante-anadidas = 작업 받은 편지함에 작업 { $n }개를 추가했습니다
 tareas-prioridad-urgente = 긴급

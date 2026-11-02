@@ -109,9 +109,6 @@ cuenta-atras-cancelar = Esc で停止
 comando-pinear-seleccion = エクスプローラーの選択項目をピン留め
 
 # The settings window (P6).
-ajustes-pestana-atajos = ショートカット
-ajustes-pestana-general = 全般
-ajustes-pestana-captura = キャプチャ
 ajustes-pestana-dibujo = 描画
 ajustes-iman = 特徴点にスナップ
 ajustes-iman-esquinas = 角と端点
@@ -121,26 +118,17 @@ ajustes-iman-radio = 吸着距離（px）
 ajustes-idioma = 言語
 ajustes-idioma-sistema = Windows と同じ
 ajustes-arranque = Windows と同時に起動
-ajustes-color = カラーピッカーの形式
-ajustes-nivel = パフォーマンス
 ajustes-nivel-auto = 自動
 ajustes-nivel-completo = フル
 ajustes-nivel-ligero = 軽量
 ajustes-pdf-aligerar = チャットに追加するときに PDF を軽量化
-ajustes-pdf-nivel = 軽量化の度合い（「小」と「最大」は手動のみ）
 ajustes-pdf-nivel-sin-perdida = 劣化なし
 ajustes-pdf-nivel-equilibrado = 中
 ajustes-pdf-nivel-pequeno = 小
 ajustes-pdf-nivel-extremo = 最大
-ajustes-retardo-captura = キャプチャ前のカウントダウン秒数
-ajustes-limite-scroll = スクロールキャプチャの最大の高さ（ピクセル）
-ajustes-gif-ritmo = 録画時の 1 秒あたりのフレーム数
-ajustes-gif-retardo = 録画開始までの猶予秒数
 ajustes-sin-atajo = ショートカットなし
 ajustes-pulsa-combinacion = キーの組み合わせを押してください…
 ajustes-choca = 重複
-ajustes-cerrar = 閉じる
-ajustes-abrir-fichero = 設定ファイルを開く
 
 # Reading the text of a pin (P4.2).
 pin-copiar-texto = 画像内のテキストをコピー
@@ -174,16 +162,12 @@ chat-clase-proyecto = プロジェクト
 chat-clase-miniapp = ミニアプリ
 chat-escribe = 何か書いてください…
 # The chat, like PinDesk Android's (guardados/MensajesActivity.kt).
-chat-cosas = { $n ->
-   *[other] { $n } 件
-}
 chat-elegidos = { $n ->
    *[other] { $n } 件選択中
 }
 chat-lienzo = キャンバス
 chat-tabla = 表
 chat-viene-de = 元
-chat-comentar = コメントする
 chat-copiar = コピー
 chat-fijar = 上部に固定
 chat-soltar = 固定を解除
@@ -205,13 +189,10 @@ chat-recordar = リマインド
 chat-rescatar = これを残す
 chat-solo-la-foto = 写真のみ表示
 chat-ver-hilo = コメントを表示
-chat-etiquetar = タグを追加
-chat-quitar-etiqueta = タグを削除
 chat-reenviar = 転送
 chat-unir = プロジェクトに追加
 chat-transcribir = テキストに変換
 chat-letra = 歌詞またはテキスト
-chat-elegir = 選択
 chat-borrar = 削除
 chat-borrar-aviso = 会話から削除されます。添付ファイルも一緒に削除されます。続行しますか？
 chat-biblioteca-audio = オーディオライブラリ
@@ -223,30 +204,18 @@ chat-fondo-brezo = ヒース
 chat-fondo-bosque = 森
 chat-fondo-ocaso = 夕焼け
 chat-fondo-pizarra = スレート
-chat-adj-archivo = ファイル
-chat-adj-pagina = プロジェクトのページ
-chat-adj-proyecto = プロジェクト全体
-chat-adj-conversacion = 会話
 chat-adj-telepronter = プロンプター
 chat-adj-pronunciar = 発音
-chat-adj-miniapp = ミニアプリ
 chat-reenviado = 転送しました
 chat-copiado = コピーしました
-chat-compartido = クリップボードにコピーしました：共有したい場所に貼り付けてください
 chat-compartir-sin-panel = Windows の共有パネルが開きませんでした：クリップボードにあるので好きな場所に貼り付けられます
 chat-pineado = ピン留めしました
 chat-foto-en-la-nota = 写真をテキストに追加しました：1 つのメモとしてまとめて送信されます
 chat-sin-archivo = このメッセージのファイルはこのコンピューターにありません
 chat-sin-origen = そのキャンバスはこのプロジェクトにありません
 chat-sin-proyectos-otros = 送信先となる他のプロジェクトがありません
-chat-proyectos-lista = プロジェクトは左側の一覧です
-chat-no-hay-voz = ボイスメモの録音は Windows 版ではまだ使えません
-chat-no-hay-aligerar = PDF の軽量化は Windows 版ではまだ使えません
 chat-no-hay-unir = Windows ではどのチャットもすでにプロジェクトです：別のプロジェクトへは「転送」を使ってください
-chat-no-hay-biblioteca = オーディオライブラリは Windows 版ではまだ使えません
 chat-ver-dibujo-entero = 描画全体を表示
-chat-no-hay-pagina = プロジェクトのページの添付は Windows 版ではまだ使えません
-chat-no-hay-telepronter = プロンプターは Windows 版ではまだ使えません
 chat-no-se-pudo = 実行できませんでした：PinDesk のログを確認してください
 chat-fecha = { $mes }{ $dia }日
 chat-fecha-con-ano = { $ano }年{ $mes }{ $dia }日
@@ -293,21 +262,12 @@ info-vacia-voz = ボイスメモがここに表示されます
 info-vacia-dibujos = このチャットの描画がここに表示されます
 info-vacia-fijados = 固定したものがここに表示されます
 info-vacia-buzon = 受信箱は空です
-info-abrir = 開く
-info-abrir-enlace = リンクを開く
-info-reproducir = 再生
-info-ver-en-el-chat = チャットで表示
 info-titulo = 情報
 adjuntar-imagen = 写真または動画
 adjuntar-archivo = ファイル
 adjuntar-lienzo = 新しいキャンバス
-confirmar-titulo = { $cuantos ->
-   *[other] { $cuantos } 個のファイルを追加
-}
-confirmar-resto = ほか { $cuantos } 件
 confirmar-pie = キャプションを追加…
 confirmar-cancelar = キャンセル
-confirmar-aceptar = 追加
 adjuntar-tabla = 新しい表
 tabla-nueva = 表
 chat-nombre-nuevo = プロジェクト名…
@@ -323,11 +283,7 @@ recibir-salir = Esc で閉じる
 comando-recibir-del-movil = スマートフォンから受信…
 comando-sincronizar = 同期
 adjuntar-del-movil = スマートフォンから取り込む…
-menu-foto-aqui = ここに直接描く
 proyecto-renombrar = 名前を変更
-proyecto-logo-poner = ロゴ画像を設定…
-proyecto-logo-quitar = ロゴ画像を削除
-proyecto-logo-error = そのロゴ画像を設定できませんでした
 # The chat photo (25-oct-2026): image, emoji or colour in the circle.
 foto-chat-menu = チャットの写真を変更…
 foto-chat-titulo = チャットの写真
@@ -580,7 +536,6 @@ papelera-no-se-pudo = 「{ $nombre }」を復元できませんでした：{ $mo
 papelera-recuperados = { $total } 件中 { $n } 件のプロジェクトを復元しました
 
 ## The document viewer: Word, EPUB books and web pages (task 2.1)
-visor-html-titulo = PinDesk — ページ
 ## The Office pin: Office's preview as a pin (2026-10-10)
 office-titulo = Office プレビュー
 office-abriendo = Office プレビューで開いています…
@@ -588,8 +543,6 @@ office-tarda = Office の起動に時間がかかっています。待つか、�
 office-fallo = Office でこのファイルをプレビューできませんでした。「プログラムから開く…」（バーの ↗ ボタン）で別のアプリで開いてください。
 office-internet = このファイルはインターネットから取得したもので、安全のため Windows がプレビューを許可していません。「プログラムから開く…」（バーの ↗ ボタン）で別のアプリで開くか、プロパティでブロックを解除してください。
 visor-titulo = PinDesk ビューアー
-visor-marcador = ここにしおり
-visor-ajustes = 読書設定
 visor-tamano = 文字サイズ
 visor-quitar-marcadores = しおりを削除
 visor-guardar-pagina = Web ページとして保存
@@ -598,15 +551,10 @@ visor-abrir-carpeta = フォルダーを開く
 visor-guardado = 「{ $nombre }」に保存しました
 visor-no-guardado = 保存できませんでした
 visor-vacio = この文書には表示するテキストがありません
-visor-ayuda = ホイールで読む · +/− サイズ · M しおり · G 設定 · Esc で終了
-visor-elige-emoticono = 何で印を付けますか？
-visor-sin-marcadores = まだしおりはありません
 
 ## The readers: comfortable reading, annotating on top and the PDF reader
-lector-listo = 完了
 lector-indice = 目次
 lector-letra-fijada = 書体は固定されています：上にメモが描かれています
-lector-letra-normal = 標準の書体
 lector-letra-fija = 等幅
 lector-grosor-normal = 標準
 lector-grosor-gruesa = 太字
@@ -620,11 +568,8 @@ lector-pdf-reconociendo = ページの文字を認識しています…
 lector-pdf-reconocido = 文字を認識しました: 選択してマークできます
 lector-pdf-sin-texto = このページに文字が見つかりません
 lector-exportando = 注釈付き PDF を保存中… { $hechas } / { $total }
-lector-exportar-pdf = メモ付きで PDF を保存
 lector-anotado = 注釈付き
-lector-ayuda-pdf = ホイールでページ送り · Ctrl+ホイールでズーム · Ctrl+[ Ctrl+] 注釈用の余白 · L 読み上げ · A 注釈 · M しおり · Esc で終了
 lector-office-titulo = PinDesk の Word と PowerPoint
-lector-ayuda-office = ホイールでページ送り · Ctrl+ホイールでズーム · テキストをドラッグして選択 · Ctrl+C コピー · Ctrl+F 検索 · Ctrl+P 印刷 · F5 プレゼン · A 注釈 · N 反転 · Esc で終了
 lector-presentar = プレゼン (F5)
 lector-modo-lectura = 閲覧モード（リフロー表示）
 lector-imprimir = 印刷… (Ctrl+P)
@@ -648,7 +593,6 @@ lector-voz-parrafo = 段落 { $n } / { $total }
 lector-voz-preparando = 音声を準備しています…
 lector-voz-no-respondio = Microsoft から応答がありません
 lector-voz-sin-voz = 音声なし
-lector-verde-aqui = 緑のしおりをここに：この位置から読み上げを始めます
 lector-espacio-tope = その側にはこれ以上余白を取れません
 lector-espacio-nada = その側には余白がありません
 lector-sin-lado = 横方向は固定：上下のみスクロールします
@@ -683,78 +627,12 @@ sinc-presencia-apagada = 設定でプレゼンスがオフになっています�
 bandeja-abrir-documento = 文書を開く…
 
 ## Canvas shapes and ink: arrowheads, fills and text style (group A)
-lienzo-punta-ninguna = 矢じりなし
-lienzo-punta-flecha = 矢印
-lienzo-punta-barra = バー
-lienzo-punta-circulo = 円
-lienzo-punta-circulo-hueco = 円（輪郭）
-lienzo-punta-triangulo = 三角形
-lienzo-punta-triangulo-hueco = 三角形（輪郭）
-lienzo-punta-rombo = ひし形
-lienzo-punta-rombo-hueco = ひし形（輪郭）
-lienzo-punta-inicio = 始点の矢じり
-lienzo-punta-fin = 終点の矢じり
-lienzo-trama-zigzag = ジグザグ
-lienzo-trama-tiralineas = 罫線
-lienzo-texto-negrita = 太字
-lienzo-texto-cursiva = 斜体
-lienzo-texto-tachado = 取り消し線
-lienzo-presion-firme = 固定幅の線
-lienzo-flecha-codos = カギ線矢印
-lienzo-flecha-libre = フリーハンド矢印
-lienzo-arco-guia = ガイドの楕円（まだなぞっていません）
-lienzo-luces-fuerza = 光の強さ
 
 ## Build and measure: fill, trim, extend, points and angles (group C)
-lienzo-bote = 塗りつぶし
-lienzo-bote-ayuda = 閉じた領域の内側をクリックすると塗りつぶされます。複数の図形で囲まれていても構いません。
-lienzo-bote-abierto = この領域は閉じていません：すき間から塗りがはみ出してしまいます。
-lienzo-recortar = トリム
-lienzo-recortar-ayuda = 線の余分な部分をクリックすると、他の線と交わるところまで削除されます。
-lienzo-extender = 延長
-lienzo-extender-ayuda = 届いていない端をクリックすると、最初にぶつかるものまで伸びます。
-lienzo-extender-sin-tope = 行き先に何もありません：何もない所へ伸ばした線は延長とは言えません。
-lienzo-punto = ラベル付きの点
-lienzo-punto-ayuda = 交点、端点、円の中心をクリックすると、文字付きの点が表示されます。
-lienzo-punto-sin-sitio = そこには名前を付けるものがありません：点は交点、端点、中心に置きます。
-lienzo-punto-serie-mayusculas = 大文字（A、B、C…）
-lienzo-punto-serie-minusculas = 小文字（a、b、c…）
-lienzo-punto-serie-numeros = 数字（1、2、3…）
-lienzo-angulos = ライブ角度
-lienzo-angulos-ayuda = 何かを動かしている間、触れている角の大きさを表示します。
-lienzo-area = 面積
 
 ## Select, transform and bind (group B)
-lienzo-lazo = なげなわ
-lienzo-lazo-ayuda = 選びたいものを囲むように描きます。完全に内側に入ったものが選ばれます。Shift を押すと、線が触れたものも選ばれます。
-lienzo-lazo-encerrar = 内側のものだけ
-lienzo-lazo-rozar = 線が触れたものも
-lienzo-voltear-horizontal = 左右反転
-lienzo-voltear-vertical = 上下反転
-lienzo-voltear-ayuda = 各図形ごとではなく、グループ全体の中心を基準に選択範囲を反転します。
-lienzo-rejilla = 方眼紙
-lienzo-rejilla-ninguna = 無地
-lienzo-rejilla-lineas = 方眼
-lienzo-rejilla-puntos = ドット
-lienzo-rejilla-imanta = カーソルを方眼にスナップ
-lienzo-rejilla-ayuda = 最初の線を引く前からある目安です。エクスポート時には表示されません。
-lienzo-iman-intersecciones = 図形同士の交点
-lienzo-iman-intersecciones-ayuda = 2 本の線が交わる点。どちらの角でもない点です。
-lienzo-iman-bordes = 図形の辺
-lienzo-iman-bordes-ayuda = 三角定規：角だけでなく辺全体に沿ってカーソルが滑ります。
-lienzo-iman-eje = 原点と座標軸
-lienzo-enganche = 矢印を図形に接続
-lienzo-enganche-ayuda = 先端を図形の上に置くと、図形を動かしたときに矢印が追従します。
-lienzo-enganche-soltar = 先端を切り離す
-lienzo-tirador-punta = 端を移動
-lienzo-tirador-anadir = ここで曲げる
-lienzo-copiar-estilo = スタイルをコピー
-lienzo-copiar-estilo-ayuda = ある図形から色、線、塗りを取り、他の図形に貼り付けます。両方の種類が対応しているものだけが適用されます。
-lienzo-estilo-tomado = スタイルを取得しました
-lienzo-estilo-sin-tomar = まだスタイルを取得していません。
 
 # The attachment the document viewer can open without leaving PinDesk.
-chat-abrir-aqui = ここで開く
 
 # The seven mini-apps from the phone, and their panel.
 mini-moneda = JPY
@@ -800,15 +678,6 @@ chat-voz-fallo = ボイスメモを録音できませんでした。
 # Shrinking an attached PDF: it lowers the photos inside, and never for the worse.
 pdf-aligerado = 軽量化しました：{ $antes } から { $despues } へ
 pdf-aligerar-cifrado = この PDF は暗号化されており、壊すおそれなく書き直すことができません。
-pdf-aligerar-indice-comprimido = この PDF はインデックスが圧縮されており、その再構築にはまだ対応していません。
-pdf-aligerar-objetos-comprimidos = この PDF はオブジェクトが圧縮されており、その再構築にはまだ対応していません。
-pdf-aligerar-sin-trailer = この PDF には読み取れるトレーラーがありません。
-pdf-aligerar-sin-objetos = PDF 内のオブジェクトを認識できませんでした。
-pdf-aligerar-largo-indirecto = PDF 内のストリームに長さが記載されていません。
-pdf-aligerar-objetos-sin-entender = このリーダーが理解できない部分が PDF にあります。書き直すと失われる可能性があります。
-pdf-aligerar-sin-fotos = 縮小できる写真がありません：サイズの大部分はテキストかベクターです。
-pdf-aligerar-ya-al-minimo = 写真はすでに最小です。
-pdf-aligerar-no-compensa = { $antes } から { $despues } にしか減りません：その価値はありません。
 pdf-aligerar-no-se-lee = 軽量化したファイルを正しく読み込めなかったため、元のファイルを残します。
 aligerar-progreso = 軽量化中… { $por }%
 aligerar-empezado = PDF を軽量化しています…
@@ -827,7 +696,6 @@ chat-recordatorio-quitado = リマインダーを削除しました
 chat-recordatorio-titulo = リマインダー
 
 # A message menu entry: send the attachment to someone over Wi-Fi.
-chat-enviar-wifi = Wi-Fi で送信
 
 # Turning a voice note into text with Vosk. What is missing is named with its
 # file and link: PinDesk never downloads anything on its own.
@@ -853,7 +721,6 @@ musica-sinc-empieza = 各行が始まった瞬間に Space（または「マー�
 musica-sinc-siguiente = 次：{ $linea }
 musica-sinc-todas = すべての行をマークしました。歌詞を保存してください。
 musica-sinc-marcar = マーク { $n }/{ $total }
-musica-sinc-deshacer = 元に戻す
 musica-sinc-guardar = 保存
 musica-sinc-cancelar = キャンセル
 musica-sinc-guardada = 歌詞を同期しました
@@ -969,7 +836,6 @@ exportar-tipo-pdf = PDF 文書
 exportar-tipo-html = 単一ファイルの Web ページ
 exportar-vacio = この設定ではエクスポートするものがありません。
 exportar-fallo = キャンバスをエクスポートできませんでした。
-exportar-hecho = エクスポートしました：{ $nombre }
 imprimir-menu = 印刷…	Ctrl+P
 imprimir-vacio = 印刷するものがありません。
 imprimir-fallo = キャンバスを印刷できませんでした。
@@ -1017,8 +883,6 @@ compartir-texto = テキスト
 compartir-csv = 表（CSV）
 compartir-pindesk = PinDesk (.pindesk)
 compartir-dxf = DXF
-compartir-xlsx = Excel (xlsx)
-compartir-docx = Word (docx)
 compartir-md = Markdown
 compartir-exportar = エクスポート…
 compartir-paginas-de = 含める内容 · { $marcadas } / { $total }
@@ -1030,7 +894,6 @@ compartir-preparando = 準備中…
 compartir-marca-alguna = ページを 1 つ以上チェックしてください
 compartir-en-cuanto-este = 準備ができ次第
 compartir-peso-ficheros = { $peso } · { $n } 個のファイル
-compartir-panel-abierto = 送信先を選んでください
 compartir-guardado = 保存しました：{ $nombre }
 compartir-copiado = クリップボードにコピーしました
 compartir-no-se-pudo = 準備できませんでした
@@ -1052,7 +915,6 @@ compartir-tipo-nota = メモ
 
 # Drawing tools: the ones shown in the canvas, the reader, pins and the
 # screen annotator. Turning one off removes it from the bar and its key.
-ajustes-pestana-herramientas = ツール
 herramientas-lazo = なげなわ
 herramientas-rectangulo = 四角形
 herramientas-rombo = ひし形
@@ -1122,11 +984,6 @@ chat-fecha-corta = { $mes }{ $dia }日
 chat-enlace-no-abre = リンクを開けませんでした
 
 ## D11: a spreadsheet in the chat is a book of tables (ventana_chat/libro.rs)
-libro-titulo = スプレッドシート
-libro-xls-antiguo = 古い .xls ファイルは読み込めません：開いて .xlsx として保存してください
-libro-abrir-fuera = 別のアプリで開きますか？
-libro-no-es = このファイルは有効なスプレッドシートではありません
-libro-sin-hojas = このブックにはデータのあるシートがありません
 hoja-preparando = シートを編集できるよう準備しています…
 hoja-editar-aviso = 変更はチャットのシートに保存されます。元のファイルは変わりません
 hoja-editando = 編集中 · Esc で表示
@@ -1432,8 +1289,6 @@ chat-insertar-en-nota = メモに挿入
 ## Canvas: weld vertices and number points (lienzo-geometria, 26-sep)
 herramientas-nudo = 頂点を溶接
 herramientas-bolita = ボール：なぞって選択
-lienzo-nudo = 頂点を溶接
-lienzo-nudo-ayuda = 2 つの図形が接する所をクリックするとピンで留められます：もう離れず、ピンが 1 つならその周りを回転します。ピンをクリックすると外れます。手のツールでピンをドラッグすると、留めた図形ごと動かせます。
 lienzo-punto-serie = 点のラベル
 lienzo-cota-pedir = 描画時に長さを尋ねる
 lienzo-panel-dureza = 鉛筆の硬さ
@@ -1481,7 +1336,6 @@ funciones-figuras-detalle = キャンバス用の図形ライブラリ
 figuras-mias = マイ図形
 figuras-todas = すべて
 figuras-vacia = まだ図形はありません。キャンバスで何かを選択して「図形として保存」してください。
-figuras-cerrar = 閉じる
 figuras-borrar = 図形を削除
 figuras-borrar-seguro = もう一度押すと削除します
 figuras-elegir-para = 「{ $chat }」用の図形を選択
@@ -1740,12 +1594,8 @@ galeria-borrada = PinDesk のごみ箱に移動しました
 galeria-no-se-pudo = 実行できませんでした：{ $motivo }
 galeria-conservada-aviso = 保持：「保存したメッセージ」にあるため削除されません
 bandeja-galeria-capturas = キャプチャギャラリー…
-chat-galeria-capturas = キャプチャギャラリー
 # Lessons learned (3-oct, as on the phone)
-chat-lecciones = 教訓
-chat-leccion-nueva = 新しい教訓
 chat-hacer-leccion = 教訓にする
-bandeja-lecciones = 💡 教訓…
 bandeja-leccion-nueva = 新しい教訓…
 bandeja-tareas = ☑ タスク…
 bandeja-timeline = 🕒 タイムラインと教訓…
@@ -1961,7 +1811,6 @@ ajustes2-auto = 自動
 comando-buscar = 🔍 PinDesk を検索…
 comando-grabar-clase = 🎙 授業や会議を録音…
 clase-titulo = 授業や会議を録音
-clase-sub = 音声を録音し、スクリーンショットをその時点に配置します
 clase-microfono = マイク
 clase-equipo = コンピューターの音（Meet、Zoom…）
 clase-guardar-en = 保存先：{ $proyecto }
@@ -1970,7 +1819,6 @@ clase-nada = マイク、コンピューターの音、またはその両方を�
 clase-captura = キャプチャ
 clase-terminar = 終了
 clase-capturas = スクリーンショット：{ $n } · クリック 1 回で同じ領域を再キャプチャ
-clase-pista = 「キャプチャ」で、この時点の画面の領域を保存します
 clase-elige-zona = 画面上で領域を選んでください…
 clase-captura-hecha = { $minuto } にスクリーンショットを保存しました
 clase-zona-cambiada = 領域を変更しました
@@ -1989,7 +1837,6 @@ clase-listo = 完了
 clase-nombre = 授業 { $fecha }
 clase-sin-sonido-equipo = コンピューターから音が聞こえません：有効なスピーカーやヘッドホンがありません
 clase-video = この画面の動画
-clase-video-corto = 動画を録画中
 clase-video-roto = 動画が停止しました。音声は録音を続けています
 clase-video-guardado = 画面の動画付き。
 clase-calidad-ligero = 軽量
@@ -2015,13 +1862,6 @@ clase-recuperar-sin-nada = 「{ $nombre }」には開けない動画しか残っ
 clase-recuperar-descartar = 「{ $nombre }」を破棄しますか？録音は削除され、元に戻せません。
 clase-recuperar-fallo = 「{ $nombre }」を復元できませんでした。録音は安全に残っており、次回 PinDesk を開いたときに再度提示されます。
 clase-texto-de-fondo = 閉じる（処理は続行）
-clase-modo-pantalla = 画面と音声
-clase-modo-capturas = 音声とスクリーンショット
-clase-modo-pantalla-sub = 選んだ音声と一緒にこの画面を録画します
-clase-modo-capturas-sub = 音声を録音します。「キャプチャ」で画面全体を保存します
-clase-captura-entera = キャプチャ：画面全体を即座に
-clase-pista-entera = 「キャプチャ」でこの時点の画面全体を保存、領域ボタンで一部だけを保存します
-clase-capturas-entera = スクリーンショット：{ $n } · 画面全体
 clase-abrir-para-estudiar = 開いて学習
 clase-camara-movil = 📱 スマートフォンのカメラ
 clase-camara-movil-n = 📱 スマートフォンのカメラ · { $n }
@@ -2044,14 +1884,10 @@ clase-hora-sin-comprobar = 時刻未確認
 baliza-movil-aislado = 同じネットワークにいるのにスマートフォンが表示されません：この Wi-Fi がデバイス同士を隔離している（ゲスト、ホテル、オフィスのネットワークによくあります）か、ファイアウォールが PinDesk をブロックしている可能性があります。PC をスマートフォンのテザリングに接続するか、両方を別の Wi-Fi に接続してください。撮った写真はスマートフォンで待機し、互いを見つけたらその時点に追加されます。
 baliza-movil-otra-red = スマートフォンがこの PC とは別のネットワークにあります。両方を同じ Wi-Fi に接続してください（または PC をスマートフォンのテザリングに）。撮った写真はスマートフォンで待機し、互いを見つけたらその時点に追加されます。
 # In-person meeting (27-oct-2026): the computer's camera, photos and clips.
-clase-modo-presencial = 対面
-clase-modo-presencial-sub = マイクを録音します。「写真」はカメラの最大解像度で撮影します
 clase-camara = カメラ：{ $camara }
 clase-camara-buscando = カメラを探しています…
 clase-camara-ninguna = カメラがありません：写真とクリップは使えません（音声は録音されます）
 clase-foto = 写真
-clase-fotos = 写真：{ $n } · カメラで最大解像度
-clase-pista-foto = 「写真」でこの時点にカメラで撮影し、ビデオカメラボタンでクリップを録画します
 clase-foto-hecha = { $minuto } に写真を保存しました
 clase-camara-abriendo = カメラを開いています…
 clase-camara-lista = カメラ準備完了：写真サイズ { $medida }
@@ -2235,123 +2071,6 @@ buscar-todo-deshacer = 元に戻す
 buscar-todo-copiado = コピーしました
 ## v2-lecciones
 # The lessons window of the v2 redesign (Lecciones2.dc.html and Lecciones2-repaso.dc.html).
-lec2-que-aprendiste = 何を学びましたか？入力または音声入力して Enter を押してください
-lec2-guardar = 保存
-lec2-rellena-solo = 自動入力済み。クリックで変更できます：
-lec2-rellena-solo-vacio = 入力すると分野、プロジェクト、重要度が自動で入ります。
-lec2-area-de = 分野：{ $area }
-lec2-proyecto-de = プロジェクト：{ $proyecto }
-lec2-ya-la-tienes = すでにあります：「{ $titulo }」 · また起きました
-lec2-pega-capturas = スクリーンショットを貼り付け
-lec2-guardada = 教訓を { $donde } に保存しました
-lec2-apuntado-otra-vez = 記録しました：また起きました
-lec2-no-se-pudo = うまくいきませんでした。もう一度お試しください。
-lec2-solo-imagenes = 教訓に追加できるのは画像だけです。
-lec2-sin-area = 分野なし
-lec2-sin-proyecto = プロジェクトなし（一般チャット）
-lec2-buscar = 検索：単語、状況、タグ…
-lec2-todas = すべて
-lec2-repetidas = 繰り返し
-lec2-graves = 重大
-lec2-para-repasar = 今日の復習 · { $n }
-lec2-que-harias-si = また起きたらどうしますか？
-lec2-repasar = 復習
-lec2-este-mes = 今月
-lec2-antes = それ以前
-lec2-lista-vacia = まだ教訓はありません。上に学んだことを書いてください。
-lec2-nada-con-filtro = このフィルターでは何もありません。
-lec2-nada-con = 「{ $q }」に一致するものはありません。別の言葉で試すか、上に記録してください。
-lec2-moverse = 移動
-lec2-leve = 軽微
-lec2-importante = 重要
-lec2-grave = 重大
-lec2-hoy = 今日
-lec2-ayer = 昨日
-lec2-manana = 明日
-lec2-hace-dias = { $n } 日前
-lec2-hace-semanas = { $n ->
-   *[other] { $n } 週間前
-  }
-lec2-hace-meses = { $n ->
-   *[other] { $n } か月前
-  }
-lec2-hace-anios = { $n ->
-   *[other] { $n } 年前
-  }
-lec2-en-dias = { $n } 日後
-lec2-meses = 1月 2月 3月 4月 5月 6月 7月 8月 9月 10月 11月 12月
-lec2-clic-para-editar = テキストをクリックして編集 · 自動保存
-lec2-mas-campos = その他の項目…
-lec2-que-paso = 何が起きたか
-lec2-por-que = 原因
-lec2-proxima = 次回は
-lec2-que-paso-vacio = 何が起きたかを追加…
-lec2-por-que-vacio = なぜ起きたかを追加…
-lec2-proxima-vacio = 次回どう変えるかを追加…
-lec2-editar = 編集
-lec2-escribe-aqui = ここに入力
-lec2-ayuda-linea = Enter で保存 · Esc で終了
-lec2-ayuda-bloque = Enter で保存 · Shift+Enter で改行 · Tab で次へ
-lec2-nota-de-voz = ボイスメモ
-lec2-anadir-foto = 写真を追加
-lec2-ver-en-chat = チャットで表示
-lec2-pinear = ピン留め
-lec2-pineado = 画面にピン留めしました
-lec2-borrar = 削除
-lec2-borrada = 教訓を削除しました
-lec2-deshacer = 元に戻す
-lec2-veces = { $n ->
-   *[other] 回発生
-  }
-lec2-la-ultima = 前回：{ $fecha }
-lec2-me-volvio = また起きた
-lec2-gravedad = 重要度
-lec2-area = 分野
-lec2-proyecto = プロジェクト
-lec2-etiquetas = タグ
-lec2-anadir = + 追加
-lec2-nueva-etiqueta = タグを入力して Enter
-lec2-relacionadas = 関連
-lec2-proximo-repaso = 次回の復習：{ $cuando }
-lec2-vacia-titulo = 同じ失敗を繰り返さないよう、学んだことを記録しましょう
-lec2-vacia-texto = 上に一気に書いてください：「…が起きた、…のせいで、次回は…」。PinDesk が分割し、分野、プロジェクト、重要度を設定し、以前にも起きたかどうかを知らせます。
-lec2-comprobacion = 始める前に確認：{ $hechas } / { $total }
-lec2-comprobacion-vacia = 「次回は…」にはまだ何もありません。各教訓の 3 番目の欄です。
-lec2-nada-que-repasar = 今日復習するものはありません。
-lec2-repaso-titulo = 今日の復習
-lec2-repaso-de = { $va } / { $total }
-lec2-salir = 終了
-lec2-paso-pensar = どうするか考える
-lec2-paso-mirar = 記録した内容を見る
-lec2-paso-recordar = 覚えていましたか？
-lec2-situacion = 状況
-lec2-repaso-cuando = { $pista }とき…
-lec2-repaso-recuerda = この教訓を思い出す
-lec2-repaso-veces = { $n } 回起きています
-lec2-que-harias = どうしますか？
-lec2-escribe-o-dicta = 入力または音声入力
-lec2-dictar = 音声入力
-lec2-mostrar = 答えを表示
-lec2-mostrada = 答えを表示しました
-lec2-lo-que-apuntaste = 記録した内容
-lec2-oculta = 見る前に考えましょう：読み返すより思い出す方がずっと定着します。
-lec2-por-que-paso = 原因：{ $causa }
-lec2-abrir-completa = 教訓全体を開く
-lec2-lo-recordabas = 覚えていましたか？マウスまたは次のキーで選んでください
-lec2-nota-recordaba = 覚えていた
-lec2-nota-a-medias = 一部だけ
-lec2-nota-olvide = 忘れていた
-lec2-vuelve-manana = 明日もう一度
-lec2-vuelve-en = { $dias } 日後にもう一度
-lec2-saltar = これをスキップ
-lec2-repaso-pie = 答えは比較用で、保存されません。
-lec2-siguiente = 次へ
-lec2-repaso-elige = 1、2、3 から選んでください：覚えていましたか？
-lec2-repaso-hecho = 復習完了
-lec2-repaso-hechas = { $n ->
-   *[other] { $n } 件の教訓を復習しました。期限が来たらまた出てきます。
-  }
-lec2-repaso-volver = 一覧に戻る
 ## v2-galeria
 galeria-subtitulo = { $cuantas } · 7 日間保存
 galeria-buscar = 検索（キャプチャ内のテキストも対象）
@@ -2620,8 +2339,6 @@ timeline-mic-sin-texto = 聞き取れませんでした：音声のみ保存し�
 
 
 ## simple-lecciones
-lecs-menos-campos = 項目を減らす
-lecs-ficha-completa = 種類、原因、キーワード…
 
 ## galeria-menu (5-oct-2026, right click)
 galeria-guardar-como = 名前を付けて保存…
@@ -2650,7 +2367,6 @@ timeline-momentos-vacio = 選んだ出来事がここに入ります。「今日
 timeline-a-momentos = モーメントに送りました
 timeline-fuera-de-momentos = モーメントから外しました
 timeline-estado-sobre-todo = 主に
-timeline-estado-lo-mas = 「{ $que }」
 timeline-exportar-busqueda = 検索：「{ $que }」
 timeline-pestana-lecciones = 教訓
 timeline-sub-lecciones = { $n ->
@@ -2661,7 +2377,6 @@ timeline-lecciones-vacio = まだ教訓はありません。出来事の電球�
 timeline-gravedad-leve = 軽微
 timeline-gravedad-importante = 重要
 timeline-gravedad-grave = 重大
-timeline-otra-vez = また起きた +1
 timeline-otra-vez-hecho = 記録しました：これで { $n } 回目です
 timeline-leccion = 教訓
 timeline-leccion-hecha = 💡 教訓にしました：「教訓」にあります
@@ -2722,7 +2437,6 @@ tareas5-corregir-pista = タスクのテキスト…
 tareas5-imagen-pista = 画像を追加 · Ctrl+V でコピーした画像を貼り付け
 tareas5-guardar = 保存
 tareas5-corregida = タスクを更新しました
-tareas5-vista-lista = リスト · Ctrl+L
 tareas5-vista-tarjetas = カード · Ctrl+T
 tareas5-vista-horario = 時間割 · Ctrl+H
 tareas5-vista-kanban = カンバンボード · Ctrl+K
@@ -2739,7 +2453,6 @@ tareas5-quitar = 削除
 ## salida (6-oct-2026): the floating window to drag out what was exported
 salida-titulo = 共有の準備ができました
 salida-titulo-exportado = エクスポートしました
-salida-titulo-guardado = 保存しました
 salida-pista = ファイルを別のアプリやフォルダーにドラッグしてください
 salida-todos = { $n } 個すべてをまとめてドラッグ
 salida-arrastra-todos = 押したままドラッグするとすべて移動します
@@ -2747,13 +2460,11 @@ salida-soltado = ドロップしました · 別の場所にもドロップで�
 salida-copiado = クリップボードにコピーしました
 salida-pineado = ピン留めしました
 salida-no-se-pudo = 実行できませんでした
-salida-compartir = 共有
 salida-copiar = コピー
 salida-abrir = 開く
 salida-carpeta = フォルダーで表示
 salida-pinear = ピン留め
 salida-compartir-menu = 共有…
-compartir-arrastrar = ここから別のアプリへドラッグ · クリックすると画面に残します
 
 ## al-movil (6-oct-2026): a photo from the Flow plugin to the phone's open canvas
 al-movil-lienzo = { $n ->
@@ -2987,8 +2698,6 @@ asistente-voz-sin-whisper = この PC では音声をテキストに変換でき
 asistente-voz-fallo = 音声をテキストに変換できませんでした。
 asistente-voz-cancelado = キャンセルしました：何も送信していません。
 asistente-voz-nada-que-leer = この回答には読み上げるテキストがありません。
-asistente-voz-leer = 読み上げ
-asistente-voz-callar = 読み上げを停止
 
 # The buttons of the Windows notifications (15-oct).
 notif-hecha = 完了
@@ -3047,7 +2756,6 @@ horario-sin-clases = 時間割にまだ授業がありません：「時間割�
 horario-guardada = 次の { $clase } の授業で聞けます
 
 ## Weekly timetable window and subjects (18-oct-2026)
-horario-titulo = 時間割
 horario-subtitulo = { $asignaturas } 科目 · { $clases } コマ
 horario-nueva = 新しい科目（@教室 は任意）
 horario-domingo = 日曜日
@@ -3070,15 +2778,12 @@ horario-asignatura-borrada = 「{ $asignatura }」を時間割から削除しま
 horario-repetida = 「{ $asignatura }」はすでに一覧にあります
 horario-arrastra = 「{ $asignatura }」を週の表にドラッグしてください
 horario-no-guardado = 時間割を保存できませんでした
-tareas-asignatura-pista = タスクの科目
 tareas-destino-pista = タスクのリストまたは科目
 tareas-sin-asignatura = 科目なし（受信箱へ）
-tareas-sin-asignaturas = まだ科目がありません：「時間割…」で作成してください
 tareas-apuntar-en-asignatura = { $asignatura } の新しいタスク…
 
 # Viewers: the frame to print (2026-10-19)
 marco-imprimir-pista = 印刷したい部分を枠で囲むようにドラッグ · Enter：すべて · Esc：終了
-lector-marco = 印刷枠 (P)
 marcos-pista = ドラッグで枠を作成 · 数字：その枠へ移動 · Ctrl+P：すべて印刷 · Del：最後の枠を削除 · I または Esc：終了
 marcos-imprimir = 枠を印刷 (Ctrl+P)
 marcos-borrar = 枠をクリア
@@ -3107,7 +2812,6 @@ barra-cerrar = 閉じる (Esc)
 visor-letra = フォントと間隔 (T / B)
 lector-mas = その他のオプション (G)
 visor-indice-pista = 目次 (C)
-riel-hojita = メモ帳 (Ctrl+Shift+N)
 riel-editar = 編集 (Alt+R)
 riel-mirar = 表示に戻る（Alt+R または Esc）
 
@@ -3159,10 +2863,6 @@ carpeta-exportando = PDF をエクスポートしています…
 carpeta-exportado = PDF を保存しました：{ $nombre }
 carpeta-no-se-exporto = エクスポートできませんでした：中身のあるページがありません
 carpeta-vacia = このフォルダーは空です。「新しいページ」を押すか、チャットでキャンバスや画像のメニューから「フォルダーに追加…」を選んでください。
-carpeta-antes = 前へ
-carpeta-despues = 次へ
-carpeta-renombrar = 名前を変更
-carpeta-quitar = フォルダーから削除
 carpeta-no-esta = そのフォルダーはもうチャットにありません
 carpeta-pista = ページをドラッグして移動 · F2 でタイトルを変更 · Del で削除（チャットに再び表示されます）
 carpeta-escribe-titulo = タイトルを入力して Enter を押してください
@@ -3171,8 +2871,6 @@ carpeta-grabacion-detalle = { $duracion } · { $capturas ->
    *[other] キャプチャ { $capturas } 枚
 }
 carpeta-estudiar = 学習
-carpeta-de-la-grabacion = 録音から
-carpeta-adjuntos = 授業に添付
 carpeta-adjunto-insignia = 添付 · 録音には含まれません
 carpeta-adjuntar = 授業に添付
 carpeta-adjuntado = 授業に添付しました：{ $nombre }
@@ -3200,7 +2898,6 @@ clase-importante-decision = 決定事項
 clase-importante-pregunta = 質問
 clase-importante-examen = 試験
 clase-importante-buscando = 重要な点を探しています…
-clase-importante-nada = この授業には該当するものがありません
 clase-importante-tareas = + { $n } 件のタスクをタスクへ
 clase-importante-anadidas = { $n } 件のタスクをタスクの受信箱に追加しました
 tareas-prioridad-urgente = 緊急

@@ -109,9 +109,6 @@ cuenta-atras-cancelar = रोकने के लिए Esc
 comando-pinear-seleccion = एक्सप्लोरर में चुने गए आइटम पिन करें
 
 # The settings window (P6).
-ajustes-pestana-atajos = शॉर्टकट
-ajustes-pestana-general = सामान्य
-ajustes-pestana-captura = कैप्चर
 ajustes-pestana-dibujo = ड्रॉइंग
 ajustes-iman = प्रमुख बिंदुओं पर स्नैप करें
 ajustes-iman-esquinas = कोने और अंतिम बिंदु
@@ -121,26 +118,17 @@ ajustes-iman-radio = पकड़ने की दूरी (px)
 ajustes-idioma = भाषा
 ajustes-idioma-sistema = Windows के समान
 ajustes-arranque = Windows के साथ शुरू करें
-ajustes-color = कलर पिकर का फ़ॉर्मैट
-ajustes-nivel = प्रदर्शन
 ajustes-nivel-auto = स्वचालित
 ajustes-nivel-completo = पूर्ण
 ajustes-nivel-ligero = हल्का
 ajustes-pdf-aligerar = चैट में जोड़ते समय PDF को हल्का करें
-ajustes-pdf-nivel = कितना हल्का (छोटा और अधिकतम: केवल मैन्युअल रूप से)
 ajustes-pdf-nivel-sin-perdida = सटीक
 ajustes-pdf-nivel-equilibrado = मध्यम
 ajustes-pdf-nivel-pequeno = छोटा
 ajustes-pdf-nivel-extremo = अधिकतम
-ajustes-retardo-captura = कैप्चर से पहले उलटी गिनती (सेकंड)
-ajustes-limite-scroll = स्क्रॉलिंग कैप्चर की अधिकतम ऊँचाई, पिक्सेल में
-ajustes-gif-ritmo = रिकॉर्डिंग के समय प्रति सेकंड फ़्रेम
-ajustes-gif-retardo = रिकॉर्डिंग से पहले प्रतीक्षा (सेकंड)
 ajustes-sin-atajo = कोई शॉर्टकट नहीं
 ajustes-pulsa-combinacion = कुंजी संयोजन दबाएँ…
 ajustes-choca = डुप्लिकेट
-ajustes-cerrar = बंद करें
-ajustes-abrir-fichero = सेटिंग्स फ़ाइल खोलें
 
 # Reading the text of a pin (P4.2).
 pin-copiar-texto = इमेज का टेक्स्ट कॉपी करें
@@ -175,10 +163,6 @@ chat-clase-proyecto = प्रोजेक्ट
 chat-clase-miniapp = मिनी ऐप
 chat-escribe = कुछ लिखें…
 # The chat, like PinDesk Android's (guardados/MensajesActivity.kt).
-chat-cosas = { $n ->
-    [one] 1 चीज़
-   *[other] { $n } चीज़ें
- }
 chat-elegidos = { $n ->
     [one] 1 चुना गया
    *[other] { $n } चुने गए
@@ -186,7 +170,6 @@ chat-elegidos = { $n ->
 chat-lienzo = कैनवस
 chat-tabla = टेबल
 chat-viene-de = स्रोत
-chat-comentar = इस पर टिप्पणी करें
 chat-copiar = कॉपी करें
 chat-fijar = सबसे ऊपर पिन करें
 chat-soltar = ऊपर से अनपिन करें
@@ -208,13 +191,10 @@ chat-recordar = मुझे याद दिलाएँ
 chat-rescatar = इसे रखें
 chat-solo-la-foto = केवल फ़ोटो दिखाएँ
 chat-ver-hilo = टिप्पणियाँ देखें
-chat-etiquetar = टैग जोड़ें
-chat-quitar-etiqueta = टैग हटाएँ
 chat-reenviar = फ़ॉरवर्ड करें
 chat-unir = प्रोजेक्ट में जोड़ें
 chat-transcribir = टेक्स्ट में बदलें
 chat-letra = गीत के बोल या टेक्स्ट
-chat-elegir = चुनें
 chat-borrar = हटाएँ
 chat-borrar-aviso = इसे बातचीत से हटा दिया जाएगा। संलग्न फ़ाइल भी साथ में हट जाएगी। जारी रखें?
 chat-biblioteca-audio = ऑडियो लाइब्रेरी
@@ -226,30 +206,18 @@ chat-fondo-brezo = हीदर
 chat-fondo-bosque = जंगल
 chat-fondo-ocaso = सूर्यास्त
 chat-fondo-pizarra = स्लेट
-chat-adj-archivo = एक फ़ाइल
-chat-adj-pagina = किसी प्रोजेक्ट का एक पेज
-chat-adj-proyecto = पूरा प्रोजेक्ट
-chat-adj-conversacion = एक बातचीत
 chat-adj-telepronter = टेलीप्रॉम्प्टर
 chat-adj-pronunciar = उच्चारण
-chat-adj-miniapp = एक मिनी ऐप
 chat-reenviado = फ़ॉरवर्ड किया गया
 chat-copiado = कॉपी किया गया
-chat-compartido = क्लिपबोर्ड पर कॉपी किया गया: जहाँ शेयर करना हो वहाँ पेस्ट करें
 chat-compartir-sin-panel = Windows ने शेयर पैनल नहीं खोला: यह क्लिपबोर्ड पर है, आप इसे कहीं भी पेस्ट कर सकते हैं
 chat-pineado = पिन किया गया
 chat-foto-en-la-nota = फ़ोटो आपके टेक्स्ट में जोड़ी गई: सब एक नोट के रूप में भेजा जाएगा
 chat-sin-archivo = इस संदेश की कोई फ़ाइल इस कंप्यूटर पर नहीं है
 chat-sin-origen = वह कैनवस इस प्रोजेक्ट में नहीं है
 chat-sin-proyectos-otros = इसे भेजने के लिए कोई दूसरा प्रोजेक्ट नहीं है
-chat-proyectos-lista = प्रोजेक्ट बाईं ओर की सूची में हैं
-chat-no-hay-voz = Windows पर अभी वॉइस नोट रिकॉर्ड करने की सुविधा नहीं है
-chat-no-hay-aligerar = Windows पर अभी PDF को हल्का करने की सुविधा नहीं है
 chat-no-hay-unir = Windows पर हर चैट पहले से एक प्रोजेक्ट है: इसे दूसरे में ले जाने के लिए फ़ॉरवर्ड करें का उपयोग करें
-chat-no-hay-biblioteca = Windows पर अभी ऑडियो लाइब्रेरी नहीं है
 chat-ver-dibujo-entero = पूरी ड्रॉइंग दिखाएँ
-chat-no-hay-pagina = Windows पर अभी किसी प्रोजेक्ट का पेज संलग्न करने की सुविधा नहीं है
-chat-no-hay-telepronter = Windows पर अभी टेलीप्रॉम्प्टर नहीं है
 chat-no-se-pudo = यह नहीं हो सका: PinDesk लॉग देखें
 chat-fecha = { $dia } { $mes }
 chat-fecha-con-ano = { $dia } { $mes } { $ano }
@@ -297,22 +265,12 @@ info-vacia-voz = वॉइस नोट यहाँ दिखेंगे
 info-vacia-dibujos = इस चैट की ड्रॉइंग यहाँ दिखेंगी
 info-vacia-fijados = आप जो पिन करेंगे वह यहाँ दिखेगा
 info-vacia-buzon = इनबॉक्स खाली है
-info-abrir = खोलें
-info-abrir-enlace = लिंक खोलें
-info-reproducir = चलाएँ
-info-ver-en-el-chat = चैट में दिखाएँ
 info-titulo = जानकारी
 adjuntar-imagen = फ़ोटो या वीडियो
 adjuntar-archivo = फ़ाइल
 adjuntar-lienzo = नया कैनवस
-confirmar-titulo = { $cuantos ->
-    [one] एक फ़ाइल जोड़ें
-   *[other] { $cuantos } फ़ाइलें जोड़ें
- }
-confirmar-resto = और { $cuantos } अन्य
 confirmar-pie = कैप्शन जोड़ें…
 confirmar-cancelar = रद्द करें
-confirmar-aceptar = जोड़ें
 adjuntar-tabla = नई टेबल
 tabla-nueva = टेबल
 chat-nombre-nuevo = प्रोजेक्ट का नाम…
@@ -328,11 +286,7 @@ recibir-salir = बंद करने के लिए Esc
 comando-recibir-del-movil = फ़ोन से प्राप्त करें…
 comando-sincronizar = सिंक करें
 adjuntar-del-movil = फ़ोन से लाएँ…
-menu-foto-aqui = यहीं पर ड्रॉ करें
 proyecto-renombrar = नाम बदलें
-proyecto-logo-poner = लोगो इमेज सेट करें…
-proyecto-logo-quitar = लोगो इमेज हटाएँ
-proyecto-logo-error = वह लोगो इमेज सेट नहीं हो सकी
 # The chat photo (25-oct-2026): image, emoji or colour in the circle.
 foto-chat-menu = चैट फ़ोटो बदलें…
 foto-chat-titulo = चैट फ़ोटो
@@ -590,7 +544,6 @@ papelera-no-se-pudo = «{ $nombre }» पुनर्प्राप्त न�
 papelera-recuperados = { $total } में से { $n } प्रोजेक्ट पुनर्प्राप्त किए गए
 
 ## The document viewer: Word, EPUB books and web pages (task 2.1)
-visor-html-titulo = PinDesk — पेज
 ## The Office pin: Office's preview as a pin (2026-10-10)
 office-titulo = Office प्रीव्यू
 office-abriendo = Office प्रीव्यू से खोला जा रहा है…
@@ -598,8 +551,6 @@ office-tarda = Office को कुछ समय लग रहा है (इस
 office-fallo = Office इस फ़ाइल का प्रीव्यू नहीं दिखा सका। इसे “इसके साथ खोलें…” (बार पर ↗ बटन) से किसी दूसरे ऐप में खोलें।
 office-internet = यह फ़ाइल इंटरनेट से आई है और सुरक्षा के लिए Windows इसका प्रीव्यू नहीं दिखाने देता। इसे “इसके साथ खोलें…” (बार पर ↗ बटन) से किसी दूसरे ऐप में खोलें, या इसकी प्रॉपर्टीज़ में इसे अनब्लॉक करें।
 visor-titulo = PinDesk व्यूअर
-visor-marcador = यहाँ बुकमार्क करें
-visor-ajustes = पढ़ने की सेटिंग्स
 visor-tamano = टेक्स्ट का आकार
 visor-quitar-marcadores = बुकमार्क हटाएँ
 visor-guardar-pagina = वेब पेज के रूप में सहेजें
@@ -608,15 +559,10 @@ visor-abrir-carpeta = फ़ोल्डर खोलें
 visor-guardado = "{ $nombre }" में सहेजा गया
 visor-no-guardado = इसे सहेजा नहीं जा सका
 visor-vacio = इस दस्तावेज़ में दिखाने के लिए कोई टेक्स्ट नहीं है
-visor-ayuda = पढ़ने के लिए व्हील · +/− आकार · M बुकमार्क · G सेटिंग्स · बाहर निकलने के लिए Esc
-visor-elige-emoticono = इसे किससे चिह्नित करें?
-visor-sin-marcadores = अभी कोई बुकमार्क नहीं
 
 ## The readers: comfortable reading, annotating on top and the PDF reader
-lector-listo = हो गया
 lector-indice = विषय-सूची
 lector-letra-fijada = फ़ॉन्ट लॉक है: ऊपर नोट्स बनाए गए हैं
-lector-letra-normal = सामान्य फ़ॉन्ट
 lector-letra-fija = मोनोस्पेस
 lector-grosor-normal = सामान्य
 lector-grosor-gruesa = बोल्ड
@@ -630,11 +576,8 @@ lector-pdf-reconociendo = पृष्ठ का पाठ पहचाना �
 lector-pdf-reconocido = पाठ पहचाना गया: अब इसे चुनकर चिह्नित कर सकते हैं
 lector-pdf-sin-texto = इस पृष्ठ पर कोई पाठ नहीं मिला
 lector-exportando = एनोटेट किया गया PDF सहेजा जा रहा है… { $total } में से { $hechas }
-lector-exportar-pdf = नोट्स के साथ PDF सहेजें
 lector-anotado = एनोटेट किया गया
-lector-ayuda-pdf = पेज पलटने के लिए व्हील · Ctrl+व्हील ज़ूम · एनोटेट करने की जगह के लिए Ctrl+[ Ctrl+] · L सुनें · A एनोटेट · M बुकमार्क · बाहर निकलने के लिए Esc
 lector-office-titulo = PinDesk में Word और PowerPoint
-lector-ayuda-office = पेज पलटने के लिए व्हील · Ctrl+व्हील ज़ूम · चुनने के लिए टेक्स्ट पर खींचें · Ctrl+C कॉपी · Ctrl+F खोजें · Ctrl+P प्रिंट · F5 प्रस्तुत करें · A एनोटेट · N नेगेटिव · बाहर निकलने के लिए Esc
 lector-presentar = प्रस्तुत करें (F5)
 lector-modo-lectura = रीडिंग मोड (पुनर्व्यवस्थित टेक्स्ट)
 lector-imprimir = प्रिंट करें… (Ctrl+P)
@@ -658,7 +601,6 @@ lector-voz-parrafo = पैराग्राफ़ { $n } / { $total }
 lector-voz-preparando = आवाज़ तैयार की जा रही है…
 lector-voz-no-respondio = Microsoft ने जवाब नहीं दिया
 lector-voz-sin-voz = कोई आवाज़ नहीं
-lector-verde-aqui = यहाँ हरा बुकमार्क: पढ़ना इसी बिंदु से शुरू होगा
 lector-espacio-tope = उस तरफ़ और जगह नहीं है
 lector-espacio-nada = उस तरफ़ कोई जगह नहीं बची
 lector-sin-lado = दाएँ-बाएँ लॉक: यह केवल ऊपर-नीचे स्क्रॉल होता है
@@ -693,78 +635,12 @@ sinc-presencia-apagada = सेटिंग्स में प्रेज़�
 bandeja-abrir-documento = कोई दस्तावेज़ खोलें…
 
 ## Canvas shapes and ink: arrowheads, fills and text style (group A)
-lienzo-punta-ninguna = कोई तीर-नोक नहीं
-lienzo-punta-flecha = तीर
-lienzo-punta-barra = बार
-lienzo-punta-circulo = वृत्त
-lienzo-punta-circulo-hueco = वृत्त की रूपरेखा
-lienzo-punta-triangulo = त्रिभुज
-lienzo-punta-triangulo-hueco = त्रिभुज की रूपरेखा
-lienzo-punta-rombo = समचतुर्भुज
-lienzo-punta-rombo-hueco = समचतुर्भुज की रूपरेखा
-lienzo-punta-inicio = शुरुआती तीर-नोक
-lienzo-punta-fin = अंतिम तीर-नोक
-lienzo-trama-zigzag = ज़िगज़ैग
-lienzo-trama-tiralineas = रेखांकित पंक्तियाँ
-lienzo-texto-negrita = बोल्ड
-lienzo-texto-cursiva = इटैलिक
-lienzo-texto-tachado = स्ट्राइकथ्रू
-lienzo-presion-firme = समान चौड़ाई वाला स्ट्रोक
-lienzo-flecha-codos = मुड़ा हुआ तीर
-lienzo-flecha-libre = फ़्रीहैंड तीर
-lienzo-arco-guia = गाइड अंडाकार, अभी बनाया नहीं गया
-lienzo-luces-fuerza = प्रकाश की तीव्रता
 
 ## Build and measure: fill, trim, extend, points and angles (group C)
-lienzo-bote = फ़िल बकेट
-lienzo-bote-ayuda = किसी बंद खाली जगह के अंदर क्लिक करें और वह भर जाएगी, भले ही उसे कई अलग आकृतियाँ बनाती हों।
-lienzo-bote-abierto = यह जगह बंद नहीं है: रंग किसी दरार से बाहर निकल जाएगा।
-lienzo-recortar = ट्रिम करें
-lienzo-recortar-ayuda = किसी स्ट्रोक के बचे हुए हिस्से पर क्लिक करें और वह वहाँ तक हट जाएगा जहाँ दूसरे उसे काटते हैं।
-lienzo-extender = बढ़ाएँ
-lienzo-extender-ayuda = छोटे रह गए सिरे पर क्लिक करें और वह रास्ते की पहली चीज़ तक पहुँच जाएगा।
-lienzo-extender-sin-tope = रास्ते में कुछ नहीं है: शून्य में खींची गई रेखा बढ़ाई गई रेखा नहीं है।
-lienzo-punto = नामित बिंदु
-lienzo-punto-ayuda = किसी कटान, अंतिम बिंदु या वृत्त के केंद्र पर क्लिक करें और बिंदु अपने अक्षर के साथ दिखाई देगा।
-lienzo-punto-sin-sitio = वहाँ नाम देने को कुछ नहीं है: बिंदु किसी कटान, अंतिम बिंदु या केंद्र पर लगता है।
-lienzo-punto-serie-mayusculas = बड़े अक्षर (A, B, C…)
-lienzo-punto-serie-minusculas = छोटे अक्षर (a, b, c…)
-lienzo-punto-serie-numeros = संख्याएँ (1, 2, 3…)
-lienzo-angulos = लाइव कोण
-lienzo-angulos-ayuda = जब आप कुछ खिसकाते हैं, तो यह दिखाता है कि जिन कोनों को आप छू रहे हैं वे कितने बड़े हैं।
-lienzo-area = क्षेत्रफल
 
 ## Select, transform and bind (group B)
-lienzo-lazo = लैसो
-lienzo-lazo-ayuda = जो चुनना है उसके चारों ओर बनाएँ। जो पूरी तरह अंदर आता है वह चुना जाता है; Shift के साथ, जिसे स्ट्रोक छूता है वह भी।
-lienzo-lazo-encerrar = केवल जो अंदर आता है
-lienzo-lazo-rozar = जिसे स्ट्रोक छूता है वह भी
-lienzo-voltear-horizontal = क्षैतिज रूप से पलटें
-lienzo-voltear-vertical = लंबवत रूप से पलटें
-lienzo-voltear-ayuda = चयन को पूरे समूह के केंद्र के सापेक्ष दर्पण करता है, हर आकृति को अपने सापेक्ष नहीं।
-lienzo-rejilla = रेखांकित कागज़
-lienzo-rejilla-ninguna = सादा
-lienzo-rejilla-lineas = वर्ग
-lienzo-rejilla-puntos = बिंदु
-lienzo-rejilla-imanta = कर्सर को वर्गों पर स्नैप करें
-lienzo-rejilla-ayuda = वह संदर्भ जो पहले स्ट्रोक से पहले मौजूद होता है। एक्सपोर्ट करते समय यह नहीं दिखता।
-lienzo-iman-intersecciones = आकृतियों के बीच कटान
-lienzo-iman-intersecciones-ayuda = वह बिंदु जहाँ दो स्ट्रोक एक-दूसरे को काटते हैं, जो किसी का भी कोना नहीं है।
-lienzo-iman-bordes = आकृति के किनारे
-lienzo-iman-bordes-ayuda = सेट स्क्वायर: कर्सर केवल कोनों पर नहीं, पूरे किनारे पर फिसलता है।
-lienzo-iman-eje = मूल बिंदु और निर्देशांक अक्ष
-lienzo-enganche = तीर को आकृति से जोड़ें
-lienzo-enganche-ayuda = नोक को किसी आकृति पर छोड़ें और जब आप उसे खिसकाएँगे तो तीर उसके साथ चलेगा।
-lienzo-enganche-soltar = नोक छोड़ें
-lienzo-tirador-punta = सिरा खिसकाएँ
-lienzo-tirador-anadir = यहाँ मोड़ें
-lienzo-copiar-estilo = स्टाइल कॉपी करें
-lienzo-copiar-estilo-ayuda = एक आकृति से रंग, स्ट्रोक और फ़िल लें और दूसरों पर पेस्ट करें। केवल वही जाता है जो दोनों प्रकार स्वीकार करते हैं।
-lienzo-estilo-tomado = स्टाइल लिया गया
-lienzo-estilo-sin-tomar = आपने अभी कोई स्टाइल नहीं लिया है।
 
 # The attachment the document viewer can open without leaving PinDesk.
-chat-abrir-aqui = यहाँ खोलें
 
 # The seven mini-apps from the phone, and their panel.
 mini-moneda = INR
@@ -811,15 +687,6 @@ chat-voz-fallo = वॉइस नोट रिकॉर्ड नहीं ह�
 # Shrinking an attached PDF: it lowers the photos inside, and never for the worse.
 pdf-aligerado = छोटा किया गया: { $antes } से { $despues }
 pdf-aligerar-cifrado = PDF एन्क्रिप्टेड है और जोखिम के बिना इसे दोबारा लिखा नहीं जा सकता।
-pdf-aligerar-indice-comprimido = यह PDF अपनी इंडेक्स को कंप्रेस करके रखता है, और उसे फिर से बनाना यहाँ अभी समर्थित नहीं है।
-pdf-aligerar-objetos-comprimidos = यह PDF अपने ऑब्जेक्ट कंप्रेस करके रखता है, और उन्हें फिर से बनाना यहाँ अभी समर्थित नहीं है।
-pdf-aligerar-sin-trailer = PDF में पढ़ने योग्य ट्रेलर नहीं है।
-pdf-aligerar-sin-objetos = PDF के अंदर कोई ऑब्जेक्ट पहचाना नहीं गया।
-pdf-aligerar-largo-indirecto = PDF की एक स्ट्रीम अपनी लंबाई नहीं बताती।
-pdf-aligerar-objetos-sin-entender = PDF के कुछ हिस्से यह रीडर नहीं समझता; दोबारा लिखने से वे हट सकते हैं।
-pdf-aligerar-sin-fotos = इसमें छोटा करने के लिए फ़ोटो नहीं हैं: वज़न टेक्स्ट या वेक्टर का है।
-pdf-aligerar-ya-al-minimo = फ़ोटो पहले से न्यूनतम पर हैं।
-pdf-aligerar-no-compensa = यह केवल { $antes } से { $despues } तक घटेगा: इसका फ़ायदा नहीं।
 pdf-aligerar-no-se-lee = छोटी की गई फ़ाइल ठीक से वापस नहीं पढ़ी गई; मूल फ़ाइल रहती है।
 aligerar-progreso = हल्का किया जा रहा है… { $por }%
 aligerar-empezado = PDF को हल्का किया जा रहा है…
@@ -838,7 +705,6 @@ chat-recordatorio-quitado = रिमाइंडर हटाया गया
 chat-recordatorio-titulo = रिमाइंडर
 
 # A message menu entry: send the attachment to someone over Wi-Fi.
-chat-enviar-wifi = Wi-Fi से भेजें
 
 # Turning a voice note into text with Vosk. What is missing is named with its
 # file and link: PinDesk never downloads anything on its own.
@@ -864,7 +730,6 @@ musica-sinc-empieza = हर पंक्ति शुरू होते ही
 musica-sinc-siguiente = अगला: { $linea }
 musica-sinc-todas = सभी पंक्तियाँ चिह्नित हो गईं। बोल सहेजें।
 musica-sinc-marcar = चिह्नित करें { $n }/{ $total }
-musica-sinc-deshacer = पूर्ववत करें
 musica-sinc-guardar = सहेजें
 musica-sinc-cancelar = रद्द करें
 musica-sinc-guardada = बोल सिंक किए गए
@@ -980,7 +845,6 @@ exportar-tipo-pdf = PDF दस्तावेज़
 exportar-tipo-html = एकल-फ़ाइल वेब पेज
 exportar-vacio = इससे एक्सपोर्ट करने के लिए कुछ नहीं है।
 exportar-fallo = कैनवस एक्सपोर्ट नहीं हो सका।
-exportar-hecho = एक्सपोर्ट किया गया: { $nombre }
 imprimir-menu = प्रिंट करें…	Ctrl+P
 imprimir-vacio = प्रिंट करने के लिए कुछ नहीं है।
 imprimir-fallo = कैनवस प्रिंट नहीं हो सका।
@@ -1028,8 +892,6 @@ compartir-texto = टेक्स्ट
 compartir-csv = टेबल (CSV)
 compartir-pindesk = PinDesk (.pindesk)
 compartir-dxf = DXF
-compartir-xlsx = Excel (xlsx)
-compartir-docx = Word (docx)
 compartir-md = Markdown
 compartir-exportar = एक्सपोर्ट करें…
 compartir-paginas-de = क्या शामिल करें · { $total } में से { $marcadas }
@@ -1041,7 +903,6 @@ compartir-preparando = तैयार हो रहा है…
 compartir-marca-alguna = कोई पेज चुनें
 compartir-en-cuanto-este = जैसे ही यह तैयार हो
 compartir-peso-ficheros = { $peso } · { $n } फ़ाइलें
-compartir-panel-abierto = चुनें कि इसे कहाँ भेजना है
 compartir-guardado = सहेजा गया: { $nombre }
 compartir-copiado = क्लिपबोर्ड पर कॉपी किया गया
 compartir-no-se-pudo = इसे तैयार नहीं किया जा सका
@@ -1063,7 +924,6 @@ compartir-tipo-nota = नोट
 
 # Drawing tools: the ones shown in the canvas, the reader, pins and the
 # screen annotator. Turning one off removes it from the bar and its key.
-ajustes-pestana-herramientas = टूल
 herramientas-lazo = लैसो
 herramientas-rectangulo = आयत
 herramientas-rombo = समचतुर्भुज
@@ -1134,11 +994,6 @@ chat-fecha-corta = { $dia } { $mes }
 chat-enlace-no-abre = लिंक नहीं खुल सका
 
 ## D11: a spreadsheet in the chat is a book of tables (ventana_chat/libro.rs)
-libro-titulo = स्प्रेडशीट
-libro-xls-antiguo = पुरानी .xls फ़ाइलें नहीं पढ़ी जा सकतीं: इसे खोलें और .xlsx के रूप में सहेजें
-libro-abrir-fuera = इसे किसी दूसरे ऐप से खोलें?
-libro-no-es = यह फ़ाइल मान्य स्प्रेडशीट नहीं है
-libro-sin-hojas = वर्कबुक में डेटा वाली कोई शीट नहीं है
 hoja-preparando = शीट को संपादन के लिए तैयार किया जा रहा है…
 hoja-editar-aviso = बदलाव चैट शीट में सहेजे जाते हैं; मूल फ़ाइल वैसी ही रहती है
 hoja-editando = संपादन हो रहा है · देखने के लिए Esc
@@ -1445,8 +1300,6 @@ chat-insertar-en-nota = नोट में डालें
 ## Canvas: weld vertices and number points (lienzo-geometria, 26-sep)
 herramientas-nudo = शीर्ष जोड़ें
 herramientas-bolita = गेंद: चुनने के लिए ऊपर से घुमाएँ
-lienzo-nudo = शीर्ष जोड़ें
-lienzo-nudo-ayuda = जहाँ दो आकृतियाँ छूती हैं वहाँ क्लिक करें और वे आपस में पिन हो जाएँगी: वे अब अलग नहीं होंगी और, एक ही पिन होने पर, उसके चारों ओर घूमेंगी। पिन हटाने के लिए उस पर क्लिक करें; पिन की गई आकृतियों को साथ ले जाने के लिए उसे हाथ से खींचें।
 lienzo-punto-serie = बिंदु लेबल
 lienzo-cota-pedir = बनाते समय लंबाई पूछें
 lienzo-panel-dureza = पेंसिल ग्रेड
@@ -1494,7 +1347,6 @@ funciones-figuras-detalle = कैनवस के लिए आपकी आक
 figuras-mias = मेरी आकृतियाँ
 figuras-todas = सभी
 figuras-vacia = अभी कोई आकृति नहीं। किसी कैनवस पर कुछ चुनें और “आकृति के रूप में सहेजें” दबाएँ।
-figuras-cerrar = बंद करें
 figuras-borrar = आकृति हटाएँ
 figuras-borrar-seguro = हटाने के लिए फिर से दबाएँ
 figuras-elegir-para = “{ $chat }” के लिए एक आकृति चुनें
@@ -1753,12 +1605,8 @@ galeria-borrada = PinDesk के रीसायकल बिन में ल�
 galeria-no-se-pudo = यह नहीं हो सका: { $motivo }
 galeria-conservada-aviso = रखा गया: यह सहेजे गए संदेशों में है और हटाया नहीं जाएगा
 bandeja-galeria-capturas = कैप्चर गैलरी…
-chat-galeria-capturas = कैप्चर गैलरी
 # Lessons learned (3-oct, as on the phone)
-chat-lecciones = सबक
-chat-leccion-nueva = नया सबक
 chat-hacer-leccion = सबक बनाएँ
-bandeja-lecciones = 💡 सबक…
 bandeja-leccion-nueva = नया सबक…
 bandeja-tareas = ☑ कार्य…
 bandeja-timeline = 🕒 टाइमलाइन और सबक…
@@ -1978,7 +1826,6 @@ ajustes2-auto = ऑटो
 comando-buscar = 🔍 PinDesk में खोजें…
 comando-grabar-clase = 🎙 क्लास या मीटिंग रिकॉर्ड करें…
 clase-titulo = क्लास या मीटिंग रिकॉर्ड करें
-clase-sub = ऑडियो रिकॉर्ड करता है और स्क्रीनशॉट को उनके मिनट पर रखता है
 clase-microfono = माइक्रोफ़ोन
 clase-equipo = कंप्यूटर की ध्वनि (Meet, Zoom…)
 clase-guardar-en = यहाँ सहेजें: { $proyecto }
@@ -1987,7 +1834,6 @@ clase-nada = माइक्रोफ़ोन, कंप्यूटर की 
 clase-captura = कैप्चर
 clase-terminar = समाप्त करें
 clase-capturas = स्क्रीनशॉट: { $n } · एक क्लिक क्षेत्र दोहराता है
-clase-pista = “कैप्चर” इस मिनट पर स्क्रीन का एक क्षेत्र सहेजता है
 clase-elige-zona = स्क्रीन पर क्षेत्र चुनें…
 clase-captura-hecha = स्क्रीनशॉट { $minuto } पर सहेजा गया
 clase-zona-cambiada = क्षेत्र बदला गया
@@ -2006,7 +1852,6 @@ clase-listo = हो गया
 clase-nombre = क्लास { $fecha }
 clase-sin-sonido-equipo = कंप्यूटर से कुछ सुनाई नहीं दे रहा: कोई स्पीकर या हेडफ़ोन सक्रिय नहीं है
 clase-video = इस स्क्रीन का वीडियो
-clase-video-corto = वीडियो रिकॉर्ड हो रहा है
 clase-video-roto = वीडियो रुक गया; ऑडियो अब भी रिकॉर्ड हो रहा है
 clase-video-guardado = स्क्रीन वीडियो के साथ।
 clase-calidad-ligero = हल्का
@@ -2032,13 +1877,6 @@ clase-recuperar-sin-nada = “{ $nombre }” का केवल एक ऐस�
 clase-recuperar-descartar = “{ $nombre }” हटाएँ? रिकॉर्डिंग हटा दी जाएगी और पुनर्प्राप्त नहीं की जा सकेगी।
 clase-recuperar-fallo = “{ $nombre }” पुनर्प्राप्त नहीं हो सकी। रिकॉर्डिंग अब भी सुरक्षित है और PinDesk खुलने पर फिर से पेश की जाएगी।
 clase-texto-de-fondo = बंद करें (जारी रहता है)
-clase-modo-pantalla = स्क्रीन और ध्वनि
-clase-modo-capturas = ऑडियो और स्क्रीनशॉट
-clase-modo-pantalla-sub = आपके चुने गए ध्वनियों के साथ इस स्क्रीन का वीडियो रिकॉर्ड करता है
-clase-modo-capturas-sub = ऑडियो रिकॉर्ड करता है; “कैप्चर” पूरी स्क्रीन सहेजता है
-clase-captura-entera = कैप्चर: पूरी स्क्रीन, तुरंत
-clase-pista-entera = “कैप्चर” इस मिनट पर पूरी स्क्रीन सहेजता है; क्षेत्र बटन, केवल एक हिस्सा
-clase-capturas-entera = स्क्रीनशॉट: { $n } · पूरी स्क्रीन
 clase-abrir-para-estudiar = पढ़ाई के लिए खोलें
 clase-camara-movil = 📱 फ़ोन कैमरा
 clase-camara-movil-n = 📱 फ़ोन कैमरा · { $n }
@@ -2061,14 +1899,10 @@ clase-hora-sin-comprobar = समय सत्यापित नहीं
 baliza-movil-aislado = आप एक ही नेटवर्क पर हैं, फिर भी आपका फ़ोन नहीं दिख रहा: यह Wi-Fi डिवाइस को अलग रख सकता है (गेस्ट, होटल और ऑफ़िस नेटवर्क ऐसा करते हैं) या कोई फ़ायरवॉल PinDesk को ब्लॉक कर रहा हो सकता है। PC को फ़ोन के हॉटस्पॉट से, या दोनों को किसी दूसरे Wi-Fi से कनेक्ट करें। आपकी ली गई फ़ोटो फ़ोन पर इंतज़ार करती हैं और एक-दूसरे को मिलते ही अपने मिनट पर जुड़ जाती हैं।
 baliza-movil-otra-red = आपका फ़ोन इस PC से अलग नेटवर्क पर है। दोनों को एक ही Wi-Fi से कनेक्ट करें (या PC को फ़ोन के हॉटस्पॉट से)। आपकी ली गई फ़ोटो फ़ोन पर इंतज़ार करती हैं और एक-दूसरे को मिलते ही अपने मिनट पर जुड़ जाती हैं।
 # In-person meeting (27-oct-2026): the computer's camera, photos and clips.
-clase-modo-presencial = आमने-सामने
-clase-modo-presencial-sub = माइक्रोफ़ोन रिकॉर्ड करता है; “फ़ोटो” कैमरे का पूरा रिज़ॉल्यूशन इस्तेमाल करता है
 clase-camara = कैमरा: { $camara }
 clase-camara-buscando = कैमरे खोजे जा रहे हैं…
 clase-camara-ninguna = कोई कैमरा नहीं: फ़ोटो और क्लिप काम नहीं करेंगे (ऑडियो फिर भी रिकॉर्ड होगा)
 clase-foto = फ़ोटो
-clase-fotos = फ़ोटो: { $n } · कैमरे से, पूरे रिज़ॉल्यूशन पर
-clase-pista-foto = “फ़ोटो” इस मिनट पर कैमरे से तस्वीर लेता है; वीडियो कैमरा एक क्लिप रिकॉर्ड करता है
 clase-foto-hecha = फ़ोटो { $minuto } पर सहेजी गई
 clase-camara-abriendo = कैमरा खोला जा रहा है…
 clase-camara-lista = कैमरा तैयार: फ़ोटो { $medida } पर
@@ -2254,128 +2088,6 @@ buscar-todo-deshacer = पूर्ववत करें
 buscar-todo-copiado = कॉपी किया गया
 ## v2-lecciones
 # The lessons window of the v2 redesign (Lecciones2.dc.html and Lecciones2-repaso.dc.html).
-lec2-que-aprendiste = आपने क्या सीखा? लिखें या बोलकर लिखवाएँ और Enter दबाएँ
-lec2-guardar = सहेजें
-lec2-rellena-solo = आपके लिए भरा गया, क्लिक करके बदलें:
-lec2-rellena-solo-vacio = लिखते समय क्षेत्र, प्रोजेक्ट और गंभीरता अपने आप भर जाते हैं।
-lec2-area-de = क्षेत्र: { $area }
-lec2-proyecto-de = प्रोजेक्ट: { $proyecto }
-lec2-ya-la-tienes = यह आपके पास पहले से है: “{ $titulo }” · यह फिर से हुआ
-lec2-pega-capturas = स्क्रीनशॉट पेस्ट करता है
-lec2-guardada = सबक { $donde } में सहेजा गया
-lec2-apuntado-otra-vez = नोट किया गया: यह फिर से हुआ
-lec2-no-se-pudo = यह काम नहीं किया। फिर से कोशिश करें।
-lec2-solo-imagenes = सबक में केवल इमेज जोड़ी जा सकती हैं।
-lec2-sin-area = कोई क्षेत्र नहीं
-lec2-sin-proyecto = कोई प्रोजेक्ट नहीं (सामान्य चैट)
-lec2-buscar = खोजें: शब्द, स्थिति, टैग…
-lec2-todas = सभी
-lec2-repetidas = दोहराए गए
-lec2-graves = गंभीर
-lec2-para-repasar = आज दोहराने के लिए · { $n }
-lec2-que-harias-si = अगर यह फिर से हो तो आप क्या करेंगे?
-lec2-repasar = दोहराएँ
-lec2-este-mes = इस महीने
-lec2-antes = पहले
-lec2-lista-vacia = अभी कोई सबक नहीं। ऊपर लिखें कि आपने क्या सीखा।
-lec2-nada-con-filtro = इस फ़िल्टर से कुछ नहीं।
-lec2-nada-con = “{ $q }” से कुछ नहीं। कोई दूसरा शब्द आज़माएँ या इसे ऊपर नोट करें।
-lec2-moverse = खिसकाएँ
-lec2-leve = मामूली
-lec2-importante = महत्वपूर्ण
-lec2-grave = गंभीर
-lec2-hoy = आज
-lec2-ayer = कल
-lec2-manana = कल
-lec2-hace-dias = { $n } दिन पहले
-lec2-hace-semanas = { $n ->
-    [one] 1 सप्ताह पहले
-   *[other] { $n } सप्ताह पहले
-  }
-lec2-hace-meses = { $n ->
-    [one] 1 महीना पहले
-   *[other] { $n } महीने पहले
-  }
-lec2-hace-anios = { $n ->
-    [one] 1 साल पहले
-   *[other] { $n } साल पहले
-  }
-lec2-en-dias = { $n } दिन में
-lec2-meses = जन॰ फ़र॰ मार्च अप्रैल मई जून जुल॰ अग॰ सित॰ अक्तू॰ नव॰ दिस॰
-lec2-clic-para-editar = संपादित करने के लिए किसी भी टेक्स्ट पर क्लिक करें · अपने आप सहेजता है
-lec2-mas-campos = और फ़ील्ड…
-lec2-que-paso = क्या हुआ
-lec2-por-que = क्यों
-lec2-proxima = अगली बार
-lec2-que-paso-vacio = जोड़ें कि क्या हुआ…
-lec2-por-que-vacio = जोड़ें कि यह क्यों हुआ…
-lec2-proxima-vacio = जोड़ें कि अगली बार आप क्या अलग करेंगे…
-lec2-editar = संपादित करें
-lec2-escribe-aqui = यहाँ लिखें
-lec2-ayuda-linea = Enter सहेजता है · Esc समाप्त करता है
-lec2-ayuda-bloque = Enter सहेजता है · Shift+Enter नई पंक्ति · Tab अगले पर
-lec2-nota-de-voz = वॉइस नोट
-lec2-anadir-foto = फ़ोटो जोड़ें
-lec2-ver-en-chat = चैट में देखें
-lec2-pinear = पिन करें
-lec2-pineado = स्क्रीन पर पिन किया गया
-lec2-borrar = हटाएँ
-lec2-borrada = सबक हटाया गया
-lec2-deshacer = पूर्ववत करें
-lec2-veces = { $n ->
-    [one] बार हुआ
-   *[other] बार हुआ
-  }
-lec2-la-ultima = पिछली बार: { $fecha }
-lec2-me-volvio = यह फिर से हुआ
-lec2-gravedad = गंभीरता
-lec2-area = क्षेत्र
-lec2-proyecto = प्रोजेक्ट
-lec2-etiquetas = टैग
-lec2-anadir = + जोड़ें
-lec2-nueva-etiqueta = टैग और Enter
-lec2-relacionadas = संबंधित
-lec2-proximo-repaso = अगली दोहराई: { $cuando }
-lec2-vacia-titulo = जो सीखते हैं उसे नोट करें ताकि गलतियाँ न दोहराएँ
-lec2-vacia-texto = इसे ऊपर एक बार में लिखें: “क्या हुआ…, क्योंकि…, अगली बार…”। PinDesk इसे बाँटता है, क्षेत्र, प्रोजेक्ट और गंभीरता तय करता है, और बताता है कि क्या यह पहले भी हुआ था।
-lec2-comprobacion = शुरू करने से पहले जाँचें: { $total } में से { $hechas }
-lec2-comprobacion-vacia = अभी “अगली बार…” के नीचे कुछ नहीं है। यह हर सबक का तीसरा ब्लॉक है।
-lec2-nada-que-repasar = आज दोहराने के लिए कुछ नहीं।
-lec2-repaso-titulo = आज की दोहराई
-lec2-repaso-de = { $total } में से { $va }
-lec2-salir = बाहर निकलें
-lec2-paso-pensar = सोचें कि आप क्या करेंगे
-lec2-paso-mirar = देखें कि आपने क्या नोट किया
-lec2-paso-recordar = क्या आपको याद था?
-lec2-situacion = स्थिति
-lec2-repaso-cuando = जब { $pista }…
-lec2-repaso-recuerda = यह सबक याद करें
-lec2-repaso-veces = यह { $n } बार हुआ
-lec2-que-harias = आप क्या करेंगे?
-lec2-escribe-o-dicta = लिखें या बोलकर लिखवाएँ
-lec2-dictar = बोलकर लिखवाएँ
-lec2-mostrar = उत्तर दिखाएँ
-lec2-mostrada = उत्तर दिखाया गया
-lec2-lo-que-apuntaste = आपने क्या नोट किया
-lec2-oculta = देखने से पहले सोचें: याद करना दोबारा पढ़ने से कहीं बेहतर टिकता है।
-lec2-por-que-paso = यह क्यों हुआ: { $causa }
-lec2-abrir-completa = पूरा सबक खोलें
-lec2-lo-recordabas = क्या आपको याद था? माउस से या इनसे चुनें
-lec2-nota-recordaba = मुझे याद था
-lec2-nota-a-medias = आंशिक रूप से
-lec2-nota-olvide = मैं भूल गया
-lec2-vuelve-manana = कल फिर
-lec2-vuelve-en = { $dias } दिन में फिर
-lec2-saltar = इसे छोड़ें
-lec2-repaso-pie = आपका उत्तर तुलना के लिए है: यह सहेजा नहीं जाता।
-lec2-siguiente = अगला
-lec2-repaso-elige = 1, 2 या 3 चुनें: क्या आपको याद था?
-lec2-repaso-hecho = दोहराई पूरी हुई
-lec2-repaso-hechas = { $n ->
-    [one] आपने 1 सबक दोहराया। समय आने पर वापस आएँ।
-   *[other] आपने { $n } सबक दोहराए। समय आने पर ये वापस आएँगे।
-  }
-lec2-repaso-volver = सूची पर वापस जाएँ
 ## v2-galeria
 galeria-subtitulo = { $cuantas } · 7 दिन तक रखे जाते हैं
 galeria-buscar = कैप्चर के टेक्स्ट सहित खोजें
@@ -2652,8 +2364,6 @@ timeline-mic-sin-texto = समझ नहीं आया: केवल ऑड�
 
 
 ## simple-lecciones
-lecs-menos-campos = कम फ़ील्ड
-lecs-ficha-completa = प्रकार, कारण और कीवर्ड…
 
 ## galeria-menu (5-oct-2026, right click)
 galeria-guardar-como = इस रूप में सहेजें…
@@ -2685,7 +2395,6 @@ timeline-momentos-vacio = आपके चुने गए पल यहाँ �
 timeline-a-momentos = पल में भेजा गया
 timeline-fuera-de-momentos = पल से हटाया गया
 timeline-estado-sobre-todo = अधिकतर
-timeline-estado-lo-mas = "{ $que }"
 timeline-exportar-busqueda = खोज: "{ $que }"
 timeline-pestana-lecciones = सबक
 timeline-sub-lecciones = { $n ->
@@ -2697,7 +2406,6 @@ timeline-lecciones-vacio = अभी कोई सबक नहीं। कि�
 timeline-gravedad-leve = मामूली
 timeline-gravedad-importante = महत्वपूर्ण
 timeline-gravedad-grave = गंभीर
-timeline-otra-vez = यह फिर से हुआ +1
 timeline-otra-vez-hecho = नोट किया गया: अब तक { $n } बार
 timeline-leccion = सबक
 timeline-leccion-hecha = 💡 सबक बनाया गया: यह "सबक" में है
@@ -2763,7 +2471,6 @@ tareas5-corregir-pista = कार्य का टेक्स्ट…
 tareas5-imagen-pista = इमेज जोड़ें · Ctrl+V कॉपी की गई इमेज पेस्ट करता है
 tareas5-guardar = सहेजें
 tareas5-corregida = कार्य अपडेट किया गया
-tareas5-vista-lista = सूची · Ctrl+L
 tareas5-vista-tarjetas = कार्ड · Ctrl+T
 tareas5-vista-horario = समय-सारिणी · Ctrl+H
 tareas5-vista-kanban = Kanban बोर्ड · Ctrl+K
@@ -2781,7 +2488,6 @@ tareas5-quitar = हटाएँ
 ## salida (6-oct-2026): the floating window to drag out what was exported
 salida-titulo = शेयर करने के लिए तैयार
 salida-titulo-exportado = एक्सपोर्ट किया गया
-salida-titulo-guardado = सहेजा गया
 salida-pista = किसी फ़ाइल को दूसरे ऐप या फ़ोल्डर में खींचें
 salida-todos = सभी { $n } को एक साथ खींचें
 salida-arrastra-todos = सभी को ले जाने के लिए दबाकर खींचें
@@ -2789,13 +2495,11 @@ salida-soltado = छोड़ा गया · आप इसे कहीं औ�
 salida-copiado = क्लिपबोर्ड पर कॉपी किया गया
 salida-pineado = पिन किया गया
 salida-no-se-pudo = यह नहीं हो सका
-salida-compartir = शेयर करें
 salida-copiar = कॉपी करें
 salida-abrir = खोलें
 salida-carpeta = फ़ोल्डर में दिखाएँ
 salida-pinear = पिन करें
 salida-compartir-menu = शेयर करें…
-compartir-arrastrar = यहाँ से दूसरे ऐप में खींचें · स्क्रीन पर रखने के लिए क्लिक करें
 
 ## al-movil (6-oct-2026): a photo from the Flow plugin to the phone's open canvas
 al-movil-lienzo = { $n ->
@@ -3034,8 +2738,6 @@ asistente-voz-sin-whisper = यह PC आवाज़ को टेक्स्�
 asistente-voz-fallo = आपकी आवाज़ टेक्स्ट में नहीं बदली जा सकी।
 asistente-voz-cancelado = रद्द किया गया: कुछ नहीं भेजा गया।
 asistente-voz-nada-que-leer = इस जवाब में पढ़ने के लिए कोई टेक्स्ट नहीं है।
-asistente-voz-leer = ज़ोर से पढ़ें
-asistente-voz-callar = पढ़ना बंद करें
 
 # The buttons of the Windows notifications (15-oct).
 notif-hecha = हो गया
@@ -3094,7 +2796,6 @@ horario-sin-clases = समय-सारिणी में अभी कोई 
 horario-guardada = आप इसे अगली { $clase } क्लास में सुनेंगे
 
 ## Weekly timetable window and subjects (18-oct-2026)
-horario-titulo = समय-सारिणी
 horario-subtitulo = { $asignaturas } विषय · { $clases } क्लास
 horario-nueva = नया विषय (@कमरा वैकल्पिक)
 horario-domingo = रविवार
@@ -3117,15 +2818,12 @@ horario-asignatura-borrada = “{ $asignatura }” को समय-सारि
 horario-repetida = “{ $asignatura }” पहले से सूची में है
 horario-arrastra = “{ $asignatura }” को सप्ताह पर खींचें
 horario-no-guardado = समय-सारिणी सहेजी नहीं जा सकी
-tareas-asignatura-pista = कार्य का विषय
 tareas-destino-pista = कार्य की सूची या विषय
 tareas-sin-asignatura = कोई विषय नहीं (इनबॉक्स में)
-tareas-sin-asignaturas = अभी कोई विषय नहीं: इन्हें “क्लास की समय-सारिणी…” में बनाएँ
 tareas-apuntar-en-asignatura = नया { $asignatura } कार्य…
 
 # Viewers: the frame to print (2026-10-19)
 marco-imprimir-pista = जो प्रिंट करना है उस पर एक बॉक्स खींचें · Enter: सब कुछ · Esc: बाहर निकलें
-lector-marco = प्रिंट करने के लिए फ़्रेम (P)
 marcos-pista = फ़्रेम बनाने के लिए खींचें · कोई संख्या: उस फ़्रेम पर जाएँ · Ctrl+P: सभी प्रिंट करें · Del: आखिरी हटाएँ · I या Esc: बाहर निकलें
 marcos-imprimir = फ़्रेम प्रिंट करें (Ctrl+P)
 marcos-borrar = फ़्रेम साफ़ करें
@@ -3154,7 +2852,6 @@ barra-cerrar = बंद करें (Esc)
 visor-letra = फ़ॉन्ट और स्पेसिंग (T / B)
 lector-mas = और विकल्प (G)
 visor-indice-pista = विषय-सूची (C)
-riel-hojita = नोटपैड (Ctrl+Shift+N)
 riel-editar = संपादित करें (Alt+R)
 riel-mirar = देखने पर वापस (Alt+R या Esc)
 
@@ -3207,10 +2904,6 @@ carpeta-exportando = PDF एक्सपोर्ट हो रहा है…
 carpeta-exportado = PDF सहेजा गया: { $nombre }
 carpeta-no-se-exporto = एक्सपोर्ट नहीं हो सका: किसी पेज पर कुछ नहीं है
 carpeta-vacia = यह फ़ोल्डर खाली है। “नया पेज” दबाएँ, या चैट में किसी कैनवस या इमेज के मेनू में “फ़ोल्डर में जोड़ें…” चुनें।
-carpeta-antes = पहले
-carpeta-despues = बाद में
-carpeta-renombrar = नाम बदलें
-carpeta-quitar = फ़ोल्डर से हटाएँ
 carpeta-no-esta = वह फ़ोल्डर अब चैट में नहीं है
 carpeta-pista = पेज को खिसकाने के लिए खींचें · F2 उसका शीर्षक बदलता है · Del उसे हटाता है (वह फिर से चैट में दिखता है)
 carpeta-escribe-titulo = शीर्षक लिखें और Enter दबाएँ
@@ -3220,8 +2913,6 @@ carpeta-grabacion-detalle = { $duracion } · { $capturas ->
    *[other] { $capturas } कैप्चर
  }
 carpeta-estudiar = पढ़ें
-carpeta-de-la-grabacion = रिकॉर्डिंग से
-carpeta-adjuntos = क्लास में संलग्न
 carpeta-adjunto-insignia = अटैचमेंट · रिकॉर्डिंग का हिस्सा नहीं
 carpeta-adjuntar = क्लास में संलग्न करें
 carpeta-adjuntado = क्लास में संलग्न किया गया: { $nombre }
@@ -3249,7 +2940,6 @@ clase-importante-decision = निर्णय
 clase-importante-pregunta = प्रश्न
 clase-importante-examen = परीक्षा
 clase-importante-buscando = जो मायने रखता है वह खोजा जा रहा है…
-clase-importante-nada = क्लास में इनमें से कुछ नहीं
 clase-importante-tareas = + { $n } कार्य, कार्य में
 clase-importante-anadidas = { $n } कार्य कार्य-इनबॉक्स में जोड़े गए
 tareas-prioridad-urgente = तत्काल

@@ -109,9 +109,6 @@ cuenta-atras-cancelar = 按 Esc 停止
 comando-pinear-seleccion = 贴出资源管理器中的选中项
 
 # The settings window (P6).
-ajustes-pestana-atajos = 快捷键
-ajustes-pestana-general = 常规
-ajustes-pestana-captura = 截图
 ajustes-pestana-dibujo = 绘图
 ajustes-iman = 吸附到关键点
 ajustes-iman-esquinas = 角点和端点
@@ -121,26 +118,17 @@ ajustes-iman-radio = 吸附距离（像素）
 ajustes-idioma = 语言
 ajustes-idioma-sistema = 与 Windows 相同
 ajustes-arranque = 随 Windows 启动
-ajustes-color = 取色格式
-ajustes-nivel = 性能
 ajustes-nivel-auto = 自动
 ajustes-nivel-completo = 完整
 ajustes-nivel-ligero = 轻量
 ajustes-pdf-aligerar = 添加到聊天时压缩 PDF
-ajustes-pdf-nivel = 压缩程度（“小”和“最大”仅限手动）
 ajustes-pdf-nivel-sin-perdida = 无损
 ajustes-pdf-nivel-equilibrado = 中等
 ajustes-pdf-nivel-pequeno = 小
 ajustes-pdf-nivel-extremo = 最大
-ajustes-retardo-captura = 截图前的倒计时秒数
-ajustes-limite-scroll = 滚动截图的最大高度（像素）
-ajustes-gif-ritmo = 录制时每秒帧数
-ajustes-gif-retardo = 录制前的缓冲秒数
 ajustes-sin-atajo = 无快捷键
 ajustes-pulsa-combinacion = 请按下组合键…
 ajustes-choca = 重复
-ajustes-cerrar = 关闭
-ajustes-abrir-fichero = 打开设置文件
 
 # Reading the text of a pin (P4.2).
 pin-copiar-texto = 复制图片中的文字
@@ -174,16 +162,12 @@ chat-clase-proyecto = 项目
 chat-clase-miniapp = 小程序
 chat-escribe = 写点什么…
 # The chat, like PinDesk Android's (guardados/MensajesActivity.kt).
-chat-cosas = { $n ->
-   *[other] { $n } 项
-}
 chat-elegidos = { $n ->
    *[other] 已选 { $n } 项
 }
 chat-lienzo = 画布
 chat-tabla = 表格
 chat-viene-de = 来自
-chat-comentar = 评论
 chat-copiar = 复制
 chat-fijar = 置顶
 chat-soltar = 取消置顶
@@ -205,13 +189,10 @@ chat-recordar = 提醒我
 chat-rescatar = 保留此项
 chat-solo-la-foto = 仅显示照片
 chat-ver-hilo = 查看评论
-chat-etiquetar = 添加标签
-chat-quitar-etiqueta = 移除标签
 chat-reenviar = 转发
 chat-unir = 添加到项目
 chat-transcribir = 转为文字
 chat-letra = 歌词或文本
-chat-elegir = 选择
 chat-borrar = 删除
 chat-borrar-aviso = 它将从对话中移除，附带的文件也会一并删除。是否继续？
 chat-biblioteca-audio = 音频库
@@ -223,30 +204,18 @@ chat-fondo-brezo = 石楠
 chat-fondo-bosque = 森林
 chat-fondo-ocaso = 日落
 chat-fondo-pizarra = 石板
-chat-adj-archivo = 文件
-chat-adj-pagina = 项目中的一页
-chat-adj-proyecto = 整个项目
-chat-adj-conversacion = 对话
 chat-adj-telepronter = 提词器
 chat-adj-pronunciar = 发音
-chat-adj-miniapp = 小程序
 chat-reenviado = 已转发
 chat-copiado = 已复制
-chat-compartido = 已复制到剪贴板：粘贴到想分享的地方即可
 chat-compartir-sin-panel = Windows 未打开“共享”面板：内容已复制到剪贴板，可粘贴到任意位置
 chat-pineado = 已贴图
 chat-foto-en-la-nota = 照片已添加到文字中：将作为一条笔记一起发送
 chat-sin-archivo = 此消息在这台电脑上没有文件
 chat-sin-origen = 该画布不在此项目中
 chat-sin-proyectos-otros = 没有其他项目可发送
-chat-proyectos-lista = 项目列表在左侧
-chat-no-hay-voz = Windows 版暂不支持录制语音消息
-chat-no-hay-aligerar = Windows 版暂不支持压缩 PDF
 chat-no-hay-unir = 在 Windows 上每个聊天本身就是项目：请使用“转发”将其发送到其他项目
-chat-no-hay-biblioteca = Windows 版暂无音频库
 chat-ver-dibujo-entero = 显示完整绘图
-chat-no-hay-pagina = Windows 版暂不支持附加项目中的页面
-chat-no-hay-telepronter = Windows 版暂无提词器
 chat-no-se-pudo = 操作失败：请查看 PinDesk 日志
 chat-fecha = { $mes }{ $dia }日
 chat-fecha-con-ano = { $ano }年{ $mes }{ $dia }日
@@ -293,21 +262,12 @@ info-vacia-voz = 语音消息将显示在这里
 info-vacia-dibujos = 此聊天中的绘图将显示在这里
 info-vacia-fijados = 你置顶的内容将显示在这里
 info-vacia-buzon = 收件箱为空
-info-abrir = 打开
-info-abrir-enlace = 打开链接
-info-reproducir = 播放
-info-ver-en-el-chat = 在聊天中显示
 info-titulo = 信息
 adjuntar-imagen = 照片或视频
 adjuntar-archivo = 文件
 adjuntar-lienzo = 新建画布
-confirmar-titulo = { $cuantos ->
-   *[other] 添加 { $cuantos } 个文件
-}
-confirmar-resto = 以及另外 { $cuantos } 个
 confirmar-pie = 添加说明…
 confirmar-cancelar = 取消
-confirmar-aceptar = 添加
 adjuntar-tabla = 新建表格
 tabla-nueva = 表格
 chat-nombre-nuevo = 项目名称…
@@ -323,11 +283,7 @@ recibir-salir = 按 Esc 关闭
 comando-recibir-del-movil = 从手机接收…
 comando-sincronizar = 同步
 adjuntar-del-movil = 从手机获取…
-menu-foto-aqui = 直接在此绘制
 proyecto-renombrar = 重命名
-proyecto-logo-poner = 设置标志图片…
-proyecto-logo-quitar = 移除标志图片
-proyecto-logo-error = 无法设置该标志图片
 # The chat photo (25-oct-2026): image, emoji or colour in the circle.
 foto-chat-menu = 更换聊天头像…
 foto-chat-titulo = 聊天头像
@@ -580,7 +536,6 @@ papelera-no-se-pudo = 无法恢复“{ $nombre }”：{ $motivo }
 papelera-recuperados = 已恢复 { $total } 个项目中的 { $n } 个
 
 ## The document viewer: Word, EPUB books and web pages (task 2.1)
-visor-html-titulo = PinDesk — 页面
 ## The Office pin: Office's preview as a pin (2026-10-10)
 office-titulo = Office 预览
 office-abriendo = 正在用 Office 预览打开…
@@ -588,8 +543,6 @@ office-tarda = Office 需要一些时间（它需要启动）。你可以等待�
 office-fallo = Office 无法预览此文件。请通过“打开方式…”（工具栏上的 ↗ 按钮）在其他应用中打开。
 office-internet = 此文件来自互联网，出于安全考虑，Windows 不允许预览。请通过“打开方式…”（工具栏上的 ↗ 按钮）在其他应用中打开，或在其“属性”中解除锁定。
 visor-titulo = PinDesk 查看器
-visor-marcador = 在此添加书签
-visor-ajustes = 阅读设置
 visor-tamano = 文字大小
 visor-quitar-marcadores = 移除书签
 visor-guardar-pagina = 另存为网页
@@ -598,15 +551,10 @@ visor-abrir-carpeta = 打开文件夹
 visor-guardado = 已保存到“{ $nombre }”
 visor-no-guardado = 无法保存
 visor-vacio = 此文档没有可显示的文字
-visor-ayuda = 滚轮阅读 · +/− 大小 · M 书签 · G 设置 · Esc 退出
-visor-elige-emoticono = 用什么标记？
-visor-sin-marcadores = 还没有书签
 
 ## The readers: comfortable reading, annotating on top and the PDF reader
-lector-listo = 完成
 lector-indice = 目录
 lector-letra-fijada = 字体已锁定：上面绘有笔记
-lector-letra-normal = 常规字体
 lector-letra-fija = 等宽字体
 lector-grosor-normal = 常规
 lector-grosor-gruesa = 粗体
@@ -620,11 +568,8 @@ lector-pdf-reconociendo = 正在识别本页文字…
 lector-pdf-reconocido = 文字已识别：现在可以选择并标记
 lector-pdf-sin-texto = 本页未找到文字
 lector-exportando = 正在保存带标注的 PDF… { $hechas } / { $total }
-lector-exportar-pdf = 保存带笔记的 PDF
 lector-anotado = 已标注
-lector-ayuda-pdf = 滚轮翻页 · Ctrl+滚轮缩放 · Ctrl+[ Ctrl+] 标注留白 · L 朗读 · A 标注 · M 书签 · Esc 退出
 lector-office-titulo = PinDesk 中的 Word 和 PowerPoint
-lector-ayuda-office = 滚轮翻页 · Ctrl+滚轮缩放 · 拖过文字以选择 · Ctrl+C 复制 · Ctrl+F 查找 · Ctrl+P 打印 · F5 放映 · A 标注 · N 反色 · Esc 退出
 lector-presentar = 放映 (F5)
 lector-modo-lectura = 阅读模式（重排文字）
 lector-imprimir = 打印… (Ctrl+P)
@@ -648,7 +593,6 @@ lector-voz-parrafo = 第 { $n } 段，共 { $total } 段
 lector-voz-preparando = 正在准备语音…
 lector-voz-no-respondio = Microsoft 未响应
 lector-voz-sin-voz = 无语音
-lector-verde-aqui = 绿色书签在此：将从这里开始朗读
 lector-espacio-tope = 那一侧没有更多空间了
 lector-espacio-nada = 那一侧已没有空间
 lector-sin-lado = 横向已锁定：只能上下滚动
@@ -683,78 +627,12 @@ sinc-presencia-apagada = 设置中已关闭在线状态（[sincro] presencia = f
 bandeja-abrir-documento = 打开文档…
 
 ## Canvas shapes and ink: arrowheads, fills and text style (group A)
-lienzo-punta-ninguna = 无箭头
-lienzo-punta-flecha = 箭头
-lienzo-punta-barra = 竖线
-lienzo-punta-circulo = 圆形
-lienzo-punta-circulo-hueco = 空心圆
-lienzo-punta-triangulo = 三角形
-lienzo-punta-triangulo-hueco = 空心三角形
-lienzo-punta-rombo = 菱形
-lienzo-punta-rombo-hueco = 空心菱形
-lienzo-punta-inicio = 起点箭头
-lienzo-punta-fin = 终点箭头
-lienzo-trama-zigzag = 锯齿
-lienzo-trama-tiralineas = 横线
-lienzo-texto-negrita = 粗体
-lienzo-texto-cursiva = 斜体
-lienzo-texto-tachado = 删除线
-lienzo-presion-firme = 固定宽度笔画
-lienzo-flecha-codos = 折线箭头
-lienzo-flecha-libre = 手绘箭头
-lienzo-arco-guia = 参考椭圆，尚未描绘
-lienzo-luces-fuerza = 光照强度
 
 ## Build and measure: fill, trim, extend, points and angles (group C)
-lienzo-bote = 油漆桶
-lienzo-bote-ayuda = 在封闭区域内点击即可填充，即使它由多个不同的形状围成。
-lienzo-bote-abierto = 此区域未封闭：颜料会从缝隙中漏出。
-lienzo-recortar = 修剪
-lienzo-recortar-ayuda = 点击笔画多余的部分即可删除，直到与其他笔画相交处为止。
-lienzo-extender = 延伸
-lienzo-extender-ayuda = 点击不够长的一端，它会延伸到遇到的第一个对象。
-lienzo-extender-sin-tope = 前方没有任何对象：延伸到虚空的线不算延伸。
-lienzo-punto = 带标签的点
-lienzo-punto-ayuda = 点击交点、端点或圆心，即会出现带字母的点。
-lienzo-punto-sin-sitio = 那里没有可命名的位置：点只能放在交点、端点或圆心上。
-lienzo-punto-serie-mayusculas = 大写字母（A、B、C…）
-lienzo-punto-serie-minusculas = 小写字母（a、b、c…）
-lienzo-punto-serie-numeros = 数字（1、2、3…）
-lienzo-angulos = 实时角度
-lienzo-angulos-ayuda = 移动对象时，显示你所接触的角的大小。
-lienzo-area = 面积
 
 ## Select, transform and bind (group B)
-lienzo-lazo = 套索
-lienzo-lazo-ayuda = 围绕要选取的内容绘制。完全在内部的会被选中；按住 Shift 时，笔画接触到的也会被选中。
-lienzo-lazo-encerrar = 仅内部的内容
-lienzo-lazo-rozar = 笔画接触到的也选中
-lienzo-voltear-horizontal = 水平翻转
-lienzo-voltear-vertical = 垂直翻转
-lienzo-voltear-ayuda = 以整个组的中心镜像所选内容，而不是每个形状各自镜像。
-lienzo-rejilla = 格纸
-lienzo-rejilla-ninguna = 空白
-lienzo-rejilla-lineas = 方格
-lienzo-rejilla-puntos = 点阵
-lienzo-rejilla-imanta = 光标吸附到方格
-lienzo-rejilla-ayuda = 在第一笔之前就存在的参考线。导出时不会显示。
-lienzo-iman-intersecciones = 形状之间的交点
-lienzo-iman-intersecciones-ayuda = 两条笔画相交的点，它不是任何一方的角点。
-lienzo-iman-bordes = 形状边缘
-lienzo-iman-bordes-ayuda = 三角尺：光标沿整条边滑动，而不仅是角点。
-lienzo-iman-eje = 原点和坐标轴
-lienzo-enganche = 将箭头绑定到形状
-lienzo-enganche-ayuda = 将箭头尖端放到形状上，移动形状时箭头会跟随。
-lienzo-enganche-soltar = 释放尖端
-lienzo-tirador-punta = 移动端点
-lienzo-tirador-anadir = 在此弯折
-lienzo-copiar-estilo = 复制样式
-lienzo-copiar-estilo-ayuda = 从一个形状获取颜色、笔画和填充，并粘贴到其他形状上。只会应用双方都支持的属性。
-lienzo-estilo-tomado = 已获取样式
-lienzo-estilo-sin-tomar = 你还没有获取样式。
 
 # The attachment the document viewer can open without leaving PinDesk.
-chat-abrir-aqui = 在此打开
 
 # The seven mini-apps from the phone, and their panel.
 mini-moneda = CNY
@@ -800,15 +678,6 @@ chat-voz-fallo = 无法录制语音消息。
 # Shrinking an attached PDF: it lowers the photos inside, and never for the worse.
 pdf-aligerado = 已压缩：从 { $antes } 降到 { $despues }
 pdf-aligerar-cifrado = 此 PDF 已加密，重写可能会损坏它。
-pdf-aligerar-indice-comprimido = 此 PDF 的索引是压缩的，此处暂不支持重建。
-pdf-aligerar-objetos-comprimidos = 此 PDF 的对象是压缩的，此处暂不支持重建。
-pdf-aligerar-sin-trailer = 此 PDF 没有可读的 trailer。
-pdf-aligerar-sin-objetos = 未能识别 PDF 中的任何对象。
-pdf-aligerar-largo-indirecto = PDF 中有一个数据流未标明其长度。
-pdf-aligerar-objetos-sin-entender = PDF 中有此阅读器无法理解的部分，重写可能会丢失它们。
-pdf-aligerar-sin-fotos = 没有可压缩的照片：体积来自文字或矢量。
-pdf-aligerar-ya-al-minimo = 照片已是最低质量。
-pdf-aligerar-no-compensa = 只能从 { $antes } 降到 { $despues }：不值得。
 pdf-aligerar-no-se-lee = 压缩后的文件无法正常读取，已保留原文件。
 aligerar-progreso = 正在压缩… { $por }%
 aligerar-empezado = 正在压缩 PDF…
@@ -827,7 +696,6 @@ chat-recordatorio-quitado = 提醒已移除
 chat-recordatorio-titulo = 提醒
 
 # A message menu entry: send the attachment to someone over Wi-Fi.
-chat-enviar-wifi = 通过 Wi-Fi 发送
 
 # Turning a voice note into text with Vosk. What is missing is named with its
 # file and link: PinDesk never downloads anything on its own.
@@ -853,7 +721,6 @@ musica-sinc-empieza = 在每一行开始时按空格（或“标记”）
 musica-sinc-siguiente = 下一行：{ $linea }
 musica-sinc-todas = 所有行均已标记。请保存歌词。
 musica-sinc-marcar = 标记 { $n }/{ $total }
-musica-sinc-deshacer = 撤销
 musica-sinc-guardar = 保存
 musica-sinc-cancelar = 取消
 musica-sinc-guardada = 歌词已同步
@@ -969,7 +836,6 @@ exportar-tipo-pdf = PDF 文档
 exportar-tipo-html = 单文件网页
 exportar-vacio = 此选项下没有可导出的内容。
 exportar-fallo = 无法导出画布。
-exportar-hecho = 已导出：{ $nombre }
 imprimir-menu = 打印…	Ctrl+P
 imprimir-vacio = 没有可打印的内容。
 imprimir-fallo = 无法打印画布。
@@ -1017,8 +883,6 @@ compartir-texto = 文本
 compartir-csv = 表格（CSV）
 compartir-pindesk = PinDesk (.pindesk)
 compartir-dxf = DXF
-compartir-xlsx = Excel (xlsx)
-compartir-docx = Word (docx)
 compartir-md = Markdown
 compartir-exportar = 导出…
 compartir-paginas-de = 包含内容 · { $marcadas } / { $total }
@@ -1030,7 +894,6 @@ compartir-preparando = 正在准备…
 compartir-marca-alguna = 请勾选至少一页
 compartir-en-cuanto-este = 准备好后立即发送
 compartir-peso-ficheros = { $peso } · { $n } 个文件
-compartir-panel-abierto = 选择发送位置
 compartir-guardado = 已保存：{ $nombre }
 compartir-copiado = 已复制到剪贴板
 compartir-no-se-pudo = 无法准备
@@ -1052,7 +915,6 @@ compartir-tipo-nota = 笔记
 
 # Drawing tools: the ones shown in the canvas, the reader, pins and the
 # screen annotator. Turning one off removes it from the bar and its key.
-ajustes-pestana-herramientas = 工具
 herramientas-lazo = 套索
 herramientas-rectangulo = 矩形
 herramientas-rombo = 菱形
@@ -1122,11 +984,6 @@ chat-fecha-corta = { $mes }{ $dia }日
 chat-enlace-no-abre = 无法打开链接
 
 ## D11: a spreadsheet in the chat is a book of tables (ventana_chat/libro.rs)
-libro-titulo = 电子表格
-libro-xls-antiguo = 无法读取旧版 .xls 文件：请打开后另存为 .xlsx
-libro-abrir-fuera = 用其他应用打开？
-libro-no-es = 该文件不是有效的电子表格
-libro-sin-hojas = 此工作簿没有包含数据的工作表
 hoja-preparando = 正在准备工作表以供编辑…
 hoja-editar-aviso = 更改保存在聊天中的工作表里；原文件保持不变
 hoja-editando = 编辑中 · Esc 查看
@@ -1432,8 +1289,6 @@ chat-insertar-en-nota = 插入到笔记
 ## Canvas: weld vertices and number points (lienzo-geometria, 26-sep)
 herramientas-nudo = 焊接顶点
 herramientas-bolita = 小球：扫过以选择
-lienzo-nudo = 焊接顶点
-lienzo-nudo-ayuda = 点击两个形状的接触处即可将它们钉在一起：它们不再分离；只有一个钉子时，会绕它旋转。点击钉子可将其移除；用手形工具拖动钉子可带动被钉住的形状。
 lienzo-punto-serie = 点标签
 lienzo-cota-pedir = 绘制时询问长度
 lienzo-panel-dureza = 铅笔硬度
@@ -1481,7 +1336,6 @@ funciones-figuras-detalle = 用于画布的形状库
 figuras-mias = 我的形状
 figuras-todas = 全部
 figuras-vacia = 还没有形状。在画布上选中内容，然后选择“保存为形状”。
-figuras-cerrar = 关闭
 figuras-borrar = 删除形状
 figuras-borrar-seguro = 再按一次以删除
 figuras-elegir-para = 为“{ $chat }”选择形状
@@ -1740,12 +1594,8 @@ galeria-borrada = 已移到 PinDesk 回收站
 galeria-no-se-pudo = 操作失败：{ $motivo }
 galeria-conservada-aviso = 已保留：它在“收藏的消息”中，不会被删除
 bandeja-galeria-capturas = 截图库…
-chat-galeria-capturas = 截图库
 # Lessons learned (3-oct, as on the phone)
-chat-lecciones = 心得
-chat-leccion-nueva = 新建心得
 chat-hacer-leccion = 记为心得
-bandeja-lecciones = 💡 心得…
 bandeja-leccion-nueva = 新建心得…
 bandeja-tareas = ☑ 任务…
 bandeja-timeline = 🕒 时间线和心得…
@@ -1961,7 +1811,6 @@ ajustes2-auto = 自动
 comando-buscar = 🔍 搜索 PinDesk…
 comando-grabar-clase = 🎙 录制课堂或会议…
 clase-titulo = 录制课堂或会议
-clase-sub = 录制音频，并将截图放到对应的时间点
 clase-microfono = 麦克风
 clase-equipo = 电脑声音（Meet、Zoom…）
 clase-guardar-en = 保存到：{ $proyecto }
@@ -1970,7 +1819,6 @@ clase-nada = 请选择麦克风、电脑声音或两者
 clase-captura = 截图
 clase-terminar = 结束
 clase-capturas = 截图：{ $n } · 单击即可重复截取该区域
-clase-pista = “截图”会在此时间点保存屏幕的一个区域
 clase-elige-zona = 在屏幕上选择区域…
 clase-captura-hecha = 已在 { $minuto } 保存截图
 clase-zona-cambiada = 区域已更改
@@ -1989,7 +1837,6 @@ clase-listo = 完成
 clase-nombre = 课堂 { $fecha }
 clase-sin-sonido-equipo = 电脑没有声音：没有启用的扬声器或耳机
 clase-video = 此屏幕的视频
-clase-video-corto = 正在录制视频
 clase-video-roto = 视频已停止；音频仍在录制
 clase-video-guardado = 包含屏幕视频。
 clase-calidad-ligero = 轻量
@@ -2015,13 +1862,6 @@ clase-recuperar-sin-nada = “{ $nombre }”只剩下一个无法打开的视频
 clase-recuperar-descartar = 放弃“{ $nombre }”？录制将被删除且无法恢复。
 clase-recuperar-fallo = 无法恢复“{ $nombre }”。录制仍然安全，下次打开 PinDesk 时会再次提示。
 clase-texto-de-fondo = 关闭（继续进行）
-clase-modo-pantalla = 屏幕和声音
-clase-modo-capturas = 音频和截图
-clase-modo-pantalla-sub = 录制此屏幕的视频，以及你选择的声音
-clase-modo-capturas-sub = 录制音频；“截图”保存整个屏幕
-clase-captura-entera = 截图：整个屏幕，即时
-clase-pista-entera = “截图”会在此时间点保存整个屏幕；区域按钮只保存一部分
-clase-capturas-entera = 截图：{ $n } · 整个屏幕
 clase-abrir-para-estudiar = 打开学习
 clase-camara-movil = 📱 手机摄像头
 clase-camara-movil-n = 📱 手机摄像头 · { $n }
@@ -2044,14 +1884,10 @@ clase-hora-sin-comprobar = 时间未验证
 baliza-movil-aislado = 虽然你们在同一网络中，但找不到你的手机：此 Wi-Fi 可能隔离了设备（访客、酒店和办公网络常这样），或防火墙阻止了 PinDesk。请将电脑连接到手机热点，或让两者连接另一个 Wi-Fi。你拍的照片会保存在手机上，双方找到彼此后按其时间点加入。
 baliza-movil-otra-red = 你的手机与这台电脑不在同一网络。请将两者连接到同一 Wi-Fi（或将电脑连接到手机热点）。你拍的照片会保存在手机上，双方找到彼此后按其时间点加入。
 # In-person meeting (27-oct-2026): the computer's camera, photos and clips.
-clase-modo-presencial = 现场
-clase-modo-presencial-sub = 录制麦克风；“拍照”使用摄像头的全分辨率
 clase-camara = 摄像头：{ $camara }
 clase-camara-buscando = 正在查找摄像头…
 clase-camara-ninguna = 没有摄像头：“拍照”和“片段”不可用（仍会录制音频）
 clase-foto = 拍照
-clase-fotos = 照片：{ $n } · 使用摄像头，全分辨率
-clase-pista-foto = “拍照”会在此时间点用摄像头拍一张照片；摄像机按钮录制片段
 clase-foto-hecha = 已在 { $minuto } 保存照片
 clase-camara-abriendo = 正在打开摄像头…
 clase-camara-lista = 摄像头就绪：照片尺寸 { $medida }
@@ -2235,123 +2071,6 @@ buscar-todo-deshacer = 撤销
 buscar-todo-copiado = 已复制
 ## v2-lecciones
 # The lessons window of the v2 redesign (Lecciones2.dc.html and Lecciones2-repaso.dc.html).
-lec2-que-aprendiste = 你学到了什么？输入或口述后按 Enter
-lec2-guardar = 保存
-lec2-rellena-solo = 已自动填写，点击即可更改：
-lec2-rellena-solo-vacio = 输入时会自动填写领域、项目和严重程度。
-lec2-area-de = 领域：{ $area }
-lec2-proyecto-de = 项目：{ $proyecto }
-lec2-ya-la-tienes = 你已经有这条了：“{ $titulo }” · 又发生了一次
-lec2-pega-capturas = 粘贴截图
-lec2-guardada = 心得已保存到 { $donde }
-lec2-apuntado-otra-vez = 已记录：又发生了一次
-lec2-no-se-pudo = 操作失败，请重试。
-lec2-solo-imagenes = 心得中只能添加图片。
-lec2-sin-area = 无领域
-lec2-sin-proyecto = 无项目（通用聊天）
-lec2-buscar = 搜索：词语、情境、标签…
-lec2-todas = 全部
-lec2-repetidas = 重复发生
-lec2-graves = 严重
-lec2-para-repasar = 今天待复习 · { $n }
-lec2-que-harias-si = 如果再次发生，你会怎么做？
-lec2-repasar = 复习
-lec2-este-mes = 本月
-lec2-antes = 更早
-lec2-lista-vacia = 还没有心得。在上方写下你学到的东西。
-lec2-nada-con-filtro = 此筛选条件下没有内容。
-lec2-nada-con = 没有与“{ $q }”相关的内容。换个词试试，或在上方记录下来。
-lec2-moverse = 移动
-lec2-leve = 轻微
-lec2-importante = 重要
-lec2-grave = 严重
-lec2-hoy = 今天
-lec2-ayer = 昨天
-lec2-manana = 明天
-lec2-hace-dias = { $n } 天前
-lec2-hace-semanas = { $n ->
-   *[other] { $n } 周前
-  }
-lec2-hace-meses = { $n ->
-   *[other] { $n } 个月前
-  }
-lec2-hace-anios = { $n ->
-   *[other] { $n } 年前
-  }
-lec2-en-dias = { $n } 天后
-lec2-meses = 1月 2月 3月 4月 5月 6月 7月 8月 9月 10月 11月 12月
-lec2-clic-para-editar = 点击任意文字即可编辑 · 自动保存
-lec2-mas-campos = 更多字段…
-lec2-que-paso = 发生了什么
-lec2-por-que = 原因
-lec2-proxima = 下次
-lec2-que-paso-vacio = 添加发生了什么…
-lec2-por-que-vacio = 添加发生的原因…
-lec2-proxima-vacio = 添加下次你会怎么做…
-lec2-editar = 编辑
-lec2-escribe-aqui = 在此输入
-lec2-ayuda-linea = Enter 保存 · Esc 完成
-lec2-ayuda-bloque = Enter 保存 · Shift+Enter 换行 · Tab 到下一项
-lec2-nota-de-voz = 语音消息
-lec2-anadir-foto = 添加照片
-lec2-ver-en-chat = 在聊天中查看
-lec2-pinear = 贴图
-lec2-pineado = 已贴到屏幕上
-lec2-borrar = 删除
-lec2-borrada = 心得已删除
-lec2-deshacer = 撤销
-lec2-veces = { $n ->
-   *[other] 次发生
-  }
-lec2-la-ultima = 上一次：{ $fecha }
-lec2-me-volvio = 又发生了
-lec2-gravedad = 严重程度
-lec2-area = 领域
-lec2-proyecto = 项目
-lec2-etiquetas = 标签
-lec2-anadir = + 添加
-lec2-nueva-etiqueta = 输入标签后按 Enter
-lec2-relacionadas = 相关
-lec2-proximo-repaso = 下次复习：{ $cuando }
-lec2-vacia-titulo = 记下你学到的东西，避免重复犯错
-lec2-vacia-texto = 在上方一次写完：“发生了…，因为…，下次…”。PinDesk 会自动拆分，设置领域、项目和严重程度，并告诉你以前是否发生过。
-lec2-comprobacion = 开始之前请检查：{ $hechas } / { $total }
-lec2-comprobacion-vacia = “下次…”下还没有内容。这是每条心得的第三部分。
-lec2-nada-que-repasar = 今天没有要复习的内容。
-lec2-repaso-titulo = 今日复习
-lec2-repaso-de = { $va } / { $total }
-lec2-salir = 退出
-lec2-paso-pensar = 想想你会怎么做
-lec2-paso-mirar = 看看你记下的内容
-lec2-paso-recordar = 你记得吗？
-lec2-situacion = 情境
-lec2-repaso-cuando = 当{ $pista }时…
-lec2-repaso-recuerda = 回想这条心得
-lec2-repaso-veces = 已发生 { $n } 次
-lec2-que-harias = 你会怎么做？
-lec2-escribe-o-dicta = 输入或口述
-lec2-dictar = 口述
-lec2-mostrar = 显示答案
-lec2-mostrada = 已显示答案
-lec2-lo-que-apuntaste = 你记下的内容
-lec2-oculta = 先想再看：回忆比重读记得牢得多。
-lec2-por-que-paso = 发生原因：{ $causa }
-lec2-abrir-completa = 打开完整心得
-lec2-lo-recordabas = 你记得吗？用鼠标或以下按键选择
-lec2-nota-recordaba = 记得
-lec2-nota-a-medias = 部分记得
-lec2-nota-olvide = 忘了
-lec2-vuelve-manana = 明天再复习
-lec2-vuelve-en = { $dias } 天后再复习
-lec2-saltar = 跳过这条
-lec2-repaso-pie = 你的答案仅用于对比，不会保存。
-lec2-siguiente = 下一条
-lec2-repaso-elige = 选择 1、2 或 3：你记得吗？
-lec2-repaso-hecho = 复习完成
-lec2-repaso-hechas = { $n ->
-   *[other] 你复习了 { $n } 条心得。到期时会再次出现。
-  }
-lec2-repaso-volver = 返回列表
 ## v2-galeria
 galeria-subtitulo = { $cuantas } · 保留 7 天
 galeria-buscar = 搜索，包括截图中的文字
@@ -2620,8 +2339,6 @@ timeline-mic-sin-texto = 未能识别：仅保留音频
 
 
 ## simple-lecciones
-lecs-menos-campos = 更少字段
-lecs-ficha-completa = 类型、原因和关键词…
 
 ## galeria-menu (5-oct-2026, right click)
 galeria-guardar-como = 另存为…
@@ -2650,7 +2367,6 @@ timeline-momentos-vacio = 你挑选的时刻会放在这里。在“今天”中
 timeline-a-momentos = 已发送到“精选”
 timeline-fuera-de-momentos = 已从“精选”中移除
 timeline-estado-sobre-todo = 主要是
-timeline-estado-lo-mas = “{ $que }”
 timeline-exportar-busqueda = 搜索：“{ $que }”
 timeline-pestana-lecciones = 心得
 timeline-sub-lecciones = { $n ->
@@ -2661,7 +2377,6 @@ timeline-lecciones-vacio = 还没有心得。点击某个时刻的灯泡即可�
 timeline-gravedad-leve = 轻微
 timeline-gravedad-importante = 重要
 timeline-gravedad-grave = 严重
-timeline-otra-vez = 又发生了 +1
 timeline-otra-vez-hecho = 已记录：目前共 { $n } 次
 timeline-leccion = 心得
 timeline-leccion-hecha = 💡 已记为心得：它在“心得”中
@@ -2722,7 +2437,6 @@ tareas5-corregir-pista = 任务内容…
 tareas5-imagen-pista = 添加图片 · Ctrl+V 粘贴已复制的图片
 tareas5-guardar = 保存
 tareas5-corregida = 任务已更新
-tareas5-vista-lista = 列表 · Ctrl+L
 tareas5-vista-tarjetas = 卡片 · Ctrl+T
 tareas5-vista-horario = 课程表 · Ctrl+H
 tareas5-vista-kanban = Kanban 看板 · Ctrl+K
@@ -2739,7 +2453,6 @@ tareas5-quitar = 移除
 ## salida (6-oct-2026): the floating window to drag out what was exported
 salida-titulo = 可以分享了
 salida-titulo-exportado = 已导出
-salida-titulo-guardado = 已保存
 salida-pista = 将文件拖到其他应用或文件夹
 salida-todos = 一起拖动全部 { $n } 个
 salida-arrastra-todos = 按住并拖动以带走全部
@@ -2747,13 +2460,11 @@ salida-soltado = 已放下 · 也可以放到其他位置
 salida-copiado = 已复制到剪贴板
 salida-pineado = 已贴图
 salida-no-se-pudo = 操作失败
-salida-compartir = 分享
 salida-copiar = 复制
 salida-abrir = 打开
 salida-carpeta = 在文件夹中显示
 salida-pinear = 贴图
 salida-compartir-menu = 分享…
-compartir-arrastrar = 从这里拖到其他应用 · 点击可保留在屏幕上
 
 ## al-movil (6-oct-2026): a photo from the Flow plugin to the phone's open canvas
 al-movil-lienzo = { $n ->
@@ -2987,8 +2698,6 @@ asistente-voz-sin-whisper = 这台电脑无法将语音转为文字：缺少 Win
 asistente-voz-fallo = 无法将你的语音转为文字。
 asistente-voz-cancelado = 已取消：未发送任何内容。
 asistente-voz-nada-que-leer = 此回答没有可朗读的文字。
-asistente-voz-leer = 朗读
-asistente-voz-callar = 停止朗读
 
 # The buttons of the Windows notifications (15-oct).
 notif-hecha = 完成
@@ -3047,7 +2756,6 @@ horario-sin-clases = 课程表中还没有课程：打开“课程表…”，�
 horario-guardada = 你将在下一节 { $clase } 课时听到它
 
 ## Weekly timetable window and subjects (18-oct-2026)
-horario-titulo = 课程表
 horario-subtitulo = { $asignaturas } 门科目 · { $clases } 节课
 horario-nueva = 新科目（可选 @教室）
 horario-domingo = 星期日
@@ -3070,15 +2778,12 @@ horario-asignatura-borrada = 已从课程表中移除“{ $asignatura }”（其
 horario-repetida = “{ $asignatura }”已在列表中
 horario-arrastra = 将“{ $asignatura }”拖到周视图中
 horario-no-guardado = 无法保存课程表
-tareas-asignatura-pista = 任务科目
 tareas-destino-pista = 任务的清单或科目
 tareas-sin-asignatura = 无科目（放入收件箱）
-tareas-sin-asignaturas = 还没有科目：请在“课程表…”中创建
 tareas-apuntar-en-asignatura = 新建 { $asignatura } 任务…
 
 # Viewers: the frame to print (2026-10-19)
 marco-imprimir-pista = 在要打印的内容上拖出一个框 · Enter：全部 · Esc：退出
-lector-marco = 打印框 (P)
 marcos-pista = 拖动以框选 · 数字：跳到该框 · Ctrl+P：全部打印 · Del：删除最后一个 · I 或 Esc：退出
 marcos-imprimir = 打印各框 (Ctrl+P)
 marcos-borrar = 清除框
@@ -3107,7 +2812,6 @@ barra-cerrar = 关闭 (Esc)
 visor-letra = 字体和间距 (T / B)
 lector-mas = 更多选项 (G)
 visor-indice-pista = 目录 (C)
-riel-hojita = 便笺 (Ctrl+Shift+N)
 riel-editar = 编辑 (Alt+R)
 riel-mirar = 返回查看（Alt+R 或 Esc）
 
@@ -3159,10 +2863,6 @@ carpeta-exportando = 正在导出 PDF…
 carpeta-exportado = PDF 已保存：{ $nombre }
 carpeta-no-se-exporto = 无法导出：没有页面包含内容
 carpeta-vacia = 此文件夹为空。点击“新建页面”，或在聊天中画布或图片的菜单里选择“添加到文件夹…”。
-carpeta-antes = 上一页
-carpeta-despues = 下一页
-carpeta-renombrar = 重命名
-carpeta-quitar = 从文件夹中移除
 carpeta-no-esta = 该文件夹已不在聊天中
 carpeta-pista = 拖动页面以移动 · F2 更改标题 · Del 移除（它会重新显示在聊天中）
 carpeta-escribe-titulo = 输入标题并按 Enter
@@ -3171,8 +2871,6 @@ carpeta-grabacion-detalle = { $duracion } · { $capturas ->
    *[other] { $capturas } 张截图
 }
 carpeta-estudiar = 学习
-carpeta-de-la-grabacion = 来自录制
-carpeta-adjuntos = 附加到课堂
 carpeta-adjunto-insignia = 附件 · 不属于录制内容
 carpeta-adjuntar = 附加到课堂
 carpeta-adjuntado = 已附加到课堂：{ $nombre }
@@ -3200,7 +2898,6 @@ clase-importante-decision = 决定
 clase-importante-pregunta = 问题
 clase-importante-examen = 考试
 clase-importante-buscando = 正在查找重点…
-clase-importante-nada = 课堂中没有此类内容
 clase-importante-tareas = + 将 { $n } 项任务加入“任务”
 clase-importante-anadidas = 已将 { $n } 项任务添加到“任务”收件箱
 tareas-prioridad-urgente = 紧急
