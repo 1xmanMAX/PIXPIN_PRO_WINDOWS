@@ -78,6 +78,19 @@
 //! sin marco), los marcos en `anot-<uid>.marcos.json` y las vistas exactas
 //! (desplazamiento y zoom) en `anot-<uid>.vistas.json`. Lo de antes pasa la
 //! primera vez.
+//!
+//! # «En línea / Sin conexión» (2-nov-2026)
+//!
+//! En un chat de la nube, el boton de los demas visores (`crate::en_linea`)
+//! va en **una tercera ventanita** ([`Nube`]), arriba a la izquierda de la
+//! vista, del tamano justo del boton (no tapa la pagina): como el riel, una
+//! ventana de DirectComposition encima del WebView, poseida por la de la
+//! tinta. Retiene `anot-<codigo>…` del documento, que es donde van la tinta,
+//! las marcas, los marcos, las vistas y las marcas de texto de la pagina
+//! (`anot-<uid>.marcas-texto.json`). Solo con [`Opciones::con_pagina`] y un
+//! documento: la vista previa de Office no guarda nada. Al cerrar, el visor
+//! llama a su `al_cerrar` ([`RielDeLaVista::en_linea`]) despues de
+//! [`RielDeLaVista::cerrar`].
 
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
@@ -527,6 +540,16 @@ impl Capita {
     }
 }
 
+/// **El boton «En línea / Sin conexión»** en su ventanita (ver el
+/// principio del modulo).
+struct Nube {
+    capa: Capita,
+    boton: Rc<crate::en_linea::EnLinea>,
+    rotulos: crate::en_linea::Rotulos,
+    /// Lo que se pinto (`Some(sin conexion)`); `None`: hay que repintar.
+    pintado: Option<bool>,
+}
+
 /// **El riel de un visor** con su tinta y sus marcos encima.
 pub struct RielDeLaVista {
     motor: Rc<MotorRender>,
@@ -610,6 +633,8 @@ pub struct RielDeLaVista {
     /// **Si las barras del visor se ven** (la del pin): el riel se va y
     /// vuelve con ellas (ver [`RielDeLaVista::con_barras`]).
     barras: bool,
+    /// «En línea / Sin conexión», en un chat de la nube.
+    nube: Option<Nube>,
 }
 
 /// Lo que la pagina tiene de la capa del riel ([`capa_web`]).
@@ -682,6 +707,21 @@ impl RielDeLaVista {
             None => (Vec::new(), Capa::default()),
         };
         let vistas = Vistas::de_documento(guardado);
+        // «En línea / Sin conexión»: solo si lo de la pagina se guarda y es
+        // de un chat de la nube.
+        let nube = guardado
+            .map(crate::en_linea::EnLinea::de)
+            .filter(|b| b.estado().is_some())
+            .and_then(|b| {
+                let capa = Capita::nueva(&motor, d3d, tinta_v.ventana.handle(), vista)?;
+                capa.ventana.poner_sin_activar();
+                Some(Nube {
+                    capa,
+                    boton: Rc::new(b),
+                    rotulos: crate::en_linea::Rotulos::de(textos),
+                    pintado: None,
+                })
+            });
         let maqueta = if opciones.maqueta {
             vistas
                 .de_marca(capa_web::CLAVE_MAQUETA)
@@ -761,6 +801,7 @@ impl RielDeLaVista {
             arrastre: None,
             globo_de_prueba: false,
             barras: true,
+            nube,
         };
         r.recolocar();
         r.riel.mostrar(true);
@@ -779,7 +820,22 @@ impl RielDeLaVista {
 
     /// Si `h` es una de sus ventanas (sus eventos van a [`Self::evento`]).
     pub fn es_suya(&self, h: HWND) -> bool {
-        h == self.riel.ventana.handle() || h == self.tinta_v.ventana.handle()
+        h == self.riel.ventana.handle()
+            || h == self.tinta_v.ventana.handle()
+            || self.es_de_la_nube(h)
+    }
+
+    fn es_de_la_nube(&self, h: HWND) -> bool {
+        self.nube
+            .as_ref()
+            .is_some_and(|n| h == n.capa.ventana.handle())
+    }
+
+    /// **El boton «En línea / Sin conexión»**, si el documento es de un chat
+    /// de la nube: el visor llama a su `al_cerrar` despues de
+    /// [`RielDeLaVista::cerrar`] (ya guardado lo suyo).
+    pub fn en_linea(&self) -> Option<Rc<crate::en_linea::EnLinea>> {
+        self.nube.as_ref().map(|n| Rc::clone(&n.boton))
     }
 
     /// La ventana de la tinta y los marcos (para las pruebas con mensajes).
@@ -1131,6 +1187,9 @@ impl RielDeLaVista {
             self.fijado = fijado;
             self.tinta_v.ventana.poner_siempre_encima(fijado);
             self.riel.ventana.poner_siempre_encima(fijado);
+            if let Some(n) = &self.nube {
+                n.capa.ventana.poner_siempre_encima(fijado);
+            }
         }
         if oscuro != self.oscuro {
             self.oscuro = oscuro;
@@ -1183,6 +1242,10 @@ impl RielDeLaVista {
         if h == self.riel.ventana.handle() {
             return self.evento_del_riel(ev, pagina, textos);
         }
+        if self.es_de_la_nube(h) {
+            self.evento_de_la_nube(ev);
+            return Pide::Nada;
+        }
         if self.marcos.activo {
             return self.evento_de_los_marcos(ev, pagina);
         }
@@ -1232,6 +1295,68 @@ impl RielDeLaVista {
                 Pide::Nada
             }
             _ => Pide::Nada,
+        }
+    }
+
+    /// Un clic en el boton «En línea / Sin conexión» lo cambia.
+    fn evento_de_la_nube(&mut self, ev: &EventoOverlay) {
+        let Some(n) = self.nube.as_mut() else {
+            return;
+        };
+        match *ev {
+            EventoOverlay::BotonPulsado(p) => {
+                let (x, y) = (p.x - n.capa.area.x, p.y - n.capa.area.y);
+                if n.boton.pulsar(x as f32, y as f32) {
+                    n.pintado = None;
+                }
+            }
+            EventoOverlay::Pintar | EventoOverlay::CambioDpi => n.pintado = None,
+            _ => {}
+        }
+    }
+
+    /// **El boton «En línea / Sin conexión»** cada vuelta: a su sitio
+    /// (arriba a la izquierda de la vista, como en los demas visores), con
+    /// lo que diga ahora y escondido fotografiando los marcos o si el chat
+    /// dejo de ir por la nube.
+    fn tic_nube(&mut self) {
+        let e = self.e();
+        let (vista, imprimiendo, fijado) = (self.vista, self.imprimiendo, self.fijado);
+        let motor = &self.motor;
+        let Some(n) = self.nube.as_mut() else {
+            return;
+        };
+        let estado = n.boton.estado();
+        let tamano = crate::en_linea::tamano(&n.boton, motor, e, &n.rotulos);
+        let Some((ancho, alto)) = tamano.filter(|_| !imprimiendo) else {
+            n.capa.mostrar(false);
+            return;
+        };
+        let margen = (14.0 * e).round() as i32;
+        let area = Rect {
+            x: vista.x + margen,
+            y: vista.y + margen,
+            ancho: ancho.min(vista.ancho.max(1)),
+            alto: alto.min(vista.alto.max(1)),
+        };
+        if n.capa.colocar(area) {
+            n.pintado = None;
+        }
+        if n.pintado != estado {
+            n.pintado = estado;
+            if let Ok(destino) = n.capa.superficie.empezar(motor) {
+                let _ = motor.dibujar(&destino, |p| {
+                    p.limpiar_transparente();
+                    n.boton.pintar_con(p, 0.0, 0.0, e, &n.rotulos);
+                });
+                let _ = n.capa.superficie.presentar();
+            }
+        }
+        if !n.capa.visible {
+            n.capa.mostrar(true);
+            if fijado {
+                n.capa.ventana.traer_encima();
+            }
         }
     }
 
@@ -1649,6 +1774,7 @@ impl RielDeLaVista {
             && bajo.0 as isize != self.visor
             && bajo != self.riel.ventana.handle()
             && bajo != self.tinta_v.ventana.handle()
+            && !self.es_de_la_nube(bajo)
     }
 
     /// **El riel por encima de la tinta**: ya lo esta (la tinta es su duena),
@@ -1665,6 +1791,7 @@ impl RielDeLaVista {
     /// **Cada vuelta del bucle del visor**: lo que conto la pagina, si el
     /// raton se fue del riel, la forma rapida, guardar la tinta y pintar.
     pub fn tic(&mut self, pagina: Option<&dyn Pagina>) {
+        self.tic_nube();
         // El riel, con las barras (o con el raton en su borde).
         let ver = self.riel_a_la_vista();
         if ver != self.riel.visible {
@@ -2370,6 +2497,9 @@ impl RielDeLaVista {
         self.guardar_tinta();
         self.riel.ventana.ocultar();
         self.tinta_v.ventana.ocultar();
+        if let Some(n) = &self.nube {
+            n.capa.ventana.ocultar();
+        }
     }
 }
 

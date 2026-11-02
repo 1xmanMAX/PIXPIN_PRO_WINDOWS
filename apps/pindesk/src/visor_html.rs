@@ -487,11 +487,17 @@ pub fn abrir(textos: &Catalogo, ruta: &Path) -> Result<bool> {
         pindesk_shell::overlay::esperar_eventos(Some(tope));
     }
     // Cerrar: se esconde ya (que se note al instante) y luego se suelta todo.
+    // «En línea / Sin conexión» (`en_linea`): ya guardado lo del riel y
+    // escondida la ventana, si se deja sin conexion se pregunta.
+    let en_linea = riel.as_ref().and_then(|r| r.en_linea());
     if let Some(r) = riel.take() {
         r.cerrar();
     }
     drop(pin);
     ventana.ocultar();
+    if let Some(n) = en_linea {
+        n.al_cerrar(textos);
+    }
     drop(visor);
     drop(ventana);
     Ok(guardados > 0)
