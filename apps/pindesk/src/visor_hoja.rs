@@ -417,6 +417,8 @@ struct Estado<'l> {
     /// Pintando para la foto de un marco: sin el riel, los marcos, lo
     /// elegido ni las barras.
     sin_interfaz: bool,
+    /// «En línea / Sin conexión», si el libro es de un chat de la nube.
+    en_linea: Option<crate::en_linea::EnLinea>,
 }
 
 fn zonas(ancho: f32, alto: f32, e: f32) -> Zonas {
@@ -1879,6 +1881,7 @@ fn ver_en(
         marcos: crate::marcos_doc::Marcos::de(ruta),
         vistas: crate::marcos_doc::Vistas::de_documento(ruta),
         sin_interfaz: false,
+        en_linea: ruta.map(crate::en_linea::EnLinea::de),
     };
     let activa = est.activa;
     est.abrir_hoja(activa, motor);
@@ -2026,6 +2029,15 @@ fn ver_en(
                 continue;
             }
             let local = |p: Punto| ((p.x - area.x) as f32, (p.y - area.y) as f32);
+            if let EventoOverlay::BotonPulsado(q) = &evento
+                && est.en_linea.as_ref().is_some_and(|n| {
+                    let (x, y) = local(*q);
+                    n.pulsar(x, y)
+                })
+            {
+                hay_que_pintar = true;
+                continue;
+            }
             // Anotando con el lapiz del riel, la tinta primero (`riel`).
             if est.anotando && est.tinta_primero(&evento, &mut ventana, area) {
                 hay_que_pintar = true;
@@ -2417,6 +2429,9 @@ fn ver_en(
     // anotado con el lapiz, junto al libro.
     est.dejar_de_anotar();
     est.dejar_de_editar(motor);
+    if let Some(n) = &est.en_linea {
+        n.al_cerrar(textos);
+    }
 }
 
 /// Un fotograma, ya.
@@ -2944,6 +2959,10 @@ fn pintar(p: &Pintor, est: &mut Estado, textos: &Catalogo) {
     // barra del lapiz), encima de la hoja.
     est.pintar_marcos(p, &z, textos);
     riel::pintar(p, est, textos);
+    // Arriba a la izquierda de la hoja, bajo la barra de formulas.
+    if let Some(n) = &est.en_linea {
+        n.pintar(p, 14.0 * e, z.hoja.y + 14.0 * e, e, textos);
+    }
 
     if let Some((texto, _)) = &est.aviso {
         crate::lector::aviso_en(p, texto, ancho / 2.0, z.pestanas.y - 56.0 * e, e);

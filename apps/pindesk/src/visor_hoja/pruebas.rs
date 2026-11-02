@@ -58,6 +58,7 @@ fn estado<'l>(libro: &'l mut Libro, e: f32, ancho: u32, alto: u32) -> Estado<'l>
         marcos: Default::default(),
         vistas: Default::default(),
         sin_interfaz: false,
+        en_linea: None,
     }
 }
 
