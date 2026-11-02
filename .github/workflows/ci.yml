@@ -45,6 +45,7 @@ jobs:
           node --test
           crates/pindesk-motor2d/pruebas_js/gestos_vista.test.mjs
           extensiones/navegador/pruebas/nucleo.test.mjs
+          herramientas/lector-md/src/marcas-texto.test.mjs
 
   clippy:
     runs-on: windows-latest

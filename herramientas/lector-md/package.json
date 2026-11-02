@@ -3,7 +3,8 @@
   "private": true,
   "description": "El lector y editor de notas Markdown de PixPin (WebView2). El motor de lectura es el de md-reader (MIT).",
   "scripts": {
-    "build": "node construir.mjs"
+    "build": "node construir.mjs",
+    "test": "node --test src/formulas.test.mjs src/marcas-texto.test.mjs"
   },
   "dependencies": {
     "@codemirror/commands": "6.7.0",

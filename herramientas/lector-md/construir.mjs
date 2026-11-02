@@ -2,7 +2,9 @@
 // internet ni ficheros sueltos): el programa, los estilos y las letras de
 // PixPin van dentro. Sale a `apps/pindesk/recursos/lector-md.html`, que el
 // ejecutable lleva puesto (`include_bytes!`). Se corre a mano al cambiar
-// algo de aqui: `npm install` y `npm run build`.
+// algo de aqui: `npm install` y `npm run build`. Tambien el guion de marcar
+// el texto de las paginas web (`recursos/marcas-pagina.js`). Las pruebas:
+// `npm test`.
 import { build } from 'esbuild'
 import fs from 'node:fs'
 import path from 'node:path'
@@ -122,3 +124,18 @@ const html = `<!doctype html>
 fs.mkdirSync(path.dirname(salida), { recursive: true })
 fs.writeFileSync(salida, html)
 console.log(`${salida}: ${(html.length / 1024).toFixed(0)} KB`)
+
+// El guion de marcar el texto de una pagina web (2-nov-2026): el visor de
+// HTML lo pone en cada pagina que abre (`apps/pindesk/src/marcas_web.rs`).
+const guion = await build({
+  entryPoints: [path.join(aqui, 'src/marcas-pagina.js')],
+  bundle: true,
+  minify: true,
+  format: 'iife',
+  target: 'chrome110',
+  write: false,
+  legalComments: 'none',
+})
+const salidaGuion = path.resolve(aqui, '../../apps/pindesk/recursos/marcas-pagina.js')
+fs.writeFileSync(salidaGuion, guion.outputFiles[0].text)
+console.log(`${salidaGuion}: ${(guion.outputFiles[0].text.length / 1024).toFixed(0)} KB`)
