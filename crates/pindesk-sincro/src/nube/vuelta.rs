@@ -958,10 +958,20 @@ pub fn vuelta_de_chat<D: Disco + ?Sized>(
 ) -> Result<Informe, FalloNube> {
     let sincro = d.sincro();
     let mut est = EstadoDeChat::leer(&sincro, chat);
+    if est.espacio.is_empty()
+        && let Some(c) = compartido_de(d, chat)
+    {
+        est.espacio = super::espacio_compartido(&c.creador, chat);
+    }
     let mut inf = Informe::default();
     let r = (|| {
         if op.bajar || est.revision == 0 {
-            bajar(d, nube, chat, &mut est, op, &mut inf)?;
+            match bajar(d, nube, chat, &mut est, op, &mut inf) {
+                // Un compartido que aun no esta en la nube: la nube no sabe
+                // si estoy dentro hasta que suba su lista (403). Se sube.
+                Err(FalloNube::Llave(_)) if est.revision == 0 => {}
+                r => r?,
+            }
         }
         subir(d, nube, chat, &mut est, op, &mut inf)
     })();
@@ -974,4 +984,15 @@ pub fn vuelta_de_chat<D: Disco + ?Sized>(
     }
     est.guardar(&sincro, chat)?;
     r.map(|_| inf)
+}
+
+/// Apunta en que espacio vive un chat (lo que dijo `GET chats`), para
+/// bajarlo la primera vez sin tener aun su lista firmada.
+pub fn conocer_espacio(sincro: &std::path::Path, chat: &str, espacio: &str) -> std::io::Result<()> {
+    let mut est = EstadoDeChat::leer(sincro, chat);
+    if est.espacio != espacio {
+        est.espacio = espacio.to_string();
+        est.guardar(sincro, chat)?;
+    }
+    Ok(())
 }

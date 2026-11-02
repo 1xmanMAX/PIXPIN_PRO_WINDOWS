@@ -56,6 +56,13 @@ pub fn firma_de_yo(llaves: &Llaves, aparato_nube: &str, id: &str) -> String {
     llaves.firmar(texto_de_yo(aparato_nube, id, &llaves.clave()).as_bytes())
 }
 
+/// **El espacio de un chat compartido en la nube** (`espacioCompartido`
+/// de `compartidos.ts`): el mismo para todas sus personas.
+pub fn espacio_compartido(creador: &str, chat: &str) -> String {
+    let h = crate::canonico::sha256_hex(format!("{creador}|{chat}").as_bytes());
+    format!("compartido-{}", &h[..16])
+}
+
 /// Si una llave tiene la forma de las de la nube.
 pub fn llave_valida(llave: &str) -> bool {
     let l = llave.trim();
