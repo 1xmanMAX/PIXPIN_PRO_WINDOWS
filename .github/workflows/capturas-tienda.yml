@@ -33,6 +33,8 @@ on:
           muestra_del_timeline
           muestras_del_buscador
           muestras_de_la_ventana
+          muestras_de_la_grabacion
+          muestra_de_estudiar_la_clase
 
 permissions:
   contents: read

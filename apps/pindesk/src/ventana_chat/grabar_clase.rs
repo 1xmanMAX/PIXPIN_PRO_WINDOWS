@@ -135,6 +135,9 @@ mod cola_de_texto;
 mod completa;
 mod escucha;
 mod fotografo;
+/// Las muestras en PNG de la barra y de la pantalla completa (la Store).
+#[cfg(test)]
+mod muestras;
 mod pantalla;
 mod recuperar;
 mod reunion;
