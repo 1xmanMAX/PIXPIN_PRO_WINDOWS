@@ -494,7 +494,8 @@ pub(crate) fn web_de_texto_con(
     let mut doc = pindesk_docs::abrir(ruta).map_err(|e| anyhow::anyhow!("{e}"))?;
     if sin_titulo_repetido
         && doc.bloques.iter().find(|b| !b.vacio()).is_some_and(|b| {
-            matches!(b.clase, pindesk_docs::Clase::Titulo(_)) && b.texto().trim() == doc.titulo.trim()
+            matches!(b.clase, pindesk_docs::Clase::Titulo(_))
+                && b.texto().trim() == doc.titulo.trim()
         })
     {
         doc.titulo.clear();

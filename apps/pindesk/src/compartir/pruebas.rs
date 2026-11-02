@@ -530,10 +530,20 @@ fn una_nota_markdown_sola_sale_como_pagina_web_con_su_formato() {
     let html = std::fs::read_to_string(&web.ficheros[0]).unwrap();
     assert!(html.contains("Visita de obra") && html.contains("hormigonada"));
     // Con su formato: la tabla es una tabla y las marcas no se ven.
-    assert_eq!(html.matches(">Visita de obra</h1>").count(), 1, "el titulo va como titulo, una vez");
-    assert!(html.contains("class=\"fila\""), "la tabla va en sus filas, como en el lector");
+    assert_eq!(
+        html.matches(">Visita de obra</h1>").count(),
+        1,
+        "el titulo va como titulo, una vez"
+    );
+    assert!(
+        html.contains("class=\"fila\""),
+        "la tabla va en sus filas, como en el lector"
+    );
     assert!(html.contains("class=\"lista\""), "la lista va como lista");
-    assert!(!html.contains("|---|"), "sin la raya de la tabla en Markdown");
+    assert!(
+        !html.contains("|---|"),
+        "sin la raya de la tabla en Markdown"
+    );
     assert!(!html.contains("**hormigonada**"), "sin los asteriscos");
     // Caso negativo: no es el dibujo del texto.
     assert_eq!(html.matches("data-tipo=\"dibujo\"").count(), 0);
