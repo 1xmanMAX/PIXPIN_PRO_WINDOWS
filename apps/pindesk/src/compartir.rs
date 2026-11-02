@@ -197,6 +197,11 @@ pub(crate) struct Preparado {
     /// paginas sino la pagina con el reproductor y la transcripcion (ver
     /// [`clase`]).
     pub clase: Option<Arc<clase::Grabacion>>,
+    /// **Una nota Markdown sola**, hecha Word (sus bytes y su nombre): su
+    /// «Pagina web» no es el dibujo de su texto sino la nota con su formato
+    /// (titulos, listas, tablas, fotos), leida de ese Word como un documento
+    /// mas (ver [`web_de_nota`]).
+    pub nota_word: Option<(Vec<u8>, String)>,
     /// **Las listas de tareas**, por la clave de su fila: su «Pagina web» no
     /// son dibujos de sus hojas sino la pagina de las tareas (ver
     /// [`tareas`]).
@@ -221,6 +226,7 @@ impl Preparado {
             adjuntos: Vec::new(),
             rotulo_adjuntos: String::new(),
             clase: None,
+            nota_word: None,
             tareas: HashMap::new(),
             rotulos_tareas: Default::default(),
             // El cero lo reserva el escritor de PDF para «sin imagen».
@@ -983,13 +989,15 @@ fn anadir_mensaje(
                     solo,
                     t,
                 );
-            // Una nota Markdown sola tambien sale como Word (`word`).
+            // Una nota Markdown sola tambien sale como Word (`word`), y su
+            // pagina web se lee de ese Word.
             if puesta
                 && solo
                 && word::es_nota(m)
                 && let Some((bytes, fichero)) =
                     word::de_nota(raiz, proyecto, m, &t.t("nota-md-nueva"))
             {
+                p.nota_word = Some((bytes.clone(), fichero.clone()));
                 p.extras.push(Extra {
                     id: "word",
                     clave: "compartir-word",
@@ -1045,6 +1053,11 @@ fn de_mensajes(
         ) =>
         {
             pindesk_docs::sin_extension(&nombre_de(m, t))
+        }
+        // Una nota escrita, por su titulo sin las marcas («# Obra» → «Obra»),
+        // el mismo de la barra del lector: tambien el nombre del fichero.
+        [m] if word::es_nota(m) && !pindesk_docs::md_vivo::titulo(&m.texto).is_empty() => {
+            pindesk_docs::md_vivo::titulo(&m.texto)
         }
         [m] => nombre_de(m, t),
         _ => titulo.to_string(),
@@ -1509,6 +1522,27 @@ pub(crate) fn csv_de(tabla: &pindesk_proyecto::tabla::Tabla) -> String {
         s.push_str("\r\n");
     }
     s
+}
+
+/// **La pagina web de una nota Markdown**: la de su Word (`word::de_nota`,
+/// el Markdown leido con el mismo analizador que el editor) leido como un
+/// documento mas ([`documento_web::web_de_texto`]). El Word va a un fichero
+/// de paso con su nombre (de ahi sale el titulo).
+fn web_de_nota(docx: &[u8], fichero: &str) -> Result<String> {
+    use std::sync::atomic::{AtomicU32, Ordering};
+    static VEZ: AtomicU32 = AtomicU32::new(0);
+    let dir = std::env::temp_dir().join(format!(
+        "pindesk-nota-web-{}-{}",
+        std::process::id(),
+        VEZ.fetch_add(1, Ordering::Relaxed)
+    ));
+    std::fs::create_dir_all(&dir).with_context(|| format!("no se pudo crear {}", dir.display()))?;
+    let ruta = dir.join(fichero);
+    let hecho = std::fs::write(&ruta, docx)
+        .with_context(|| format!("no se pudo escribir {}", ruta.display()))
+        .and_then(|()| documento_web::web_de_nota(&ruta));
+    let _ = std::fs::remove_dir_all(&dir);
+    hecho
 }
 
 // ---------------------------------------------------------------------------
@@ -2098,6 +2132,17 @@ pub(crate) fn generar(
             };
             let ruta = carpeta.join(format!("{base}.pdf"));
             escribir(&ruta, &bytes)?;
+            vec![ruta]
+        }
+        // Una nota Markdown sola: la nota con su formato (titulos, listas,
+        // tablas, codigo), como la pagina de un `.md` que se lee, y no el
+        // dibujo de su texto (1-nov-2026, el usuario: «cuando comparto el md
+        // en html no aparece con su visualizacion, solo se envia el texto»).
+        WEB | WEB_IMAGEN if p.nota_word.is_some() && documento.is_none() => {
+            let (bytes, fichero) = p.nota_word.as_ref().context("sin nota")?;
+            let pagina = web_de_nota(bytes, fichero)?;
+            let ruta = carpeta.join(format!("{base}.html"));
+            escribir(&ruta, pagina.as_bytes())?;
             vec![ruta]
         }
         // Un documento que se lee va como documento: el texto de verdad (o

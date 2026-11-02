@@ -504,6 +504,45 @@ fn una_tabla_compartida_como_pagina_web_sigue_calculando() {
 }
 
 #[test]
+fn una_nota_markdown_sola_sale_como_pagina_web_con_su_formato() {
+    // 1-nov-2026, el usuario: «cuando comparto el md en html no aparece con
+    // su visualizacion, solo se envia el texto».
+    let (dir, borrar) = carpeta("nota-web");
+    let nota = Mensaje {
+        id: "m-nota-md".into(),
+        clase: Some(Clase::Nota),
+        texto: "# Visita de obra\n\nLa losa ya esta **hormigonada**.\n\n- curado\n- encofrado\n\n| eje | cota |\n|---|---|\n| A | 3,20 |\n".into(),
+        ..Default::default()
+    };
+    let p = preparar(
+        Cosa::Mensajes {
+            raiz: dir.join("datos"),
+            proyecto: String::new(),
+            titulo: "Visita de obra".into(),
+            mensajes: vec![nota],
+        },
+        &textos(),
+    )
+    .unwrap();
+    assert!(p.nota_word.is_some());
+    let claves: Vec<String> = p.piezas.iter().map(|x| x.pagina.clave.clone()).collect();
+    let web = generar(&p, WEB, &claves, &dir.join("web")).unwrap();
+    let html = std::fs::read_to_string(&web.ficheros[0]).unwrap();
+    assert!(html.contains("Visita de obra") && html.contains("hormigonada"));
+    // Con su formato: la tabla es una tabla y las marcas no se ven.
+    assert_eq!(html.matches(">Visita de obra</h1>").count(), 1, "el titulo va como titulo, una vez");
+    assert!(html.contains("class=\"fila\""), "la tabla va en sus filas, como en el lector");
+    assert!(html.contains("class=\"lista\""), "la lista va como lista");
+    assert!(!html.contains("|---|"), "sin la raya de la tabla en Markdown");
+    assert!(!html.contains("**hormigonada**"), "sin los asteriscos");
+    // Caso negativo: no es el dibujo del texto.
+    assert_eq!(html.matches("data-tipo=\"dibujo\"").count(), 0);
+    if borrar {
+        let _ = std::fs::remove_dir_all(dir);
+    }
+}
+
+#[test]
 fn cada_mensaje_solo_ofrece_sus_formatos_y_su_original() {
     let (dir, borrar) = carpeta("mensajes");
     let raiz = dir.join("datos");

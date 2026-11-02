@@ -297,7 +297,7 @@ fn las_medidas_que_deja_el_lector_sirven_sin_poder_medir_y_solo_con_su_letra() {
         |_: &Documento, _: &lectura::Ajustes, _: f32, _: crate::visor::Hoja| -> Result<Medidas> {
             anyhow::bail!("sin tarjeta")
         };
-    let html = web_de_texto_con(&ruta, &sin_tarjeta).unwrap();
+    let html = web_de_texto_con(&ruta, &sin_tarjeta, false).unwrap();
     assert!(
         html.contains("data-tops=\"34.0,80.0,140.0,200.0\""),
         "con lo guardado"
@@ -308,7 +308,7 @@ fn las_medidas_que_deja_el_lector_sirven_sin_poder_medir_y_solo_con_su_letra() {
     );
     // Y sin nada guardado, por fraccion.
     std::fs::remove_file(ruta_de_medidas(&ruta)).unwrap();
-    let html = web_de_texto_con(&ruta, &sin_tarjeta).unwrap();
+    let html = web_de_texto_con(&ruta, &sin_tarjeta, false).unwrap();
     assert!(html.contains("data-tops=\"\""));
     assert!(html.contains("data-f=\"0.5\""));
     let _ = std::fs::remove_dir_all(&dir);

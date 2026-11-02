@@ -880,17 +880,17 @@ impl PinLector {
             .barra
             .as_ref()
             .is_some_and(|b| self.visible && dentro(&b.area, raton));
-        // Sin fijar, otra aplicacion puede taparla: el raton sobre esa otra
-        // no cuenta como encima del lector (si no, la barra saldria sobre
-        // ella).
-        let tapada = !self.fijado
-            && self.dueno.is_some_and(|d| {
-                !es_mia(
-                    pindesk_shell::overlay::ventana_bajo(raton),
-                    d,
-                    self.barra.as_ref().map(|b| b.ventana.handle()),
-                )
-            });
+        // Otra aplicacion puede taparla: el raton sobre esa otra no cuenta
+        // como encima del lector (si no, la barra saldria sobre ella). Fijada
+        // tambien: otra ventana «siempre encima» la tapa igual, y la barra
+        // (y el riel con ella) subia por encima (1-nov-2026).
+        let tapada = self.dueno.is_some_and(|d| {
+            !es_mia(
+                pindesk_shell::overlay::ventana_bajo(raton),
+                d,
+                self.barra.as_ref().map(|b| b.ventana.handle()),
+            )
+        });
         // A pantalla completa la barra va dentro y no sale con el raton en
         // cualquier sitio (taparia lo que se esta haciendo): solo en su
         // rincon, arriba a la izquierda.

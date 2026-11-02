@@ -1343,7 +1343,7 @@ impl RielDeLaVista {
         if si {
             self.tinta_v.ventana.poner_pasante(false);
             self.tinta_v.mostrar(true);
-            self.riel.ventana.traer_encima();
+            self.subir_riel();
             self.tinta_v.ventana.enfocar();
         } else {
             self.tinta_v.ventana.soltar_raton();
@@ -1616,7 +1616,18 @@ impl RielDeLaVista {
         if self.imprimiendo {
             return false;
         }
-        let l = self.local(pindesk_shell::overlay::raton_en_pantalla());
+        let raton = pindesk_shell::overlay::raton_en_pantalla();
+        // Otra aplicacion encima del visor: el raton sobre ella no esta en
+        // el borde del riel (1-nov-2026, el usuario: el riel salia y
+        // «atravesaba» la app que tapaba el visor).
+        let l = if self.tapado_en(raton) {
+            Punto {
+                x: i32::MIN / 2,
+                y: i32::MIN / 2,
+            }
+        } else {
+            self.local(raton)
+        };
         lector::riel_a_la_vista(
             self.barras || self.globo_de_prueba,
             self.anotando,
@@ -1629,6 +1640,28 @@ impl RielDeLaVista {
         )
     }
 
+    /// Si en `raton` hay otra ventana por encima del visor (la de otra
+    /// aplicacion): ni el visor, ni el riel, ni la tinta. La tinta suelta es
+    /// pasante y no sale aqui: debajo de ella esta el visor.
+    fn tapado_en(&self, raton: Punto) -> bool {
+        let bajo = pindesk_shell::overlay::ventana_bajo(raton);
+        !bajo.is_invalid()
+            && bajo.0 as isize != self.visor
+            && bajo != self.riel.ventana.handle()
+            && bajo != self.tinta_v.ventana.handle()
+    }
+
+    /// **El riel por encima de la tinta**: ya lo esta (la tinta es su duena),
+    /// asi que solo hace falta subirlo con el visor fijado, para que quede
+    /// sobre las demas ventanas «siempre encima». Sin fijar no se sube: un
+    /// `HWND_TOPMOST` lo dejaria por encima de las demas aplicaciones aunque
+    /// taparan el visor.
+    fn subir_riel(&self) {
+        if self.fijado {
+            self.riel.ventana.traer_encima();
+        }
+    }
+
     /// **Cada vuelta del bucle del visor**: lo que conto la pagina, si el
     /// raton se fue del riel, la forma rapida, guardar la tinta y pintar.
     pub fn tic(&mut self, pagina: Option<&dyn Pagina>) {
@@ -1637,7 +1670,7 @@ impl RielDeLaVista {
         if ver != self.riel.visible {
             self.riel.mostrar(ver);
             if ver {
-                self.riel.ventana.traer_encima();
+                self.subir_riel();
                 self.repintar_riel = true;
             } else {
                 self.encima = DestinoRiel::Fuera;
@@ -1828,7 +1861,7 @@ impl RielDeLaVista {
             if !self.tinta_v.visible {
                 self.tinta_v.ventana.poner_pasante(!self.toma_el_raton());
                 self.tinta_v.mostrar(true);
-                self.riel.ventana.traer_encima();
+                self.subir_riel();
             }
         }
         if self.repintar_riel {

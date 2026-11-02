@@ -394,10 +394,10 @@ pub fn correr(cx: Contexto, repuesto: Option<Repuesto>) -> anyhow::Result<Salida
         cx.textos,
     );
     tracing::info!("abriendo el lector de notas");
-    // Abierta con el espacio (vista rapida) o un fichero de codigo: se lee,
-    // no se escribe (el codigo se ve coloreado, sin las vallas del bloque).
-    let leer_al_abrir = pindesk_shell::overlay::sin_quitar_el_foco_ahora()
-        || matches!(&*cx.actual.borrow(), Destino::Fichero { ruta } if guardar::lenguaje_de(ruta).is_some());
+    // **Siempre se abre leyendo** (1-nov-2026, el usuario: «siempre se debe
+    // abrir en modo visualizacion»): se escribe con el lapiz de la barra. La
+    // unica excepcion es una nota vacia, que se abre para escribirla.
+    let leer_al_abrir = !cx.texto.trim().is_empty();
 
     // **La ventana es la de los visores como pin** (`lector_pin`): sale ya,
     // con el fondo de la nota, y la pagina llega dentro en cuanto el
