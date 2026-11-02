@@ -228,6 +228,8 @@ pub fn abrir(textos: &Catalogo, ruta: &Path) -> Result<bool> {
         ruta,
         Box::new(move |bytes| buzon.borrow_mut().push(bytes)),
         Box::new(move |vk| buzon_teclas.borrow_mut().push(vk)),
+        // Marcar el texto leyendo (2-nov-2026): resaltar, subrayar...
+        Some(crate::marcas_web::GUION_PAGINA),
     )
     .map_err(|e| anyhow::anyhow!("no se pudo abrir el visor de HTML: {e}"))?;
     // El modo oscuro de los visores (luna/sol, `crate::oscuro`): el de la
@@ -263,6 +265,14 @@ pub fn abrir(textos: &Catalogo, ruta: &Path) -> Result<bool> {
         _ => None,
     };
 
+    // **Las marcas de texto** (2-nov-2026): las pone el guion de la pagina
+    // (`marcas_web::GUION_PAGINA`); aqui, su fichero.
+    let mut marcas = crate::marcas_web::MarcasDeLaPagina::abrir(
+        Some(ruta),
+        pindesk_docs::ancla_texto::SOBRE_HTML,
+    );
+    let mut mirado = Instant::now();
+
     let mut area = pin.area;
     let mut guardados = 0usize;
     let mut vivo = true;
@@ -272,6 +282,12 @@ pub fn abrir(textos: &Catalogo, ruta: &Path) -> Result<bool> {
         // Lo que mando la pagina al riel: por donde va al desplazarse y las
         // teclas de los visores (I, M, A, Ctrl+M) pulsadas en ella.
         for m in visor.tomar_mensajes() {
+            if let Some(p) = crate::marcas_web::de_la_pagina_web(&m) {
+                if let Some(js) = marcas.atender_web(p, textos) {
+                    visor.ejecutar(&js, Box::new(|_| {}));
+                }
+                continue;
+            }
             if let Some(r) = riel.as_mut() {
                 match r.mensaje(&m, Some(&visor)) {
                     Some(riel::Pide::Teclado) => visor.enfocar(),
@@ -433,6 +449,16 @@ pub fn abrir(textos: &Catalogo, ruta: &Path) -> Result<bool> {
             r.tic(Some(&visor));
             // Con marcos, Ctrl+P es suyo (y no la impresion de Edge).
             visor.tomar_ctrl_p(r.hay_marcos());
+        }
+        // Marcas que llegaron con la sincronizacion.
+        if mirado.elapsed() >= std::time::Duration::from_secs(2) {
+            mirado = Instant::now();
+            if let Some(l) = marcas.mirar() {
+                visor.ejecutar(
+                    &crate::marcas_web::guion_recibir(&l, None),
+                    Box::new(|_| {}),
+                );
+            }
         }
         // Lo que la pagina haya mandado guardar, al fichero del chat. Se
         // escribe aqui y no dentro del aviso del WebView2 para no tocar el

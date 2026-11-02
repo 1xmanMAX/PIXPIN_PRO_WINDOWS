@@ -2505,6 +2505,7 @@ pin-v2-marca-subrayar = Подчеркнуть
 pin-v2-marca-tachar = Зачеркнуть
 pin-v2-marca-tapar = Закрыть
 pin-v2-marca-quitar = Убрать пометку
+marcas-texto-color = Цвет
 pin-v2-modo-texto = Выделить текст
 pin-v2-leyendo = Чтение…
 pin-v2-invertir-colores = Инвертировать цвета

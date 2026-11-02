@@ -236,6 +236,8 @@ pub fn pasar_al_mensaje(doc: &Path, visor: Visor) {
         use pindesk_sincro::anotado::{MARCOS, VISTAS};
         let _ = ad::del_mensaje_o_junto(doc, MARCOS, crate::marcos_doc::ruta(doc));
         let _ = ad::del_mensaje_o_junto(doc, VISTAS, crate::marcos_doc::ruta_de_vistas(doc));
+        // Las marcas de texto (de una pagina web o una nota).
+        let _ = crate::marcas_web::ruta(doc);
     }
 }
 

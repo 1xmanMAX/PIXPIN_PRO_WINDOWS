@@ -2458,6 +2458,7 @@ pin-v2-marca-subrayar = रेखांकित करें
 pin-v2-marca-tachar = स्ट्राइकथ्रू
 pin-v2-marca-tapar = ढकें
 pin-v2-marca-quitar = निशान हटाएँ
+marcas-texto-color = रंग
 pin-v2-modo-texto = टेक्स्ट चुनें
 pin-v2-leyendo = पढ़ा जा रहा है…
 pin-v2-invertir-colores = रंग उलटें

@@ -2375,6 +2375,7 @@ pin-v2-marca-subrayar = Sottolinea
 pin-v2-marca-tachar = Barra
 pin-v2-marca-tapar = Copri
 pin-v2-marca-quitar = Rimuovi il segno
+marcas-texto-color = Colore
 pin-v2-modo-texto = Seleziona testo
 pin-v2-leyendo = Lettura…
 pin-v2-invertir-colores = Inverti colori

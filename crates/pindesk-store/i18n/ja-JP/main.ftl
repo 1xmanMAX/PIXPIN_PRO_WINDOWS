@@ -2432,6 +2432,7 @@ pin-v2-marca-subrayar = 下線
 pin-v2-marca-tachar = 取り消し線
 pin-v2-marca-tapar = 覆う
 pin-v2-marca-quitar = 印を削除
+marcas-texto-color = 色
 pin-v2-modo-texto = テキストを選択
 pin-v2-leyendo = 読み取り中…
 pin-v2-invertir-colores = 色を反転

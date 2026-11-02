@@ -2457,6 +2457,7 @@ pin-v2-marca-subrayar = Altını çiz
 pin-v2-marca-tachar = Üstünü çiz
 pin-v2-marca-tapar = Ört
 pin-v2-marca-quitar = İşareti kaldır
+marcas-texto-color = Renk
 pin-v2-modo-texto = Metin seç
 pin-v2-leyendo = Okunuyor…
 pin-v2-invertir-colores = Renkleri tersine çevir
