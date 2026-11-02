@@ -63,6 +63,12 @@ const CASILLA_LOGICA: u32 = 30;
 const HUECO_CASILLA_LOGICO: u32 = 4;
 /// El campo del codigo hexadecimal, 32 de alto (`ColorPicker.scss:334-357`).
 const HEX_LOGICO: u32 = 32;
+/// El cuadro de saturacion y brillo del selector avanzado: todo el ancho de
+/// la paleta y algo menos de alto, como el de cualquier editor de imagen.
+const CUADRO_LOGICO: u32 = 100;
+/// Las tiras de tono y de opacidad: lo bastante altas para cogerlas con el
+/// raton sin apuntar, y lo bastante bajas para no comerse el desplegable.
+const TIRA_LOGICA: u32 = 12;
 /// Cada punta en su desplegable: ancha porque el icono es de 40 × 20.
 const PUNTA_ANCHO_LOGICO: u32 = 48;
 /// A cuanto del panel sale el desplegable (`sideOffset` menos el relleno
@@ -251,6 +257,10 @@ pub enum AccionPanel {
     /// la izquierda ([`boton_plegar`]). No es un estilo: lo guarda quien
     /// llama, que construye el panel [`PanelLateral::plegado`] o entero.
     Plegar,
+    /// **El cuentagotas** del desplegable de color: el proximo clic en el
+    /// lienzo toma el color de lo que haya debajo. Pulsarlo otra vez lo
+    /// suelta. Lo guarda quien llama ([`ContextoPanel::cuentagotas`]).
+    Cuentagotas,
 }
 
 /// El titulo de cada seccion. Lo traduce quien pinta.
@@ -292,6 +302,10 @@ pub enum Seccion {
     Dureza,
     /// El modo guia y el ojo de las lineas de referencia.
     Guias,
+    /// Los colores elegidos a mano hace poco, en el desplegable.
+    Recientes,
+    /// El cuadro de saturacion y brillo, los tonos y la opacidad.
+    Personalizado,
     /// Pixelar o desenfocar un mosaico (`Propiedad.MOSAICO` del movil).
     Mosaico,
     /// Cuanto agranda una lupa (`Propiedad.LUPA`).
@@ -353,11 +367,68 @@ pub enum Control {
     },
     /// El codigo hexadecimal del color actual. Pulsarlo empieza a escribir
     /// en el ([`AccionPanel::EditarHex`]); mientras se escribe, el teclado es
-    /// del campo y no del lienzo, y lo escrito lo guarda quien pinta.
+    /// del campo y no del lienzo, y lo escrito lo guarda quien pinta. Con la
+    /// opacidad por debajo del 100 % se ensenan los ocho digitos.
     Hex {
         rect: Rect,
         color: Option<ColorRgba>,
+        opacidad: f32,
     },
+    /// **El cuadro de saturacion (a lo ancho) y brillo (a lo alto)** del
+    /// tono `h`, con el punto en `s`, `v`. Se pulsa y se arrastra
+    /// ([`PanelLateral::agarre`]).
+    Cuadro {
+        rect: Rect,
+        h: f32,
+        s: f32,
+        v: f32,
+    },
+    /// La tira de los tonos, de 0 a 360 a lo ancho.
+    TiraTono {
+        rect: Rect,
+        h: f32,
+    },
+    /// La tira de la opacidad: del color transparente (sobre el tablero) al
+    /// opaco. Es la misma opacidad que la barra de abajo del panel.
+    TiraOpacidad {
+        rect: Rect,
+        color: Option<ColorRgba>,
+        valor: f32,
+    },
+}
+
+/// **Lo que se arrastra**: la barra de opacidad del panel y, en el
+/// desplegable de color, el cuadro y sus dos tiras. Se coge al pulsar
+/// ([`PanelLateral::agarre`]) y, mientras dura, cada movimiento del raton
+/// pide su valor con [`Agarre::fraccion`], aunque el raton se salga del
+/// control: asi se llega al 0 y al 100 sin apuntar al pixel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Arrastre {
+    Opacidad,
+    Cuadro,
+    Tono,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Agarre {
+    pub cual: Arrastre,
+    pub rect: Rect,
+}
+
+impl Agarre {
+    /// Donde cae `p` en el control, de 0 a 1 a lo ancho y a lo alto (0
+    /// arriba), recortado a sus bordes.
+    pub fn fraccion(&self, p: Punto) -> (f32, f32) {
+        let x = (p.x - self.rect.x) as f32 / self.rect.ancho.max(1) as f32;
+        let y = (p.y - self.rect.y) as f32 / self.rect.alto.max(1) as f32;
+        (x.clamp(0.0, 1.0), y.clamp(0.0, 1.0))
+    }
+
+    /// La opacidad que pide `p` en la barra o en la tira: en pasos del 1 %,
+    /// los del campo `opacity` del fichero.
+    pub fn opacidad(&self, p: Punto) -> f32 {
+        (self.fraccion(p).0 * 100.0).round() / 100.0
+    }
 }
 
 impl Control {
@@ -368,7 +439,10 @@ impl Control {
             | Control::Opcion { rect, .. }
             | Control::Punta { rect, .. }
             | Control::Deslizador { rect, .. }
-            | Control::Hex { rect, .. } => rect,
+            | Control::Hex { rect, .. }
+            | Control::Cuadro { rect, .. }
+            | Control::TiraTono { rect, .. }
+            | Control::TiraOpacidad { rect, .. } => rect,
         }
     }
 
@@ -380,7 +454,10 @@ impl Control {
             | Control::Opcion { rect, .. }
             | Control::Punta { rect, .. }
             | Control::Deslizador { rect, .. }
-            | Control::Hex { rect, .. } => {
+            | Control::Hex { rect, .. }
+            | Control::Cuadro { rect, .. }
+            | Control::TiraTono { rect, .. }
+            | Control::TiraOpacidad { rect, .. } => {
                 rect.x += dx;
                 rect.y += dy;
             }
@@ -862,6 +939,22 @@ pub struct ContextoPanel<'a> {
     /// menu del papel, como la entrada del menu principal de Excalidraw, y
     /// no se mezcla con las propiedades de lo elegido.
     pub lienzo: Option<ColorRgba>,
+    /// Lo que el desplegable de color guarda fuera del estilo.
+    pub color: ExtrasColor<'a>,
+}
+
+/// **Lo del selector de color que no es del estilo**: lo guarda quien llama
+/// (es interfaz, no documento) y se lo pasa al panel para colocarlo.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct ExtrasColor<'a> {
+    /// Los elegidos a mano hace poco, el ultimo delante
+    /// (`selector_color::Recientes`).
+    pub recientes: &'a [ColorRgba],
+    /// El tono que se estaba eligiendo: un gris no tiene tono propio, y sin
+    /// recordarlo la tira saltaria al rojo (`Hsv::con_tono_de`).
+    pub tono: Option<f32>,
+    /// Si el cuentagotas esta esperando el clic en el lienzo.
+    pub cuentagotas: bool,
 }
 
 /// A quien le toca un punto.
@@ -1123,6 +1216,22 @@ fn color_de_casilla(c: Casilla, actual: Option<ColorRgba>, tono: usize) -> Optio
     }
 }
 
+/// **Si un color ya esta a la vista** en el panel o en su paleta: los
+/// rapidos del trazo y del fondo, las quince casillas con sus tonos y los
+/// papeles. Lo que no, es un color elegido a mano, y va a los recientes.
+pub fn es_de_la_paleta(c: ColorRgba) -> bool {
+    let igual = |v: u32| casi(hex(v), c);
+    COLORES_TRAZO.iter().any(|q| casi(*q, c))
+        || COLORES_FONDO.iter().flatten().any(|q| casi(*q, c))
+        || COLORES_LIENZO.iter().any(|q| casi(*q, c))
+        || PAPELES_DEL_MOVIL.iter().any(|v| igual(*v))
+        || PALETA.iter().any(|k| match k {
+            Casilla::Transparente => false,
+            Casilla::Fijo(v) => igual(*v),
+            Casilla::Tonos(t) => t.iter().any(|v| igual(*v)),
+        })
+}
+
 /// Los tonos de la familia del color actual, si es de alguna.
 fn tonos_de(actual: Option<ColorRgba>) -> Option<[u32; 5]> {
     let a = actual?;
@@ -1177,7 +1286,9 @@ pub fn color_de_codigo(escrito: &str) -> Option<ColorRgba> {
 /// enfocarse: la primera tecla lo sustituye, que es lo que se quiere casi
 /// siempre (pegar o teclear otro color), y Retroceso lo vacia de una vez.
 /// Guarda solo digitos: la almohadilla se acepta al teclear y no se guarda,
-/// asi «con o sin #» da lo mismo y nunca caben siete caracteres.
+/// asi «con o sin #» da lo mismo. Caben ocho: los dos ultimos son la
+/// opacidad (`#rrggbbaa`), que va al campo `opacity` y no al color (ver
+/// `selector_color`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EdicionHex {
     texto: String,
@@ -1185,8 +1296,10 @@ pub struct EdicionHex {
 }
 
 impl EdicionHex {
-    pub fn nueva(actual: Option<ColorRgba>) -> EdicionHex {
-        let texto = codigo_hex(actual).unwrap_or_default();
+    pub fn nueva(actual: Option<ColorRgba>, opacidad: f32) -> EdicionHex {
+        let texto = actual
+            .map(|c| crate::selector_color::escribir_codigo(c, opacidad))
+            .unwrap_or_default();
         EdicionHex {
             todo_elegido: !texto.is_empty(),
             texto,
@@ -1203,8 +1316,8 @@ impl EdicionHex {
     }
 
     /// Una tecla escrita. Devuelve si cambio algo: una letra que no es un
-    /// digito hexadecimal no se escribe —en un campo de seis digitos solo
-    /// ensuciaria— y un septimo digito tampoco.
+    /// digito hexadecimal no se escribe —en un campo de digitos solo
+    /// ensuciaria— y un noveno digito tampoco.
     pub fn escribir(&mut self, c: char) -> bool {
         if c == '#' {
             // Aceptada y no guardada: «#1e1e1e» y «1e1e1e» son lo mismo.
@@ -1217,7 +1330,7 @@ impl EdicionHex {
             self.texto.clear();
             self.todo_elegido = false;
         }
-        if self.texto.len() >= 6 {
+        if self.texto.len() >= 8 {
             return false;
         }
         self.texto.push(c.to_ascii_lowercase());
@@ -1234,14 +1347,28 @@ impl EdicionHex {
         self.texto.pop().is_some()
     }
 
-    /// El color que dice, si ya es un codigo entero.
+    /// El color que dice, si ya es un codigo entero (seis u ocho digitos:
+    /// los tres de la forma corta se leen igual de facil como un codigo a
+    /// medio escribir, ver [`color_de_codigo`]).
     pub fn color(&self) -> Option<ColorRgba> {
-        color_de_codigo(&self.texto)
+        match self.texto.len() {
+            6 | 8 => crate::selector_color::leer_codigo(&self.texto).map(|(c, _)| c),
+            _ => None,
+        }
+    }
+
+    /// La opacidad que dice, si se escribieron los ocho digitos.
+    pub fn opacidad(&self) -> Option<f32> {
+        if self.texto.len() != 8 {
+            return None;
+        }
+        crate::selector_color::leer_codigo(&self.texto).and_then(|(_, a)| a)
     }
 }
 
 impl Emergente {
     /// La paleta: rejilla de 5 × 3, los tonos del color elegido y su codigo.
+    #[allow(clippy::too_many_arguments)]
     fn de_color(
         cual: Desplegable,
         disparador: Rect,
@@ -1249,6 +1376,8 @@ impl Emergente {
         area: Rect,
         e: u32,
         actual: Option<ColorRgba>,
+        opacidad: Option<f32>,
+        extras: ExtrasColor,
     ) -> Emergente {
         // El tono por defecto de cada familia: el 4 para trazo y el 1 para
         // fondo (`Picker.tsx:117-122`); para el papel, el mas claro (el 50
@@ -1289,6 +1418,27 @@ impl Emergente {
                 })
             });
         }
+        // **Los elegidos a mano hace poco**, como la fila de «colores
+        // personalizados» de Excalidraw: el que se busco con el cuadro o se
+        // escribio con su codigo se vuelve a encontrar de un clic.
+        if !extras.recientes.is_empty() {
+            c.separar();
+            c.titulo(Seccion::Recientes);
+            c.rejilla(
+                extras.recientes.len(),
+                (casilla, casilla, hueco),
+                |k, rect| {
+                    let color = Some(extras.recientes[k]);
+                    Some(Control::Muestra {
+                        rect,
+                        color,
+                        activa: mismo(color, actual),
+                        accion: accion_de_color(cual, color),
+                        grande: false,
+                    })
+                },
+            );
+        }
         if cual == Desplegable::ColorLienzo {
             // Los del movil, con su valor exacto: es lo que hace que el papel
             // elegido aqui salga marcado en su selector al abrirlo alla.
@@ -1309,17 +1459,68 @@ impl Emergente {
                 },
             );
         }
+        // **El selector avanzado** (2-nov-2026): el cuadro de saturacion y
+        // brillo del tono elegido, la tira de los tonos y, si lo que se
+        // pinta tiene opacidad (el papel no), la tira de la opacidad. Un
+        // color sin tono (gris, blanco, transparente) conserva el que se
+        // estaba eligiendo.
+        c.separar();
+        c.titulo(Seccion::Personalizado);
+        let hsv = crate::selector_color::Hsv::de(actual.unwrap_or(ColorRgba::opaco(1.0, 1.0, 1.0)))
+            .con_tono_de(extras.tono);
+        let alto_cuadro = px(CUADRO_LOGICO);
+        let tira = px(TIRA_LOGICA);
+        let entre = px(HUECO_OPCION_LOGICO);
+        let fila = |y: i32, alto: i32| Rect {
+            x: 0,
+            y,
+            ancho: ancho_util as u32,
+            alto: alto as u32,
+        };
+        c.controles.push(Control::Cuadro {
+            rect: fila(c.y, alto_cuadro),
+            h: hsv.h,
+            s: hsv.s,
+            v: hsv.v,
+        });
+        c.y += alto_cuadro + entre;
+        c.controles.push(Control::TiraTono {
+            rect: fila(c.y, tira),
+            h: hsv.h,
+        });
+        c.y += tira;
+        if let Some(valor) = opacidad {
+            c.y += entre;
+            c.controles.push(Control::TiraOpacidad {
+                rect: fila(c.y, tira),
+                color: actual,
+                valor,
+            });
+            c.y += tira;
+        }
         c.separar();
         c.titulo(Seccion::CodigoHex);
+        // El campo y, a su derecha, el cuentagotas, del mismo alto.
         let alto = px(HEX_LOGICO);
         c.controles.push(Control::Hex {
             rect: Rect {
                 x: 0,
                 y: c.y,
-                ancho: ancho_util as u32,
+                ancho: (ancho_util - alto - entre) as u32,
                 alto: alto as u32,
             },
             color: actual,
+            opacidad: opacidad.unwrap_or(1.0),
+        });
+        c.controles.push(Control::Opcion {
+            rect: Rect {
+                x: ancho_util - alto,
+                y: c.y,
+                ancho: alto as u32,
+                alto: alto as u32,
+            },
+            accion: AccionPanel::Cuentagotas,
+            activa: extras.cuentagotas,
         });
         c.y += alto;
         Emergente::colocar(cual, c, disparador, panel, area, e)
@@ -1897,15 +2098,32 @@ impl PanelLateral {
                 _ => None,
             })?;
             Some(match d {
-                Desplegable::ColorTrazo => {
-                    Emergente::de_color(d, disparador, marco, area, escala_por_cien, Some(s.trazo))
-                }
-                Desplegable::ColorFondo => {
-                    Emergente::de_color(d, disparador, marco, area, escala_por_cien, s.relleno)
-                }
-                Desplegable::ColorLienzo => {
-                    Emergente::de_color(d, disparador, marco, area, escala_por_cien, ctx.lienzo)
-                }
+                // La opacidad sale con el color si lo elegido la tiene (un
+                // mosaico no: tapa entero); el papel, nunca.
+                Desplegable::ColorTrazo | Desplegable::ColorFondo => Emergente::de_color(
+                    d,
+                    disparador,
+                    marco,
+                    area,
+                    escala_por_cien,
+                    if d == Desplegable::ColorTrazo {
+                        Some(s.trazo)
+                    } else {
+                        s.relleno
+                    },
+                    tiene(Propiedad::Opacidad).then_some(s.opacidad),
+                    ctx.color,
+                ),
+                Desplegable::ColorLienzo => Emergente::de_color(
+                    d,
+                    disparador,
+                    marco,
+                    area,
+                    escala_por_cien,
+                    ctx.lienzo,
+                    None,
+                    ctx.color,
+                ),
                 Desplegable::PuntaInicio => Emergente::de_puntas(
                     d,
                     disparador,
@@ -1953,6 +2171,35 @@ impl PanelLateral {
         }
     }
 
+    /// **Lo que se coge al pulsar en `p`**, si es algo que se arrastra (la
+    /// barra de opacidad, el cuadro o una tira del selector de color).
+    pub fn agarre(&self, p: Punto) -> Option<Agarre> {
+        if self.plegado || self.plegar.is_some_and(|b| b.contiene(p)) {
+            return None;
+        }
+        let en = |controles: &[Control]| {
+            controles.iter().find_map(|c| {
+                let cual = match *c {
+                    Control::Deslizador { .. } | Control::TiraOpacidad { .. } => Arrastre::Opacidad,
+                    Control::Cuadro { .. } => Arrastre::Cuadro,
+                    Control::TiraTono { .. } => Arrastre::Tono,
+                    _ => return None,
+                };
+                let rect = c.rect();
+                rect.contiene(p).then_some(Agarre { cual, rect })
+            })
+        };
+        if let Some(em) = &self.emergente
+            && em.marco.contiene(p)
+        {
+            return en(&em.controles);
+        }
+        if !self.marco.contiene(p) {
+            return None;
+        }
+        en(&self.controles)
+    }
+
     pub fn destino(&self, p: Punto) -> DestinoPanel {
         if self.plegar.is_some_and(|b| b.contiene(p)) {
             return DestinoPanel::Accion(AccionPanel::Plegar);
@@ -1977,9 +2224,14 @@ impl PanelLateral {
         for c in &self.controles {
             match *c {
                 Control::Deslizador { rect, .. } if rect.contiene(p) => {
-                    // Pasos de 10 %, como el deslizador de Excalidraw.
-                    let t = (p.x - rect.x) as f32 / rect.ancho.max(1) as f32;
-                    let valor = ((t * 10.0).round() / 10.0).clamp(0.0, 1.0);
+                    // Pasos del 1 %, los del campo `opacity` del fichero: con
+                    // los de 10 % de Excalidraw no habia manera de dejar un
+                    // relleno al 35 %. Arrastrando va por `agarre`.
+                    let valor = Agarre {
+                        cual: Arrastre::Opacidad,
+                        rect,
+                    }
+                    .opacidad(p);
                     return DestinoPanel::Accion(AccionPanel::Estilo(CambioEstilo::Opacidad(
                         valor,
                     )));
@@ -2018,6 +2270,7 @@ mod pruebas {
             mandos: Mandos::default(),
             abierto: None,
             lienzo: None,
+            color: ExtrasColor::default(),
         }
     }
 
@@ -2036,6 +2289,7 @@ mod pruebas {
             },
             abierto: None,
             lienzo: None,
+            color: ExtrasColor::default(),
         }
     }
 
@@ -2104,6 +2358,7 @@ mod pruebas {
                 mandos: Mandos::de_seleccion(elegidos),
                 abierto,
                 lienzo: None,
+                color: ExtrasColor::default(),
             },
         )
         .unwrap()
@@ -2715,8 +2970,8 @@ mod pruebas {
     }
 
     #[test]
-    fn la_primera_tecla_sustituye_el_codigo_y_no_caben_mas_de_seis() {
-        let mut e = EdicionHex::nueva(Some(hex(0x1e1e1e)));
+    fn la_primera_tecla_sustituye_el_codigo_y_no_caben_mas_de_ocho() {
+        let mut e = EdicionHex::nueva(Some(hex(0x1e1e1e)), 1.0);
         assert_eq!(e.texto(), "1e1e1e");
         assert!(e.todo_elegido());
         // La almohadilla se acepta y no se guarda.
@@ -2727,14 +2982,28 @@ mod pruebas {
             assert!(e.escribir(c));
         }
         assert_eq!(e.color(), Some(hex(0xabcdef)));
-        // Casos negativos: un septimo digito y una letra que no es hex.
+        assert_eq!(e.opacidad(), None, "con seis no se toca la opacidad");
+        // Los dos de la opacidad: la mitad.
+        assert!(e.escribir('8'));
+        assert_eq!(e.color(), None, "siete digitos no son un color");
+        assert!(e.escribir('0'));
+        assert_eq!(e.color(), Some(hex(0xabcdef)));
+        assert!((e.opacidad().unwrap() - 128.0 / 255.0).abs() < 1e-6);
+        // Casos negativos: un noveno digito y una letra que no es hex.
         assert!(!e.escribir('0'));
         assert!(!e.escribir('z'));
-        assert_eq!(e.texto(), "abcdef");
+        assert_eq!(e.texto(), "abcdef80");
+        assert!(e.borrar());
+        assert!(e.borrar());
         assert!(e.borrar());
         assert_eq!(e.color(), None, "cinco digitos no son un color");
+        // Con opacidad, el campo nace con los ocho.
+        assert_eq!(
+            EdicionHex::nueva(Some(hex(0x1e1e1e)), 0.5).texto(),
+            "1e1e1e80"
+        );
         // Retroceso con todo elegido lo vacia de una vez.
-        let mut f = EdicionHex::nueva(Some(hex(0x123456)));
+        let mut f = EdicionHex::nueva(Some(hex(0x123456)), 1.0);
         assert!(f.borrar());
         assert_eq!(f.texto(), "");
         assert!(!f.borrar(), "vacio no hay nada que borrar");
@@ -2784,7 +3053,12 @@ mod pruebas {
             .collect();
         assert_eq!(
             titulos,
-            vec![Seccion::Colores, Seccion::Tonos, Seccion::CodigoHex]
+            vec![
+                Seccion::Colores,
+                Seccion::Tonos,
+                Seccion::Personalizado,
+                Seccion::CodigoHex
+            ]
         );
         // 14 de la rejilla (el transparente no es un trazo) y 5 tonos.
         let muestras = em
@@ -2848,6 +3122,7 @@ mod pruebas {
                 mandos: Mandos::de_seleccion(&elegidos),
                 abierto,
                 lienzo: Some(papel),
+                color: ExtrasColor::default(),
             },
         )
         .expect("el papel siempre tiene panel")
@@ -2965,6 +3240,7 @@ mod pruebas {
                     mandos: Mandos::de_seleccion(&elegidos),
                     abierto,
                     lienzo: None,
+                    color: ExtrasColor::default(),
                 },
             )
             .unwrap();
@@ -3019,6 +3295,7 @@ mod pruebas {
                     mandos: Mandos::de_seleccion(&elegidos),
                     abierto: None,
                     lienzo: None,
+                    color: ExtrasColor::default(),
                 },
             )
             .unwrap()
@@ -3060,7 +3337,7 @@ mod pruebas {
     }
 
     #[test]
-    fn la_opacidad_se_elige_por_donde_se_pulsa_en_pasos_de_diez() {
+    fn la_opacidad_se_elige_por_donde_se_pulsa_en_pasos_del_uno_por_ciento() {
         let p = PanelLateral::construir(area(), 100, ctx(&[Propiedad::Opacidad], 0)).unwrap();
         let pista = p
             .controles
@@ -3076,7 +3353,7 @@ mod pruebas {
         };
         assert_eq!(
             p.destino(en(0.52)),
-            DestinoPanel::Accion(AccionPanel::Estilo(CambioEstilo::Opacidad(0.5)))
+            DestinoPanel::Accion(AccionPanel::Estilo(CambioEstilo::Opacidad(0.52)))
         );
         assert_eq!(
             p.destino(en(0.0)),
@@ -3136,6 +3413,213 @@ mod pruebas {
             DestinoPanel::Fuera
         );
     }
+
+    fn con_paleta(
+        elegidos: &[&Elemento],
+        abierto: Desplegable,
+        extras: ExtrasColor,
+    ) -> PanelLateral {
+        let props = propiedades_de_seleccion(elegidos);
+        PanelLateral::construir(
+            area(),
+            100,
+            ContextoPanel {
+                propiedades: &props,
+                estilo: estilo_de_seleccion(elegidos).unwrap(),
+                seleccionados: elegidos.len(),
+                mandos: Mandos::de_seleccion(elegidos),
+                abierto: Some(abierto),
+                lienzo: None,
+                color: extras,
+            },
+        )
+        .unwrap()
+    }
+
+    fn del_emergente<T>(p: &PanelLateral, f: impl Fn(&Control) -> Option<T>) -> Option<T> {
+        p.emergente.as_ref()?.controles.iter().find_map(f)
+    }
+
+    #[test]
+    fn la_paleta_trae_el_cuadro_los_tonos_la_opacidad_y_el_cuentagotas() {
+        let caja = Elemento {
+            trazo: hex(0x1971c2),
+            opacidad: 0.4,
+            ..elem(1, Figura::Rectangulo)
+        };
+        let p = con_paleta(&[&caja], Desplegable::ColorTrazo, ExtrasColor::default());
+        let (h, s, v) = del_emergente(&p, |c| match *c {
+            Control::Cuadro { h, s, v, .. } => Some((h, s, v)),
+            _ => None,
+        })
+        .expect("el cuadro");
+        let azul = crate::selector_color::Hsv::de(hex(0x1971c2));
+        assert!(
+            (h - azul.h).abs() < 0.01 && (s - azul.s).abs() < 0.01 && (v - azul.v).abs() < 0.01
+        );
+        assert_eq!(
+            del_emergente(&p, |c| match *c {
+                Control::TiraOpacidad { valor, .. } => Some(valor),
+                _ => None,
+            }),
+            Some(0.4)
+        );
+        assert_eq!(
+            del_emergente(&p, |c| match *c {
+                Control::Hex { opacidad, .. } => Some(opacidad),
+                _ => None,
+            }),
+            Some(0.4),
+            "el codigo ensena la opacidad"
+        );
+        let gotas = rect_de(&p, AccionPanel::Cuentagotas);
+        assert_eq!(
+            p.destino(centro(gotas)),
+            DestinoPanel::Accion(AccionPanel::Cuentagotas)
+        );
+    }
+
+    #[test]
+    fn el_cuadro_y_las_tiras_se_cogen_y_siguen_al_raton_aunque_se_salga() {
+        let caja = elem(1, Figura::Rectangulo);
+        let p = con_paleta(&[&caja], Desplegable::ColorTrazo, ExtrasColor::default());
+        for (buscado, cual) in [
+            ("cuadro", Arrastre::Cuadro),
+            ("tono", Arrastre::Tono),
+            ("opacidad", Arrastre::Opacidad),
+        ] {
+            let rect = del_emergente(&p, |c| match (c, cual) {
+                (Control::Cuadro { rect, .. }, Arrastre::Cuadro)
+                | (Control::TiraTono { rect, .. }, Arrastre::Tono)
+                | (Control::TiraOpacidad { rect, .. }, Arrastre::Opacidad) => Some(*rect),
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("sin {buscado}"));
+            let agarre = p
+                .agarre(centro(rect))
+                .unwrap_or_else(|| panic!("no se coge {buscado}"));
+            assert_eq!(agarre.cual, cual);
+            // Fuera por la izquierda y por arriba: el borde, no otra cosa.
+            assert_eq!(agarre.fraccion(Punto { x: -500, y: -500 }), (0.0, 0.0));
+            assert_eq!(agarre.fraccion(Punto { x: 5000, y: 5000 }), (1.0, 1.0));
+        }
+        // La barra de opacidad del panel tambien se arrastra.
+        let barra = p
+            .controles
+            .iter()
+            .find_map(|c| match *c {
+                Control::Deslizador { rect, .. } => Some(rect),
+                _ => None,
+            })
+            .unwrap();
+        let a = p.agarre(centro(barra)).unwrap();
+        assert_eq!(a.cual, Arrastre::Opacidad);
+        assert_eq!(
+            a.opacidad(Punto {
+                x: barra.x + barra.ancho as i32,
+                y: 0
+            }),
+            1.0
+        );
+        // Caso negativo: un boton no se arrastra.
+        let gotas = rect_de(&p, AccionPanel::Cuentagotas);
+        assert_eq!(p.agarre(centro(gotas)), None);
+        assert_eq!(p.agarre(Punto { x: 1900, y: 1000 }), None, "fuera de todo");
+    }
+
+    #[test]
+    fn un_gris_ensena_el_tono_que_se_estaba_eligiendo() {
+        let caja = Elemento {
+            trazo: hex(0x808080),
+            ..elem(1, Figura::Rectangulo)
+        };
+        let extras = ExtrasColor {
+            tono: Some(200.0),
+            ..ExtrasColor::default()
+        };
+        let p = con_paleta(&[&caja], Desplegable::ColorTrazo, extras);
+        assert_eq!(
+            del_emergente(&p, |c| match *c {
+                Control::TiraTono { h, .. } => Some(h),
+                _ => None,
+            }),
+            Some(200.0)
+        );
+    }
+
+    #[test]
+    fn los_recientes_salen_en_su_fila_y_se_eligen_de_un_clic() {
+        let caja = elem(1, Figura::Rectangulo);
+        let recientes = [hex(0x123456), hex(0xabcdef)];
+        let extras = ExtrasColor {
+            recientes: &recientes,
+            ..ExtrasColor::default()
+        };
+        let p = con_paleta(&[&caja], Desplegable::ColorFondo, extras);
+        assert!(
+            p.emergente
+                .as_ref()
+                .unwrap()
+                .controles
+                .iter()
+                .any(|c| matches!(
+                    c,
+                    Control::Titulo {
+                        seccion: Seccion::Recientes,
+                        ..
+                    }
+                ))
+        );
+        let a = AccionPanel::Estilo(CambioEstilo::Relleno(Some(hex(0xabcdef))));
+        assert_eq!(p.destino(centro(rect_de(&p, a))), DestinoPanel::Accion(a));
+        // Caso negativo: sin recientes no hay fila vacia.
+        let sin = con_paleta(&[&caja], Desplegable::ColorFondo, ExtrasColor::default());
+        assert!(!sin.emergente.unwrap().controles.iter().any(|c| matches!(
+            c,
+            Control::Titulo {
+                seccion: Seccion::Recientes,
+                ..
+            }
+        )));
+    }
+
+    #[test]
+    fn lo_de_la_paleta_no_es_un_color_elegido_a_mano() {
+        assert!(es_de_la_paleta(hex(0x1e1e1e)));
+        assert!(es_de_la_paleta(hex(0x4dabf7)), "un tono de la paleta");
+        assert!(es_de_la_paleta(hex(0xfdf6e3)), "un papel del movil");
+        assert!(!es_de_la_paleta(hex(0x123456)));
+    }
+
+    #[test]
+    fn el_papel_no_tiene_tira_de_opacidad() {
+        // El papel del lienzo es opaco: una tira que no cambia nada miente.
+        let p = PanelLateral::construir(
+            area(),
+            100,
+            ContextoPanel {
+                propiedades: &[],
+                estilo: EstiloDibujo::default(),
+                seleccionados: 0,
+                mandos: Mandos::default(),
+                abierto: Some(Desplegable::ColorLienzo),
+                lienzo: Some(hex(0xffffff)),
+                color: ExtrasColor::default(),
+            },
+        )
+        .unwrap();
+        let em = p.emergente.as_ref().unwrap();
+        assert!(
+            em.controles
+                .iter()
+                .any(|c| matches!(c, Control::Cuadro { .. }))
+        );
+        assert!(
+            !em.controles
+                .iter()
+                .any(|c| matches!(c, Control::TiraOpacidad { .. }))
+        );
+    }
 }
 
 #[cfg(test)]
@@ -3164,6 +3648,7 @@ mod pruebas_serie_de_punto {
                     .con_serie_de_punto(h, serie),
                 abierto: None,
                 lienzo: None,
+                color: ExtrasColor::default(),
             },
         )
     }
@@ -3246,6 +3731,7 @@ mod pruebas_pedir_medida {
                     .con_pedir_la_medida(h, pedir),
                 abierto: None,
                 lienzo: None,
+                color: ExtrasColor::default(),
             },
         )
         .expect("sin panel");

@@ -279,6 +279,14 @@ impl Mano {
         vista: Vista<'_>,
     ) -> Atendido {
         let mut sigue = Atendido::default();
+        // Lo que se arrastra en el panel (la opacidad, el cuadro del color)
+        // sigue al raton aunque salga del panel, hasta soltar.
+        if panel
+            && let EventoOverlay::RatonMovido(p) = *ev
+            && let Some(repintar) = crate::panel_dibujo::arrastrar(p, gesto, escena)
+        {
+            return Atendido::suyo(Repinte::si(repintar));
+        }
         if panel && let EventoOverlay::BotonPulsado(p) | EventoOverlay::BotonSoltado(p) = *ev {
             // Todo el camino del clic esta en `panel_dibujo::atender_clic`,
             // que es por donde las pruebas pulsan cada boton del panel.
@@ -297,6 +305,13 @@ impl Mano {
                         a.pedido = Some(Pedido::GuardarFigura);
                     }
                     return a;
+                }
+                // El cuentagotas: el color de lo que hay debajo, en el
+                // documento y no en la pantalla.
+                ClicPanel::Cuentagotas => {
+                    let q = vista.al_documento(p);
+                    let r = crate::panel_dibujo::tomar_con_cuentagotas(q, gesto, escena);
+                    return Atendido::suyo(Repinte::si(r));
                 }
                 ClicPanel::Fuera { cerro } => {
                     if cerro {

@@ -61,6 +61,14 @@ pub struct Estado {
     /// vez de las de dia. Uno para los dos. `None` es «nunca se toco», y
     /// entonces de dia, como el movil.
     pub figuras_de_noche: Option<bool>,
+    /// **El ultimo «trazo a mano» elegido** en el panel del lienzo: 0
+    /// arquitecto, 1 artista, 2 caricaturista (el `currentItemRoughness`
+    /// que Excalidraw recuerda). `None` es «nunca se toco», y entonces el
+    /// de fabrica, artista.
+    pub lienzo_rugosidad: Option<u8>,
+    /// Los colores elegidos a mano hace poco en el selector de color del
+    /// lienzo, el ultimo delante (`#rrggbb`).
+    pub lienzo_colores_recientes: Vec<String>,
 }
 
 fn fichero(ubicacion: &Ubicacion) -> PathBuf {
@@ -113,6 +121,8 @@ mod pruebas {
             lienzo_pantalla_completa: Some(false),
             lienzo_ventana: Some([-1200, 40, 900, 640]),
             figuras_de_noche: Some(true),
+            lienzo_rugosidad: Some(2),
+            lienzo_colores_recientes: vec!["#123456".into(), "#abcdef".into()],
         };
         guardar(&u, &e).unwrap();
         assert_eq!(cargar(&u), e);
