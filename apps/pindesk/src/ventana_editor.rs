@@ -995,6 +995,9 @@ fn abrir_en_modo(
     // lienzo, su interruptor «Al chat» (ver `zona_al_chat`).
     let mut pastilla_zona = pastilla_zona::PastillaZona::default();
     let hoja_del_chat = crate::zona_al_chat::hoja_abierta().filter(|_| pantalla.is_none());
+    // «En línea / Sin conexión», si el chat que abrio este lienzo va por la
+    // nube (`en_linea::en_lienzo`): arriba a la izquierda, como en el lector.
+    let en_linea = crate::en_linea::del_lienzo().filter(|_| pantalla.is_none());
     // Donde acaba la barra, en pixeles de la ventana: la tira de emoticonos
     // y la hojita salen justo debajo.
     let bajo_la_barra =
@@ -1635,6 +1638,15 @@ fn abrir_en_modo(
                 if navegador.arrastrando() {
                     ventana.poner_cursor(FormaCursorWin::Mover);
                 }
+                continue;
+            }
+            if let EventoOverlay::BotonPulsado(q) = &ev
+                && en_linea
+                    .as_ref()
+                    .is_some_and(|n| n.pulsar((q.x - area.x) as f32, (q.y - area.y) as f32))
+            {
+                interfaz_sucia = true;
+                ventana.invalidar();
                 continue;
             }
             // F8: la pastilla de la Zona es un boton, no el sitio donde empieza
@@ -3375,6 +3387,11 @@ fn abrir_en_modo(
                         );
                     } else {
                         pastilla_zona.esconder();
+                    }
+                    if let Some(n) = en_linea.as_ref().filter(|_| presentacion.is_none()) {
+                        let k = escala_por_cien as f32 / 100.0;
+                        p.desplazar(base.0, base.1);
+                        n.pintar(p, 14.0 * k, 14.0 * k, k, exportar::textos());
                     }
                     // El cristal de la lupa viva, encima de la barra.
                     if let (Some(l), Some(b)) = (lupa.as_ref(), cristal.as_ref()) {

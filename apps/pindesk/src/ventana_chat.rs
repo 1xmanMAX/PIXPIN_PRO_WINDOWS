@@ -15479,6 +15479,11 @@ fn abrir_una_hoja(
             .filter(|r| !r.is_empty())
             .unwrap_or_else(|| m.codigo_unico()),
     });
+    // «En línea / Sin conexión» si el chat va por la nube: lo retenido es
+    // el lienzo por su referencia (`en_linea::Clave::Lienzo`).
+    let en_linea = crate::en_linea::referencia_de_la_hoja(m)
+        .map(|r| std::rc::Rc::new(crate::en_linea::EnLinea::de_lienzo(raiz, proyecto, r)));
+    let _en_linea = en_linea.clone().map(crate::en_linea::en_lienzo);
     let mut pegadas = Vec::new();
     let resultado = crate::ventana_editor::abrir_sobre_con_pegadas(
         escena,
@@ -15513,6 +15518,10 @@ fn abrir_una_hoja(
         }
     };
     let guardada = guardar_hoja_dibujada(&ruta, &lienzo, &escena);
+    // Ya guardado: si se deja sin conexion, se pregunta (`en_linea`).
+    if let Some(n) = &en_linea {
+        n.al_cerrar(crate::ventana_editor::exportar::textos());
+    }
     // Adonde lleva el enlace pulsado, si se pulso: lo resuelve `abrir_hojas`.
     (guardada, destino)
 }
