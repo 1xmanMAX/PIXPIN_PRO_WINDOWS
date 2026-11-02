@@ -172,7 +172,8 @@ pub struct Rotulos {
     pub foto: String,
     /// lun ... dom.
     pub dias: [String; 7],
-    /// enero ... diciembre.
+    /// enero ... diciembre, como van dentro de una fecha («5 октября»: en
+    /// ruso, genitivo).
     pub meses: [String; 12],
     /// «{dia} de {mes}».
     pub fecha: String,

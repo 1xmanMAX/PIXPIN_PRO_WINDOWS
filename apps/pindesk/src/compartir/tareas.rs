@@ -81,7 +81,9 @@ pub(crate) fn rotulos(t: &Catalogo) -> Rotulos {
         ),
         foto: t.t("tareas-exportar-foto"),
         dias: std::array::from_fn(|i| t.t(&format!("tareas-dia-{i}"))),
-        meses: std::array::from_fn(|i| t.t(&format!("chat-mes-{}", i + 1))),
+        // Van dentro de «{dia} de {mes}»: el mes de dentro de una fecha
+        // (genitivo en ruso, `chat-mes-dia-*`), no el suelto.
+        meses: std::array::from_fn(|i| crate::ventana_chat::mes_en_fecha(t, i + 1)),
         fecha: con("chat-fecha", &fecha),
         fecha_con_ano: con("chat-fecha-con-ano", &fecha),
     }
