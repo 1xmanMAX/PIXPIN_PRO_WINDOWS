@@ -681,9 +681,13 @@ fn tomar_refrescar() -> bool {
 }
 
 /// La figura que se eligio en la ventana de las figuras para un chat
-/// (`figuras::abrir_para_adjuntar`): `(proyecto, id de la figura)`. Solo cabe
-/// una: si llegan dos seguidas antes de que el chat mire, gana la ultima.
-static FIGURA_PEDIDA: std::sync::Mutex<Option<(String, String)>> = std::sync::Mutex::new(None);
+/// (`figuras::abrir_para_adjuntar`): `(proyecto, sus hojas)`. Una figura es
+/// una hoja; una plantilla con sus parametros (3-nov-2026, «del 1 al 40, de
+/// 10 en 10») puede ser varias, que van en fila en el mismo lienzo. Solo
+/// cabe una: si llegan dos seguidas antes de que el chat mire, gana la
+/// ultima.
+type FiguraPedida = (String, Vec<pindesk_motor2d::biblioteca::FiguraGuardada>);
+static FIGURA_PEDIDA: std::sync::Mutex<Option<FiguraPedida>> = std::sync::Mutex::new(None);
 
 /// **Manda una figura de la biblioteca al chat** `proyecto` (desde el hilo
 /// de la ventana de las figuras). El chat la recoge en su siguiente vuelta,
@@ -695,12 +699,15 @@ static FIGURA_PEDIDA: std::sync::Mutex<Option<(String, String)>> = std::sync::Mu
 /// quedaria lleno y la figura entraria por sorpresa la proxima vez que se
 /// abriera el chat, y la ventana de las figuras habria dicho «Adjuntada»
 /// sin serlo.
-pub(super) fn entregar_figura(proyecto: String, id: String) {
+pub(super) fn entregar_figura(
+    proyecto: String,
+    hojas: Vec<pindesk_motor2d::biblioteca::FiguraGuardada>,
+) {
     if let Ok(mut g) = IR_A.lock() {
         *g = Some((proyecto.clone(), None));
     }
     if let Ok(mut g) = FIGURA_PEDIDA.lock() {
-        *g = Some((proyecto, id));
+        *g = Some((proyecto, hojas));
     }
     let ya = ABIERTA.load(std::sync::atomic::Ordering::SeqCst);
     if ya > 0 {
@@ -728,7 +735,7 @@ fn apuntar_para_reabrir(
     }
 }
 
-fn tomar_figura_pedida() -> Option<(String, String)> {
+fn tomar_figura_pedida() -> Option<FiguraPedida> {
     FIGURA_PEDIDA.lock().ok().and_then(|mut g| g.take())
 }
 
@@ -737,13 +744,16 @@ fn tomar_figura_pedida() -> Option<(String, String)> {
 /// buzones uno detras de otro, y la vuelta del chat puede mirar `IR_A` justo
 /// antes y la figura justo despues. Se adjunta en la vuelta siguiente, ya en
 /// su chat. Una figura mas nueva que haya llegado mientras tanto gana.
-fn devolver_figura_si_va_a_su_chat(proyecto: String, id: String) -> bool {
+fn devolver_figura_si_va_a_su_chat(
+    proyecto: String,
+    hojas: Vec<pindesk_motor2d::biblioteca::FiguraGuardada>,
+) -> bool {
     let va = IR_A
         .lock()
         .ok()
         .is_some_and(|g| g.as_ref().is_some_and(|(p, _)| *p == proyecto));
     if va && let Ok(mut g) = FIGURA_PEDIDA.lock() {
-        g.get_or_insert((proyecto, id));
+        g.get_or_insert((proyecto, hojas));
     }
     va
 }
@@ -4467,7 +4477,7 @@ pub fn abrir(
         }
         // La figura elegida en su ventana para este chat (el «+» → «Figura»):
         // despues de `ir_a`, que ya trajo su proyecto si era otro.
-        if let Some((proyecto, id)) = tomar_figura_pedida() {
+        if let Some((proyecto, hojas)) = tomar_figura_pedida() {
             match abierto.as_mut().filter(|a| a.ficha.id == proyecto) {
                 Some(a) => {
                     let cx = Contexto {
@@ -4479,13 +4489,13 @@ pub fn abrir(
                         fichas: &fichas,
                         idioma,
                     };
-                    if let Efecto::Aviso(t) = adjuntar_figura(&cx, a, &id) {
+                    if let Efecto::Aviso(t) = adjuntar_figura(&cx, a, &hojas) {
                         aviso = Some((t, std::time::Instant::now()));
                     }
                     a.colocado.borrow_mut().ancho = 0;
                     hay_que_pintar = true;
                 }
-                None if devolver_figura_si_va_a_su_chat(proyecto.clone(), id) => {
+                None if devolver_figura_si_va_a_su_chat(proyecto.clone(), hojas) => {
                     hay_que_pintar = true;
                 }
                 None => tracing::warn!(%proyecto, "una figura para un chat que no esta abierto"),
@@ -10563,12 +10573,16 @@ fn crear_lienzo(ubicacion: &Ubicacion, a: &mut Abierto, aparato: &str) -> std::i
     )
 }
 
-/// **Adjunta una figura de la biblioteca** (por su id) al chat: un lienzo
-/// nuevo con la figura dentro, con su nombre. En el chat del asistente,
-/// ademas, la caja empieza con «Mejora la figura …» si no habia nada escrito.
-fn adjuntar_figura(cx: &Contexto, a: &mut Abierto, id: &str) -> Efecto {
-    let todas = figuras::todas();
-    let Some(f) = todas.iter().find(|f| f.id == id) else {
+/// **Adjunta una figura de la biblioteca** al chat: un lienzo nuevo con la
+/// figura dentro (o sus hojas en fila, si es una plantilla con sus
+/// parametros), con su nombre. En el chat del asistente, ademas, la caja
+/// empieza con «Mejora la figura …» si no habia nada escrito.
+fn adjuntar_figura(
+    cx: &Contexto,
+    a: &mut Abierto,
+    hojas: &[pindesk_motor2d::biblioteca::FiguraGuardada],
+) -> Efecto {
+    let Some(f) = hojas.first() else {
         return Efecto::Aviso(cx.textos.t("chat-no-se-pudo"));
     };
     let nombre = pindesk_motor2d::figuras_de_serie::categoria_de(&f.nombre)
@@ -10579,7 +10593,7 @@ fn adjuntar_figura(cx: &Contexto, a: &mut Abierto, id: &str) -> Efecto {
         escribir_lienzo(raiz, &a.ficha.id, cx.identidad, numero, Some(&nombre)).and_then(|m| {
             let id = m.referencia.clone().unwrap_or_default();
             let ruta = pindesk_proyecto::almacen::lienzo(raiz, &a.ficha.id, &id);
-            let escena = figuras::escena_con(f);
+            let escena = figuras::escena_con_hojas(hojas);
             let lienzo = pindesk_motor2d::excalidraw::con_escena(
                 &pindesk_motor2d::excalidraw::Lienzo::vacio(),
                 &escena,

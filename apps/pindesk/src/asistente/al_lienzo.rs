@@ -2002,7 +2002,7 @@ mod pruebas_plantilla {
 }
 
 /// Lo que miden unas hojas puestas en fila.
-fn medida_de_las_hojas(hojas: &[FiguraGuardada]) -> (f32, f32) {
+pub(crate) fn medida_de_las_hojas(hojas: &[FiguraGuardada]) -> (f32, f32) {
     let ancho = hojas.iter().map(|f| f.tamano().0).sum::<f32>()
         + ENTRE_HOJAS * hojas.len().saturating_sub(1) as f32;
     (
