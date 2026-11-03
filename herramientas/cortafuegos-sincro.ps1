@@ -17,6 +17,9 @@
 # La regla va por PROGRAMA: tras pasar de pixpinmax.exe (Programs\PixPinMax)
 # a pindesk.exe (Programs\PinDesk) Windows vuelve a preguntar una vez, y las
 # reglas de este script con el nombre de antes se quitan al volver a correrlo.
+#
+# Lo mismo hace la app sola: Sincronizar → «Dar permiso de red» (pide
+# administrador; `pindesk_shell::cortafuegos`). Ver docs/emparejar.md.
 
 param([string]$Programa, [switch]$Quitar)
 
@@ -34,6 +37,13 @@ if ($Quitar) { Write-Host 'Reglas quitadas.'; return }
 
 if (-not $Programa) { $Programa = Join-Path $env:LOCALAPPDATA 'Programs\PinDesk\pindesk.exe' }
 if (-not (Test-Path $Programa)) { throw "No esta $Programa (pasa -Programa)" }
+
+# Los BLOQUEOS de entrada de este programa: Windows los crea al cerrar su
+# aviso sin pulsar «Permitir», y un bloqueo gana a cualquier permiso. Es lo
+# que dejaba a PinDesk sin que el movil le encontrase tras pasar a pindesk.exe.
+Get-NetFirewallApplicationFilter -Program $Programa -ErrorAction SilentlyContinue |
+    Get-NetFirewallRule | Where-Object { $_.Direction -eq 'Inbound' -and $_.Action -eq 'Block' } |
+    Remove-NetFirewallRule
 
 # TCP 47474: la sincronizacion (o el puerto que diga «La de este aparato»,
 # si estaba ocupado: por eso va por programa y no solo por puerto).

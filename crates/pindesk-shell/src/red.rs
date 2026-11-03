@@ -120,3 +120,63 @@ pub fn interfaces_ipv4() -> Vec<(std::net::Ipv4Addr, u8)> {
     }
     Vec::new()
 }
+
+/// **Al volver de la suspension** (3-nov-2026): Windows avisa al reanudar
+/// (`PBT_APMRESUMEAUTOMATIC`, y `PBT_APMRESUMESUSPEND` si hay alguien
+/// delante) con `PowerRegisterSuspendResumeNotification`, que no necesita
+/// ventana: la de mensajes de la app es *message-only* y no recibe
+/// `WM_POWERBROADCAST`. Lo usa la sincronizacion automatica para sondear y
+/// sincronizar en cuanto el portatil se abre, sin esperar al latido (y por si
+/// la Wi-Fi vuelve con la misma direccion y `NotifyAddrChange` no dice nada).
+///
+/// El aviso llega en un hilo de Windows: tiene que volver enseguida (quien lo
+/// recibe solo manda algo por un canal). Vive lo que la aplicacion: el
+/// registro no se suelta. `false` si Windows no lo admitio.
+pub fn al_despertar(aviso: impl Fn() + Send + Sync + 'static) -> bool {
+    use windows::Win32::Foundation::HANDLE;
+    use windows::Win32::System::Power::{
+        DEVICE_NOTIFY_SUBSCRIBE_PARAMETERS, PowerRegisterSuspendResumeNotification,
+    };
+    use windows::Win32::UI::WindowsAndMessaging::{
+        DEVICE_NOTIFY_CALLBACK, PBT_APMRESUMEAUTOMATIC, PBT_APMRESUMESUSPEND,
+    };
+
+    type Aviso = Box<dyn Fn() + Send + Sync>;
+
+    unsafe extern "system" fn al_cambiar_energia(
+        contexto: *const std::ffi::c_void,
+        tipo: u32,
+        _ajuste: *const std::ffi::c_void,
+    ) -> u32 {
+        if tipo == PBT_APMRESUMEAUTOMATIC || tipo == PBT_APMRESUMESUSPEND {
+            // SAFETY: el contexto es el `Box<Aviso>` filtrado abajo, que no
+            // se libera nunca.
+            let aviso = unsafe { &*(contexto as *const Aviso) };
+            aviso();
+        }
+        0
+    }
+
+    // Filtrados a proposito: Windows puede llamar mientras viva el proceso.
+    let aviso: &'static Aviso = Box::leak(Box::new(Box::new(aviso) as Aviso));
+    let parametros: &'static mut DEVICE_NOTIFY_SUBSCRIBE_PARAMETERS =
+        Box::leak(Box::new(DEVICE_NOTIFY_SUBSCRIBE_PARAMETERS {
+            Callback: Some(al_cambiar_energia),
+            Context: aviso as *const Aviso as *mut std::ffi::c_void,
+        }));
+    let mut registro: *mut std::ffi::c_void = std::ptr::null_mut();
+    // SAFETY: `parametros` y su contexto viven lo que el proceso; con
+    // DEVICE_NOTIFY_CALLBACK el «destinatario» es un puntero a esa estructura.
+    let r = unsafe {
+        PowerRegisterSuspendResumeNotification(
+            DEVICE_NOTIFY_CALLBACK,
+            HANDLE(parametros as *mut DEVICE_NOTIFY_SUBSCRIBE_PARAMETERS as *mut std::ffi::c_void),
+            &mut registro,
+        )
+    };
+    if r.is_err() {
+        tracing::info!(?r, "sin aviso al volver de la suspension");
+        return false;
+    }
+    true
+}

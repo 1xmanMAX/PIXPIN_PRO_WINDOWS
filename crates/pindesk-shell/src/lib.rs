@@ -19,6 +19,7 @@ pub mod colocacion;
 pub mod compartido;
 pub mod compartir;
 pub mod consola;
+pub mod cortafuegos;
 pub mod dialogo;
 pub mod elegir;
 pub mod elegir_carpeta;
