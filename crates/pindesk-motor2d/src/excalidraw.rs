@@ -3696,7 +3696,10 @@ mod pruebas {
         assert_eq!(l.cuantos_ajenos(), 1);
         assert_eq!(l.elementos().len(), 1, "el emoji de verdad si se lee");
         let vuelta = elementos_de(&escribir(&con_escena(&l, &a_escena(&l))));
-        let espejo = vuelta.iter().find(|v| v["id"] == "comentario-pc-1").unwrap();
+        let espejo = vuelta
+            .iter()
+            .find(|v| v["id"] == "comentario-pc-1")
+            .unwrap();
         assert_eq!(espejo["customData"]["comentario"]["tipo"], "urgente");
     }
 
