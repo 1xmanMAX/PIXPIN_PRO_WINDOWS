@@ -449,7 +449,27 @@ impl Oyente {
             let _ = socket.join_multicast_v4(&GRUPO_MULTICAST, &Ipv4Addr::UNSPECIFIED);
         }
         socket.set_read_timeout(Some(Duration::from_millis(200)))?;
+        // Para preguntar desde aqui (`mandar`): la difusion necesita permiso.
+        let _ = socket.set_broadcast(true);
+        let _ = socket.set_multicast_ttl_v4(1);
         Ok(Oyente { socket })
+    }
+
+    /// Manda `paquete` a `puerto` de cada destino **desde este socket**, cuyo
+    /// puerto es el de la baliza. Asi lo hace quien se une con un codigo
+    /// (`emparejar`): la respuesta del grupo va siempre a ese puerto, y el
+    /// cortafuegos de Windows deja entrar la respuesta directa a una
+    /// difusion **si va al mismo puerto del que salio** (unos 3 s), aunque el
+    /// programa aun no tenga regla. Devuelve cuantos envios salieron.
+    pub fn mandar(&self, paquete: &[u8], destinos: &[Ipv4Addr], puerto: u16) -> usize {
+        destinos
+            .iter()
+            .filter(|ip| {
+                self.socket
+                    .send_to(paquete, SocketAddrV4::new(**ip, puerto))
+                    .is_ok()
+            })
+            .count()
     }
 
     pub fn puerto(&self) -> io::Result<u16> {

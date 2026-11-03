@@ -195,6 +195,100 @@ fn directa_llega_aunque_no_haya_difusion() {
     assert_eq!(Baliza::leer(&buf[..n], &otra), Err(Rechazo::OtroGrupo));
 }
 
+/// **Unirse con el codigo sin mDNS** (3-nov-2026, `emparejar`): quien
+/// teclea el codigo pregunta por la baliza desde su propio oyente; el
+/// aparato del grupo (que no lo conoce: no esta en su lista) contesta como
+/// ya hacen el PC y Android, directa al puerto de la baliza, y quien se une
+/// sabe a donde llamar por TCP. Medido en loopback.
+#[test]
+fn quien_se_une_con_el_codigo_encuentra_al_grupo_por_la_baliza_sin_mdns() {
+    use crate::emparejar;
+    // Los dos oyentes en puertos libres (en la red de verdad, los dos en
+    // `PUERTO_BALIZA`).
+    let nuevo = Oyente::abrir(0, &[loopback()]).unwrap();
+    let puerto_nuevo = nuevo.puerto().unwrap();
+    let del_grupo = Oyente::abrir(0, &[loopback()]).unwrap();
+    let puerto_grupo = del_grupo.puerto().unwrap();
+    let escucha = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+    let puerto_tcp = escucha.local_addr().unwrap().port();
+    // El movil del grupo: oye, y a una pregunta de su grupo contesta con la
+    // suya, directa, aunque quien pregunta no sea aun de la lista.
+    let movil = std::thread::spawn(move || {
+        let emisor = Emisor::nuevo(puerto_nuevo, &[]).unwrap();
+        let mut buf = [0u8; TOPE];
+        let tope = Instant::now() + Duration::from_secs(5);
+        while Instant::now() < tope {
+            if let Ok(Some((n, de))) = del_grupo.oir(&mut buf)
+                && let Ok(b) = Baliza::leer(&buf[..n], &clave())
+                && b.pregunta()
+                && b.id != "movil"
+                && let std::net::IpAddr::V4(ip) = de.ip()
+            {
+                let suya = Baliza {
+                    etiqueta: etiqueta_cruda(&clave()),
+                    id: "movil".into(),
+                    puerto: puerto_tcp,
+                    reloj: ahora(),
+                    secuencia: 1,
+                    ..Default::default()
+                };
+                emisor.a(&suya.escribir(&clave()), &[ip]);
+                return;
+            }
+        }
+    });
+    let empezo = Instant::now();
+    // Quien se une: solo sabe el codigo.
+    let clave_del_codigo = crate::codigo::clave_de_grupo("k7q2m-9xmpa");
+    let p = emparejar::pregunta(&clave_del_codigo, "pc-nuevo", 0, ahora(), 1);
+    assert_eq!(nuevo.mandar(&p, &[Ipv4Addr::LOCALHOST], puerto_grupo), 1);
+    let mut buf = [0u8; TOPE];
+    let hallado = loop {
+        assert!(empezo.elapsed() < Duration::from_secs(3), "nadie contesto");
+        if let Some((n, de)) = nuevo.oir(&mut buf).unwrap()
+            && let std::net::IpAddr::V4(ip) = de.ip()
+            && let Some(e) = emparejar::respuesta(&buf[..n], ip, &clave_del_codigo, "pc-nuevo")
+        {
+            break e;
+        }
+    };
+    movil.join().unwrap();
+    assert_eq!(hallado.id, "movil");
+    assert_eq!(hallado.puerto, puerto_tcp);
+    let _flujo = TcpStream::connect_timeout(
+        &SocketAddr::new(hallado.host.into(), hallado.puerto),
+        Duration::from_secs(1),
+    )
+    .unwrap();
+    let _ = escucha.accept().unwrap();
+    eprintln!(
+        "emparejar: del codigo a la conexion TCP, {:?}",
+        empezo.elapsed()
+    );
+    assert!(empezo.elapsed() < Duration::from_secs(1));
+}
+
+#[test]
+fn caso_negativo_con_otro_codigo_nadie_del_grupo_contesta() {
+    use crate::emparejar;
+    let nuevo = Oyente::abrir(0, &[loopback()]).unwrap();
+    let del_grupo = Oyente::abrir(0, &[loopback()]).unwrap();
+    let puerto_grupo = del_grupo.puerto().unwrap();
+    let otro = crate::codigo::clave_de_grupo("ABCDEFGHJK");
+    let p = emparejar::pregunta(&otro, "pc-nuevo", 0, ahora(), 1);
+    nuevo.mandar(&p, &[Ipv4Addr::LOCALHOST], puerto_grupo);
+    let mut buf = [0u8; TOPE];
+    let tope = Instant::now() + Duration::from_millis(600);
+    while Instant::now() < tope {
+        if let Ok(Some((n, _))) = del_grupo.oir(&mut buf) {
+            // Llega, pero el grupo no la cree: no hay a quien contestar.
+            assert_eq!(Baliza::leer(&buf[..n], &clave()), Err(Rechazo::OtroGrupo));
+            return;
+        }
+    }
+    panic!("la pregunta ni siquiera llego");
+}
+
 #[test]
 fn mientras_se_graba_la_camara_va_primero_y_al_acabar_la_grabacion() {
     // Una cola de trabajos que llegan mientras alguien graba, despachada por

@@ -32,6 +32,8 @@
 //!   todos; `copias`, la copia de antes de tocar nada.
 //! - `al_lienzo`: una foto suelta al lienzo abierto del movil (`suelto`).
 //! - `baliza`: descubrir rapido por UDP y que va primero mientras se graba.
+//! - `emparejar`: unirse con el codigo sin teclear direcciones (la pregunta
+//!   por la baliza) y el enlace `pindesk://emparejar` del QR.
 //! - `camara`: el movil como camara de la reunion que graba el PC
 //!   (`camara_remota` y las fotos y clips con `destino: "grabacion"`).
 //! - `galeria`: la galeria de capturas que viaja, con sus fechas de irse.
@@ -61,6 +63,7 @@ pub mod diferencia;
 pub mod disco;
 #[cfg(any(test, feature = "simulador"))]
 pub mod disco_android;
+pub mod emparejar;
 pub mod envio;
 pub mod fusion;
 pub mod galeria;
