@@ -5,6 +5,10 @@
 //! de noche) y eligiendo para un chat, con la GPU de verdad y sin abrir
 //! ninguna ventana.
 //!
+//! Desde el 3-nov-2026, tambien la figura en grande al lado con sus
+//! parametros (de dia y de noche, y acercada) y, con la ventana estrecha, la
+//! figura sola con «‹ Figuras», sus parametros y «Adjuntar».
+//!
 //! ```text
 //! cargo test -p pindesk --bin pindesk muestras_de_las_figuras -- --ignored --nocapture --test-threads=1
 //! ```
@@ -26,6 +30,7 @@ fn muestras_de_las_figuras() {
     let d3 = pindesk_capture::Dispositivo::nuevo().expect("GPU real");
     let motor = MotorRender::nuevo(d3.d3d()).expect("motor");
     let (ancho, alto) = (1320u32, 840u32);
+    let (estrecha, alto_estrecha) = (720u32, 900u32);
     let escala = 100;
     let salida = std::env::var_os("PINDESK_MUESTRAS")
         .map(std::path::PathBuf::from)
@@ -40,6 +45,7 @@ fn muestras_de_las_figuras() {
             ..Galeria::default()
         };
         g.poner_figuras(&serie, None);
+        g.preparar();
         g
     };
     let dia = galeria(false, None);
@@ -59,12 +65,72 @@ fn muestras_de_las_figuras() {
         x: ancho as i32 - 30,
         y: 32,
     };
-    let escenas: Vec<(&str, &Tema, &Galeria)> = vec![
-        ("figuras-dia", &CLARO, &dia),
-        ("figuras-noche", &OSCURO, &noche),
-        ("figuras-eligiendo", &CLARO, &eligiendo),
+    // Una plantilla elegida con sus parametros: del 1 al 40, de 10 en 10.
+    let con_parametros = |noche: bool, id: &str, cambiar: &dyn Fn(&mut Parametros)| {
+        let mut g = galeria(
+            noche,
+            Some(Destino {
+                proyecto: "obra".into(),
+                chat: "Casa Lima".into(),
+            }),
+        );
+        g.elegida = g.figuras.iter().position(|f| f.id == id);
+        assert!(g.elegida.is_some(), "{id}");
+        g.preparar();
+        if let Some(p) = g.parametros.as_mut() {
+            cambiar(p);
+        }
+        g.preparar();
+        g
+    };
+    let lista = |p: &mut Parametros| {
+        p.poner(Parametro::Hasta, 40);
+        p.poner(Parametro::PorHoja, 10);
+    };
+    let al_lado = con_parametros(false, "serie-lista-de-tareas", &lista);
+    let al_lado_noche = con_parametros(true, "serie-lista-de-tareas-noche", &lista);
+    let mut acercada = con_parametros(false, "serie-cronograma", &|p| {
+        p.poner(Parametro::Hasta, 24);
+        p.poner(Parametro::SemanasHasta, 16);
+    });
+    acercada.encuadre.aumento = 2.5;
+    // Estrecha: la figura sola, como un chat abierto.
+    let sola = |noche: bool, id: &str| {
+        let mut g = con_parametros(noche, id, &|p| {
+            p.paso(Parametro::Mes, 11);
+            p.poner(Parametro::Meses, 3);
+        });
+        g.viendo = true;
+        g
+    };
+    let sola_dia = sola(false, "serie-habitos");
+    let sola_noche = sola(true, "serie-planificador-mensual-noche");
+    let escenas: Vec<(&str, &Tema, &Galeria, (u32, u32))> = vec![
+        ("figuras-dia", &CLARO, &dia, (ancho, alto)),
+        ("figuras-noche", &OSCURO, &noche, (ancho, alto)),
+        ("figuras-eligiendo", &CLARO, &eligiendo, (ancho, alto)),
+        ("figuras-parametros-dia", &CLARO, &al_lado, (ancho, alto)),
+        (
+            "figuras-parametros-noche",
+            &OSCURO,
+            &al_lado_noche,
+            (ancho, alto),
+        ),
+        ("figuras-acercada", &CLARO, &acercada, (ancho, alto)),
+        (
+            "figuras-estrecha-dia",
+            &CLARO,
+            &sola_dia,
+            (estrecha, alto_estrecha),
+        ),
+        (
+            "figuras-estrecha-noche",
+            &OSCURO,
+            &sola_noche,
+            (estrecha, alto_estrecha),
+        ),
     ];
-    for (nombre, tema, g) in escenas {
+    for (nombre, tema, g, (ancho, alto)) in escenas {
         let destino = FueraDePantalla::nuevo(&motor, d3.d3d(), ancho, alto).expect("destino");
         motor
             .dibujar(&destino.destino, |p| {
