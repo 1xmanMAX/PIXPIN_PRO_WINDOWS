@@ -62,6 +62,8 @@ pub mod selector_color;
 pub mod tabla;
 /// Lo que no se mueve bajo el raton en Tareas: lo recien tachado y el orden.
 pub mod tareas_quietas;
+/// La figura en grande en la ventana de las figuras: el reparto, la rueda y el aumento.
+pub mod vista_figura;
 /// Las vistas de la ventana de Tareas: Tarjetas, Kanban y Horario.
 pub mod vista_tareas;
 
