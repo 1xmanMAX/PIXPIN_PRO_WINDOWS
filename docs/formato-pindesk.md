@@ -105,10 +105,31 @@ Lo mínimo, en este orden:
    escribir (se avisará aquí, con fecha).
 5. Lectura Veloz: aceptar `lecturaveloz://pindesk/abrir` además de `lecturaveloz://pixpin/abrir`
    y mandar de vuelta `pindesk://lectura-veloz?…` (el PC entiende también los de antes).
-6. **La nube de los chats compartidos** (1-nov-2026, `docs/nube.md`): un chat compartido puede
+6. **El enlace `pindesk://emparejar`** (3-nov-2026): abrirlo desde la cámara y unirse con él
+   ([`emparejar.md`](emparejar.md) §3 y su lista para Android).
+7. **La nube de los chats compartidos** (1-nov-2026, `docs/nube.md`): un chat compartido puede
    ir por la red local o por la nube (`deltas1`: solo los trazos nuevos de un lienzo). El protocolo
    sigue llamándose `pixpin-nube` (llaves `pxn_`, `/nube/api/v1`, `pixpin-nube|yo|…`); el modo de
    cada chat va en `sincro/nube/chats.json`, **no** en `compartidos.json`.
+
+## El enlace de emparejar (3-nov-2026)
+
+El PC enseña, al tocar el código del grupo en Sincronizar, un QR con un enlace que se abre con
+**cualquier cámara** y lleva a la app a unirse sola. La especificación completa (y lo que tiene que
+hacer Android: intent-filter, preguntar, llamar a las direcciones del enlace y unirse también por
+la baliza) está en [`emparejar.md`](emparejar.md) §3.
+
+```
+pindesk://emparejar?v=1&c=<codigo>&h=<ip>[,<ip>…]&p=<puerto>&n=<nombre>&e=<ms>
+```
+
+| Qué | Se escribe | Se acepta |
+|---|---|---|
+| Esquema y anfitrión | `pindesk://emparejar` | también `pixpin://emparejar`, sin distinguir mayúsculas |
+| `c` (obligatorio) | el código limpio, 10 signos | con guion y en minúsculas |
+| `h`, `p`, `n`, `e` | IPv4 privadas (hasta 4), puerto, nombre cifrado como URL, caducidad en ms | cualquiera puede faltar; lo desconocido se ignora |
+
+Rust: `pindesk_sincro::emparejar::Enlace` (con sus pruebas, para copiarlas en Kotlin y Swift).
 
 ## Cuándo se pueden quitar los viejos
 
