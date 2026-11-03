@@ -728,7 +728,8 @@ investigaciones en `docs/investigacion/`.
 
 ## Compilar y probar
 
-Hace falta Rust estable (1.85 o superior) en Windows.
+Hace falta Rust estable (1.85 o superior) en Windows. Para retomar el desarrollo desde un clon
+limpio (equipo, pruebas, publicar y lo pendiente): [docs/ESTADO.md](docs/ESTADO.md).
 
 ```powershell
 cargo build --release -p pindesk -p pindesk-aligerar -p pindesk-lanzador
