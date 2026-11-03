@@ -582,6 +582,8 @@ pub trait Disco {
             // Una leccion aprendida que tambien cambio aqui no se pisa: se
             // junta con lo que llega.
             juntar_leccion(rel, &destino, &tmp)?;
+            // Y unas pegatinas de comentario: se suman por id.
+            juntar_comentarios(rel, &destino, &tmp)?;
             reemplazar(&tmp, &destino)?;
             Ok(true)
         })();
@@ -1134,6 +1136,31 @@ pub fn juntar_leccion(rel: &str, destino: &Path, tmp: &Path) -> io::Result<()> {
         return Ok(());
     };
     if let Some(junta) = pindesk_lecciones::fusion::al_llegar(&aqui, &llega) {
+        std::fs::write(tmp, junta)?;
+    }
+    Ok(())
+}
+
+/// **Las pegatinas de comentario que llegan, junto con las de aqui**
+/// (3-nov-2026, `pindesk_comentarios::fusion`): un `.comentarios.json` que
+/// cambio en los dos aparatos no se pisa; se suman las pegatinas por id y
+/// las entradas de cada hilo (lo de la pegatina, gana el ultimo cambio). Lo
+/// demas del fichero (los comentarios de una nota) es lo que llega, como
+/// siempre. Si lo que llega ya lo trae todo, `tmp` no se toca.
+pub fn juntar_comentarios(rel: &str, destino: &Path, tmp: &Path) -> io::Result<()> {
+    if !rel.ends_with(crate::anotado::COMENTARIOS) || !destino.is_file() {
+        return Ok(());
+    }
+    let (Ok(aqui), Ok(llega)) = (
+        std::fs::read_to_string(destino),
+        std::fs::read_to_string(tmp),
+    ) else {
+        return Ok(());
+    };
+    if !pindesk_comentarios::fusion::lleva_pegatinas(&aqui) {
+        return Ok(());
+    }
+    if let Some(junta) = pindesk_comentarios::fusion::al_llegar(&aqui, &llega) {
         std::fs::write(tmp, junta)?;
     }
     Ok(())
@@ -1867,7 +1894,20 @@ pub fn alcance_de<D: Disco + ?Sized>(d: &D, chat: &str) -> io::Result<Vec<(Strin
         // vista de cada uno (25-oct-2026).
         let marcas = crate::anotado::marcas_junto_a(&rel);
         let vistas = crate::anotado::vistas_junto_a(&rel);
-        for r in std::iter::once(rel).chain(marcas).chain(vistas) {
+        // Y sus pegatinas de comentario con lo que se les adjunto (3-nov).
+        let comentarios = crate::anotado::comentarios_junto_a(&rel);
+        let adjuntos: Vec<String> = comentarios
+            .as_ref()
+            .filter(|c| !c.contains(&format!("/{}", crate::anotado::PREFIJO)))
+            .and_then(|c| std::fs::read_to_string(d.ruta(chat, c)).ok())
+            .map(|t| crate::anotado::rutas_de_comentarios(&t))
+            .unwrap_or_default();
+        for r in std::iter::once(rel)
+            .chain(marcas)
+            .chain(vistas)
+            .chain(comentarios)
+            .chain(adjuntos)
+        {
             if salida.iter().any(|(x, _)| *x == r) || !permitida(&r) {
                 continue;
             }
@@ -2045,6 +2085,41 @@ mod pruebas {
         reemplazar(&tmp, &destino).unwrap();
         assert_eq!(std::fs::read(&destino).unwrap(), b"nuevo");
         assert!(!tmp.exists(), "el temporal no se queda por ahi");
+    }
+
+    #[test]
+    fn las_pegatinas_que_llegan_se_suman_a_las_de_aqui() {
+        use pindesk_comentarios::{Ancla, Pegatinas, Quien, Tipo, fichero};
+        let d = carpeta_de_prueba("pegatinas");
+        let q = |a: &str| Quien {
+            autor: a.into(),
+            aparato: a.into(),
+        };
+        let mut base = Pegatinas::default();
+        let id = base.poner(Tipo::Urgente, Ancla::pagina(0, 1.0, 2.0), &q("pc"), 100);
+        let mut aqui = base.clone();
+        aqui.escribir(&id, &q("pc"), 200, "desde aqui", vec![]);
+        let mut llega = base.clone();
+        llega.escribir(&id, &q("and"), 150, "desde el movil", vec![]);
+        let rel = "pins/draw/anot-ABCDE23456.comentarios.json";
+        let (tmp, destino) = (d.join("c.sincro"), d.join("c.json"));
+        std::fs::write(&destino, fichero::escribir("", &aqui).unwrap()).unwrap();
+        std::fs::write(&tmp, fichero::escribir("", &llega).unwrap()).unwrap();
+        juntar_comentarios(rel, &destino, &tmp).unwrap();
+        let p = fichero::leer(&std::fs::read_to_string(&tmp).unwrap()).unwrap();
+        assert_eq!(p.get(&id).unwrap().entradas().count(), 2);
+        // Caso negativo: los comentarios de una nota sin pegatinas pasan
+        // como siempre (gana lo que llega), y otro fichero no se toca.
+        std::fs::write(&destino, r#"{"comentarios":[{"id":"x"}]}"#).unwrap();
+        std::fs::write(&tmp, r#"{"comentarios":[]}"#).unwrap();
+        juntar_comentarios(rel, &destino, &tmp).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&tmp).unwrap(),
+            r#"{"comentarios":[]}"#
+        );
+        std::fs::write(&tmp, b"foto").unwrap();
+        juntar_comentarios("pins/draw/anot-ABCDE23456.marcas", &destino, &tmp).unwrap();
+        assert_eq!(std::fs::read(&tmp).unwrap(), b"foto");
     }
 
     #[test]

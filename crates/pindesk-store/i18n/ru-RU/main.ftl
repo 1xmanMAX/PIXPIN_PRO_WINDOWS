@@ -3475,3 +3475,30 @@ nube-cerrar-pregunta =
     Да: отменить эти изменения (изменения других останутся).
     Нет: вернуться в сеть и загрузить их.
     Отмена: оставить без сети до следующего раза.
+
+## Comentario avanzado: la pegatina con su minichat (3-nov-2026)
+comentario-tipo-urgente = Срочно
+comentario-tipo-alta = Высокий приоритет
+comentario-tipo-media = Средний приоритет
+comentario-tipo-nota = Заметка
+comentario-abrir = Открыть чат
+comentario-resolver = Решить
+comentario-reabrir = Открыть снова
+comentario-crear-tarea = Создать задачу
+comentario-tarea-creada = Задача создана во «Входящих»
+comentario-quitar = Убрать
+comentario-lista-titulo = Комментарии
+comentario-lista-vacia = Комментариев пока нет. Выберите тип и щёлкните там, где хотите его приклеить.
+comentario-plantando = Щёлкните там, где хотите приклеить комментарий (Esc — выйти)
+comentario-escribir = Напишите… (Enter — отправить)
+comentario-sin-entradas = Напишите первое сообщение, вставьте изображение или прикрепите файл.
+comentario-resuelto = Решено
+comentario-sin-sitio = Документ не сохранён: прикрепить ничего нельзя.
+comentario-abre-el-chat = Откройте чат, чтобы перейти к этому сообщению.
+comentario-elegir-atajo = Ярлык на…
+comentario-sin-atajos = Выделите что-нибудь на холсте или откройте документ из чата, чтобы сделать ярлык.
+comentario-elemento = Элемент
+comentario-mensaje = Сообщение чата
+comentario-lienzo-propio = Холст
+comentario-anotar = Аннотировать
+comentario-anotada = С аннотацией

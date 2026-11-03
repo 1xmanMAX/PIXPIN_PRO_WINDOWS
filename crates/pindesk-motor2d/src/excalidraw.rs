@@ -752,6 +752,17 @@ fn elemento_desde(v: &Value) -> Option<Elemento> {
     if v.get("isDeleted").and_then(|b| b.as_bool()) == Some(true) {
         return None;
     }
+    // **El espejo de una pegatina de comentario** (3-nov-2026,
+    // `pindesk_comentarios::espejo`): un emoticono para los moviles que no
+    // conocen las pegatinas. Aqui la pegatina se pinta aparte, con su
+    // minichat; el espejo queda ajeno (no se dibuja ni se coge) y quien lo
+    // conoce lo pone al dia al guardar.
+    if v.get("customData")
+        .and_then(|c| c.get("comentario"))
+        .is_some_and(Value::is_object)
+    {
+        return None;
+    }
     let x = num_o(v, "x", 0.0);
     let y = num_o(v, "y", 0.0);
     let figura = match tipo {
@@ -3670,6 +3681,26 @@ mod pruebas {
     fn elementos_de(json: &str) -> Vec<Value> {
         let v: Value = serde_json::from_str(json).unwrap();
         v["elements"].as_array().unwrap().clone()
+    }
+
+    /// **El espejo de una pegatina de comentario** (3-nov-2026) no es un
+    /// emoji del PC: queda ajeno (ni se pinta ni se coge) y vuelve intacto.
+    #[test]
+    fn el_espejo_de_una_pegatina_queda_ajeno_y_vuelve_igual() {
+        let json = r#"{"type":"excalidraw","elements":[
+            {"id":"comentario-pc-1","type":"text","x":1,"y":2,"width":36,"height":36,"text":"x",
+             "customData":{"pindesk":"emoji","comentario":{"id":"pc-1","tipo":"urgente"}}},
+            {"id":"e","type":"text","x":1,"y":2,"width":36,"height":36,"text":"y",
+             "customData":{"pindesk":"emoji"}}]}"#;
+        let l = leer(json).unwrap();
+        assert_eq!(l.cuantos_ajenos(), 1);
+        assert_eq!(l.elementos().len(), 1, "el emoji de verdad si se lee");
+        let vuelta = elementos_de(&escribir(&con_escena(&l, &a_escena(&l))));
+        let espejo = vuelta
+            .iter()
+            .find(|v| v["id"] == "comentario-pc-1")
+            .unwrap();
+        assert_eq!(espejo["customData"]["comentario"]["tipo"], "urgente");
     }
 
     #[test]

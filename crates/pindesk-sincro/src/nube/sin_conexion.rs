@@ -364,6 +364,9 @@ mod pruebas {
             "pins/draw/anot-ABCDEFGHJK.marcas-texto.json",
             "pins/draw/anot-ABCDEFGHJK.marcas",
             "pins/draw/anot-ABCDEFGHJK.comentarios.json",
+            // Las pegatinas de comentario (3-nov): lo adjuntado y sus lienzos.
+            "pins/draw/anot-ABCDEFGHJK.a9f1c2.adjunto",
+            "pins/draw/anot-ABCDEFGHJK.cpc1-18f2a-0.excalidraw.gz",
         ];
         for rel in del_adjunto {
             assert!(pertenece(uid, rel), "{rel}");
@@ -374,6 +377,15 @@ mod pruebas {
         // referencia; el de otra hoja no.
         assert!(pertenece("foto-171", "pins/draw/foto-171.excalidraw.gz"));
         assert!(pertenece("foto-171", "pins/draw/foto-171.marcas"));
+        // Y sus pegatinas, con lo adjuntado y sus lienzos.
+        for rel in [
+            "pins/draw/foto-171.comentarios.json",
+            "pins/draw/foto-171.a9f1c2.adjunto",
+            "pins/draw/foto-171.cpc1-0.excalidraw.gz",
+        ] {
+            assert!(pertenece("foto-171", rel), "{rel}");
+            assert!(!pertenece("foto-17", rel), "{rel}");
+        }
         assert!(!pertenece("foto-171", "pins/draw/foto-1710.excalidraw.gz"));
         // Caso negativo: la referencia de un lienzo no se lleva los
         // `anot-…` de ningun adjunto.

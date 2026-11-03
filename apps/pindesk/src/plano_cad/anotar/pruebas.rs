@@ -370,3 +370,39 @@ fn las_cotas_y_los_marcos_van_en_la_capa_como_en_android() {
     assert_eq!(motor.cotas_y_marcos().0.len(), 1);
     let _ = std::fs::remove_dir_all(&d);
 }
+
+/// **Las pegatinas del plano** van en unidades del dibujo con la y hacia
+/// arriba: el mismo punto del plano con cualquier aumento y vuelta.
+#[test]
+fn la_pegatina_del_plano_va_en_unidades_del_dibujo() {
+    use crate::comentarios::Ubicar;
+    let mut v = VistaPlano {
+        centro: [100.0, 50.0],
+        px: 0.5,
+        ancho: 800,
+        alto: 600,
+        origen_pantalla: (0, 0),
+        escala_por_cien: 100,
+        unidad: 1.0,
+        claro: false,
+    };
+    let u = UbicarPlano { v: &v };
+    // El centro de la ventana es el centro de la vista.
+    assert_eq!(
+        u.a_pantalla(&pindesk_comentarios::Ancla::pagina(0, 100.0, 50.0)),
+        Some((400.0, 300.0))
+    );
+    // Mas arriba en el plano es mas arriba en la pantalla.
+    let a = u.de_pantalla((500.0, 200.0)).unwrap();
+    assert_eq!(a, pindesk_comentarios::Ancla::pagina(0, 150.0, 100.0));
+    v.px = 0.25;
+    let u = UbicarPlano { v: &v };
+    let p = u.a_pantalla(&a).unwrap();
+    assert_eq!(p, (600.0, 100.0));
+    assert_eq!(u.de_pantalla(p), Some(a));
+    // Caso negativo: un ancla de escena no es del plano.
+    assert!(
+        u.a_pantalla(&pindesk_comentarios::Ancla::escena(1.0, 1.0))
+            .is_none()
+    );
+}

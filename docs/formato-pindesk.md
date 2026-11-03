@@ -53,7 +53,7 @@ escribir el nuevo (y se apunta aquí).
 |---|---|---|---|
 | QR que enseña el PC (enviar, recibir, invitar a un chat) | `pixpin-envio:1:…`, `pixpin-recibe:1:…`, `pixpin-chat:1:…` | `pindesk-envio:`, `pindesk-recibe:`, `pindesk-chat:` | sí |
 | Rutas portátiles dentro de los datos (cuaderno, notas, tareas, lecciones, memoria) | `pixpin:files/<ruta>` | `pindesk:files/<ruta>` | no (hay que enseñárselo antes a todos) |
-| Ficheros al lado de un documento y dentro de `archivos/` de un chat | `<doc>.pixpin-lectura` (y su cabecera `pixpin-lectura N`), `<doc>.pixpin-anotado/`, `<doc>.pixpin-marcos`, `<doc>.pixpin-vistas`, `<doc>.pixpin-marcas-texto.json` (2-nov-2026: las marcas de texto de una nota o una página web; en un adjunto van en `anot-<uid>.marcas-texto.json`, ver `docs/sincronizar-marcos-vistas-y-tinta.md` §3.10), `<lienzo>.excalidraw.pixpin-marcas`, `<lienzo>.excalidraw.pixpin-vistas` | `.pindesk-lectura`, `.pindesk-anotado/`… | no |
+| Ficheros al lado de un documento y dentro de `archivos/` de un chat | `<doc>.pixpin-lectura` (y su cabecera `pixpin-lectura N`), `<doc>.pixpin-anotado/`, `<doc>.pixpin-marcos`, `<doc>.pixpin-vistas`, `<doc>.pixpin-marcas-texto.json` (2-nov-2026: las marcas de texto de una nota o una página web; en un adjunto van en `anot-<uid>.marcas-texto.json`, ver `docs/sincronizar-marcos-vistas-y-tinta.md` §3.10), `<lienzo>.excalidraw.pixpin-marcas`, `<lienzo>.excalidraw.pixpin-vistas`, `<doc>.pixpin-comentarios.json` y `<doc>.pixpin-anotado/comentarios/` (3-nov-2026: las pegatinas de comentario de un fichero suelto, [`comentarios.md`](comentarios.md)) | `.pindesk-lectura`, `.pindesk-anotado/`… | no |
 | Dibujos sobre una imagen y listas sueltas (formato interno) | `.pixpin2d`, `.pixpin-lista` | `.pindesk2d`, `.pindesk-lista` | no |
 | Fotos y carpeta del móvil | `PixPin_<fecha>.png`, `Pictures/PixPin` | los decide Android | — (el PC los acepta con cualquier nombre) |
 
@@ -111,6 +111,15 @@ Lo mínimo, en este orden:
    ir por la red local o por la nube (`deltas1`: solo los trazos nuevos de un lienzo). El protocolo
    sigue llamándose `pixpin-nube` (llaves `pxn_`, `/nube/api/v1`, `pixpin-nube|yo|…`); el modo de
    cada chat va en `sincro/nube/chats.json`, **no** en `compartidos.json`.
+8. **Las pegatinas de comentario** (3-nov-2026, [`comentarios.md`](comentarios.md)): van en el
+   `.comentarios.json` de siempre, clave `pegatinas` (conservar `comentarios` y lo demás al
+   reescribir); lo adjuntado en `anot-<uid>.a<huella>.adjunto` (**añadir `.adjunto` a
+   `TERMINACIONES`**) y los lienzos de sus entradas en `anot-<uid>.c<id>.excalidraw.gz`; las de un
+   lienzo, junto a su dibujo (`<d>.comentarios.json`…). En el dibujo de un lienzo, cada pegatina
+   tiene un **espejo**: un texto con `customData.comentario` (`id`, `tipo`, `resuelto`) además de
+   `customData.pindesk`/`pixpin` = `"emoji"`; quien conoce las pegatinas no lo pinta y lo reescribe
+   al guardar. Un `.comentarios.json` que cambió en los dos aparatos **se junta por id** (no gana
+   el más nuevo).
 
 ## El enlace de emparejar (3-nov-2026)
 

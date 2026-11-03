@@ -3626,3 +3626,30 @@ nube-cerrar-pregunta =
     نعم: تجاهل هذه التغييرات (تبقى تغييرات الآخرين).
     لا: العودة للاتصال ورفعها.
     إلغاء: إبقاؤه دون اتصال للمرة القادمة.
+
+## Comentario avanzado: la pegatina con su minichat (3-nov-2026)
+comentario-tipo-urgente = عاجل
+comentario-tipo-alta = أولوية عالية
+comentario-tipo-media = أولوية متوسطة
+comentario-tipo-nota = ملاحظة
+comentario-abrir = فتح الدردشة
+comentario-resolver = حلّ
+comentario-reabrir = إعادة فتح
+comentario-crear-tarea = إنشاء مهمة
+comentario-tarea-creada = أُنشئت المهمة في صندوق الوارد
+comentario-quitar = إزالة
+comentario-lista-titulo = التعليقات
+comentario-lista-vacia = لا توجد تعليقات بعد. اختر نوعًا وانقر حيث تريد لصقه.
+comentario-plantando = انقر حيث تريد لصق التعليق (Esc للخروج)
+comentario-escribir = اكتب… (Enter للإرسال)
+comentario-sin-entradas = اكتب أول رسالة أو الصق صورة أو أرفق ملفًا.
+comentario-resuelto = تم الحل
+comentario-sin-sitio = هذا المستند غير محفوظ: لا يمكن إرفاق شيء.
+comentario-abre-el-chat = افتح الدردشة للانتقال إلى تلك الرسالة.
+comentario-elegir-atajo = اختصار إلى…
+comentario-sin-atajos = حدّد شيئًا على اللوحة، أو افتح مستندًا من دردشة، لإنشاء اختصار.
+comentario-elemento = عنصر
+comentario-mensaje = رسالة الدردشة
+comentario-lienzo-propio = لوحة
+comentario-anotar = إضافة تعليقات توضيحية
+comentario-anotada = عليها تعليقات

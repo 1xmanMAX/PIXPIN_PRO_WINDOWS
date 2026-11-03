@@ -8,3 +8,4 @@ license.workspace = true
 [dependencies]
 pindesk-geom = { version = "0.1.0", path = "../pindesk-geom" }
 pindesk-motor2d = { version = "0.1.0", path = "../pindesk-motor2d" }
+pindesk-comentarios = { version = "0.1.0", path = "../pindesk-comentarios" }

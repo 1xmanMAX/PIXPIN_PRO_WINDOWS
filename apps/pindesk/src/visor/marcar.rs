@@ -609,6 +609,18 @@ pub(super) fn boton(e: &mut Estado, b: BotonMarcar, ruta: &Path, textos: &Catalo
     }
 }
 
+/// La caja de la letra `k` (en letras, no en UTF-16) del parrafo `i`, si su
+/// capa de texto ya se calculo (lo que se ve): donde va una pegatina de
+/// comentario (`comentar`).
+pub(super) fn caja_de_letra(e: &Estado, i: usize, k: usize) -> Option<[f32; 4]> {
+    e.marcar.textos.get(&i)?.cajas.get(k).copied().flatten()
+}
+
+/// La letra del parrafo `i` bajo un punto del documento, si hay una.
+pub(super) fn letra_en(e: &Estado, i: usize, x: f32, y: f32) -> Option<usize> {
+    debajo(e.marcar.textos.get(&i)?, x, y)
+}
+
 #[cfg(test)]
 mod pruebas {
     use super::*;

@@ -226,6 +226,8 @@ pub enum EventoPlano {
     },
     TeclaSoltada(u32),
     Caracter(char),
+    /// El boton derecho (solo llega a [`Anotador::antes`]).
+    BajarDerecho(i32, i32),
 }
 
 /// Lo que dice el motor de un evento.
@@ -243,6 +245,17 @@ pub struct Respuesta {
 pub trait Anotador {
     /// Un evento mientras se anota.
     fn evento(&mut self, ev: EventoPlano, vista: &VistaPlano) -> Respuesta;
+    /// **Un evento del plano antes que el visor, se anote o no** (3-nov-2026:
+    /// las pegatinas de comentario de la app, que son botones encima del
+    /// plano). Si sale `consumido`, el visor no hace nada mas con el.
+    fn antes(&mut self, _ev: EventoPlano, _vista: &VistaPlano) -> Respuesta {
+        Respuesta::default()
+    }
+    /// Si cambio algo por fuera que haya que pintar (lo que llego de otro
+    /// aparato a las pegatinas). Se pregunta en cada vuelta.
+    fn al_dia(&mut self) -> bool {
+        false
+    }
     /// Pinta lo anotado (siempre) y, si `anotando`, la barra y el panel del
     /// motor, encima del fotograma ya hecho (`destino`, el bufer de la
     /// ventana) y antes de presentarlo.

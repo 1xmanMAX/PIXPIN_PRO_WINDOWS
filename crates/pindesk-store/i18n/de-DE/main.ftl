@@ -3388,3 +3388,30 @@ nube-cerrar-pregunta =
     Ja: diese Änderungen verwerfen (die der anderen bleiben).
     Nein: wieder online gehen und sie hochladen.
     Abbrechen: für das nächste Mal offline lassen.
+
+## Comentario avanzado: la pegatina con su minichat (3-nov-2026)
+comentario-tipo-urgente = Dringend
+comentario-tipo-alta = Hohe Priorität
+comentario-tipo-media = Mittlere Priorität
+comentario-tipo-nota = Notiz
+comentario-abrir = Chat öffnen
+comentario-resolver = Erledigen
+comentario-reabrir = Wieder öffnen
+comentario-crear-tarea = Aufgabe erstellen
+comentario-tarea-creada = Aufgabe im Eingang erstellt
+comentario-quitar = Entfernen
+comentario-lista-titulo = Kommentare
+comentario-lista-vacia = Noch keine Kommentare. Wähle einen Typ und klicke dorthin, wo er kleben soll.
+comentario-plantando = Klicke dorthin, wo der Kommentar kleben soll (Esc zum Verlassen)
+comentario-escribir = Schreiben… (Eingabe sendet)
+comentario-sin-entradas = Schreib die erste Nachricht, füge ein Bild ein oder hänge eine Datei an.
+comentario-resuelto = Erledigt
+comentario-sin-sitio = Dieses Dokument ist nicht gespeichert: Anhängen ist nicht möglich.
+comentario-abre-el-chat = Öffne den Chat, um zu dieser Nachricht zu gehen.
+comentario-elegir-atajo = Verknüpfung zu…
+comentario-sin-atajos = Wähle etwas auf der Leinwand aus oder öffne ein Dokument aus einem Chat, um eine Verknüpfung zu erstellen.
+comentario-elemento = Element
+comentario-mensaje = Chatnachricht
+comentario-lienzo-propio = Leinwand
+comentario-anotar = Kommentieren
+comentario-anotada = Kommentiert

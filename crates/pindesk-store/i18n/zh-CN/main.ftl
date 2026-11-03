@@ -3359,3 +3359,30 @@ nube-cerrar-pregunta =
     是：放弃这些修改（保留其他人的）。
     否：恢复在线并上传。
     取消：下次仍保持离线。
+
+## Comentario avanzado: la pegatina con su minichat (3-nov-2026)
+comentario-tipo-urgente = 紧急
+comentario-tipo-alta = 高优先级
+comentario-tipo-media = 中优先级
+comentario-tipo-nota = 备注
+comentario-abrir = 打开聊天
+comentario-resolver = 解决
+comentario-reabrir = 重新打开
+comentario-crear-tarea = 创建任务
+comentario-tarea-creada = 已在收件箱中创建任务
+comentario-quitar = 移除
+comentario-lista-titulo = 评论
+comentario-lista-vacia = 还没有评论。选择一种类型，然后在想贴的位置点击。
+comentario-plantando = 点击要贴评论的位置（按 Esc 退出）
+comentario-escribir = 输入…（回车发送）
+comentario-sin-entradas = 写下第一条消息、粘贴图片或附加文件。
+comentario-resuelto = 已解决
+comentario-sin-sitio = 此文档尚未保存：无法附加。
+comentario-abre-el-chat = 打开聊天以前往该消息。
+comentario-elegir-atajo = 快捷方式到…
+comentario-sin-atajos = 在画布上选择内容，或打开聊天中的文档，即可创建快捷方式。
+comentario-elemento = 元素
+comentario-mensaje = 聊天消息
+comentario-lienzo-propio = 画布
+comentario-anotar = 标注
+comentario-anotada = 已标注

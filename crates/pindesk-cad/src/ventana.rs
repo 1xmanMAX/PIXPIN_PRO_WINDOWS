@@ -2408,6 +2408,13 @@ pub fn ver(
                     } else {
                         INFINITE
                     };
+                // Con algo encima del plano que puede llegar de otro aparato
+                // (las pegatinas de comentario), se mira de vez en cuando.
+                let espera = if anotador.is_some() {
+                    espera.min(2000)
+                } else {
+                    espera
+                };
                 let _ = MsgWaitForMultipleObjectsEx(None, espera, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
             }
             let mut m = MSG::default();
@@ -2415,6 +2422,9 @@ pub fn ver(
                 let _ = TranslateMessage(&m);
                 DispatchMessageW(&m);
             }
+        }
+        if anotador.as_mut().is_some_and(|a| a.al_dia()) {
+            sucio = true;
         }
         // Los marcadores que trajo la sincronizacion (o la ventana del
         // modelo en 3D, que comparte fichero).
@@ -2654,6 +2664,44 @@ pub fn ver(
             {
                 cambiar_pantalla = true;
                 continue;
+            }
+            // **Lo que va encima del plano, se anote o no** (las pegatinas de
+            // comentario de la app, `Anotador::antes`): antes que el visor.
+            if de == De::Plano
+                && let (Some(a), Some((m, _))) = (anotador.as_mut(), &plano)
+            {
+                let v = vista_para_el_motor(hwnd, &camara, w, h, e, m, claro);
+                let (ox, oy) = v.origen_pantalla;
+                // SAFETY: lee el estado de las teclas.
+                let tecla = |vk: i32| unsafe { GetKeyState(vk) } < 0;
+                let ev_encima = match ev {
+                    Ev::Mover(x, y) => Some(crate::anotado::EventoPlano::Mover(x + ox, y + oy)),
+                    Ev::Bajar(x, y, 0) => Some(crate::anotado::EventoPlano::Bajar(x + ox, y + oy)),
+                    Ev::Bajar(x, y, 2) => {
+                        Some(crate::anotado::EventoPlano::BajarDerecho(x + ox, y + oy))
+                    }
+                    Ev::Subir(x, y, 0) => Some(crate::anotado::EventoPlano::Subir(x + ox, y + oy)),
+                    Ev::Tecla(vk) => Some(crate::anotado::EventoPlano::Tecla {
+                        vk,
+                        shift: tecla(0x10),
+                        ctrl: tecla(0x11),
+                        alt: tecla(0x12),
+                    }),
+                    _ => None,
+                };
+                if let Some(evm) = ev_encima {
+                    let r = a.antes(evm, &v);
+                    if r.consumido {
+                        sucio = true;
+                        if matches!(ev, Ev::Bajar(..) | Ev::Subir(..)) {
+                            // SAFETY: ventana propia.
+                            unsafe {
+                                let _ = ReleaseCapture();
+                            }
+                        }
+                        continue;
+                    }
+                }
             }
             // **Anotando, el raton y el teclado son del motor del lienzo**
             // (la rueda y el boton central siguen moviendo el plano).

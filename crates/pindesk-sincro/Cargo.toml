@@ -32,6 +32,9 @@ flate2 = "1.1"
 # Juntar dos versiones de una leccion aprendida en vez de pisar una con la
 # otra (`disco::juntar_leccion`). Logica pura, sin mas dependencias.
 pindesk-lecciones = { path = "../pindesk-lecciones" }
+# Lo mismo con las pegatinas de comentario (`disco::juntar_comentarios`): se
+# juntan por id al llegar en vez de quedarse la ultima. Logica pura.
+pindesk-comentarios = { path = "../pindesk-comentarios" }
 # El diario de cambios (27-oct-2026, `diario`): el nodo de cada fichero (el
 # indice de NTFS en Windows, el inodo en Unix) y el espacio libre del disco,
 # que piden llamar al sistema y aqui no se puede (`forbid(unsafe_code)`).

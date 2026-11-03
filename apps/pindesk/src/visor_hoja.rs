@@ -35,6 +35,8 @@
 //! binario) se abre con su programa, como antes.
 
 mod capa;
+/// Las pegatinas de comentario (`crate::comentarios`) sobre las celdas.
+mod comentar;
 mod logica;
 mod marcar;
 mod marcos;
@@ -422,6 +424,8 @@ struct Estado<'l> {
     en_linea: Option<crate::en_linea::EnLinea>,
     /// La barrita de marcar celdas (`marcar`).
     marcar: marcar::Marcar,
+    /// Las pegatinas de comentario del libro (`comentar`), si es un fichero.
+    comentarios: Option<crate::comentarios::Pegador>,
 }
 
 fn zonas(ancho: f32, alto: f32, e: f32) -> Zonas {
@@ -1886,6 +1890,7 @@ fn ver_en(
         sin_interfaz: false,
         en_linea: ruta.map(crate::en_linea::EnLinea::de),
         marcar: marcar::Marcar::default(),
+        comentarios: ruta.map(crate::comentarios::Pegador::del_documento),
     };
     let activa = est.activa;
     est.abrir_hoja(activa, motor);
@@ -1909,6 +1914,9 @@ fn ver_en(
         .map(|_| Instant::now() + Duration::from_secs(2));
     while vivo {
         pindesk_shell::overlay::bombear_pendientes();
+        if est.comentarios_al_dia() {
+            hay_que_pintar = true;
+        }
         // Las ordenes de las pruebas del pin de hoja (`hoja_pin::prueba`), y
         // lo que necesitan saber de lo que se ve.
         #[cfg(test)]
@@ -2039,6 +2047,18 @@ fn ver_en(
                     n.pulsar(x, y)
                 })
             {
+                hay_que_pintar = true;
+                continue;
+            }
+            // Las pegatinas de comentario, antes que la tinta y las celdas.
+            let r = est.comentar(&evento, area, ventana.handle().0 as isize);
+            if let Some(c) = r.cursor {
+                ventana.poner_cursor(c);
+            }
+            if r.repintar || r.pedido.is_some() {
+                hay_que_pintar = true;
+            }
+            if r.consumido {
                 hay_que_pintar = true;
                 continue;
             }
@@ -2973,6 +2993,7 @@ fn pintar(p: &Pintor, est: &mut Estado, textos: &Catalogo) {
     // Los marcos para imprimir, con su numero, y el riel (y anotando, la
     // barra del lapiz), encima de la hoja.
     est.pintar_marcos(p, &z, textos);
+    est.pintar_comentarios(p);
     riel::pintar(p, est, textos);
     // Arriba a la izquierda de la hoja, bajo la barra de formulas.
     if let Some(n) = &est.en_linea {

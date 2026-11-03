@@ -52,6 +52,8 @@ pub mod nota_rica;
 pub mod overlay;
 pub mod panel;
 pub mod panel_lateral;
+/// Las pegatinas de comentario en la pantalla (3-nov-2026).
+pub mod pegatinas;
 pub mod propiedades;
 pub mod reproductor;
 pub mod resaltado;

@@ -85,6 +85,8 @@ use crate::leer_en_voz::{self, LeerEnVoz, Suceso};
 use crate::overlay::Recursos;
 use pindesk_docs::voz_alta;
 
+/// Las pegatinas de comentario (`crate::comentarios`), ancladas por su cita.
+mod comentar;
 pub(crate) mod como_texto;
 mod imagenes;
 mod maqueta_movil;
@@ -200,6 +202,9 @@ pub(crate) struct Colocado {
     /// por ahi y no por donde partiria DirectWrite.
     pub(crate) renglones: Vec<(u32, u32)>,
 }
+
+/// Lo que ocupa abajo la barra del lector: el boton de comentar va encima.
+const RESERVA_ABAJO: f32 = 56.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Accion {
@@ -522,6 +527,9 @@ pub fn abrir(
     let mut vivo = true;
     // «En línea / Sin conexión», si el documento es de un chat de la nube.
     let en_linea = crate::en_linea::EnLinea::de(ruta);
+    // Las pegatinas de comentario del documento, ancladas por su cita.
+    let mut comentarios = crate::comentarios::Pegador::del_documento(ruta);
+    let mut texto_para_comentar = comentar::TextoDelVisor::default();
     // La ruta puede cambiar al renombrar un documento suelto (D5): cada
     // vuelta trabaja con la de ahora.
     let mut ruta_viva = ruta.to_path_buf();
@@ -591,6 +599,36 @@ pub fn abrir(
             if let EventoOverlay::BotonPulsado(q) = &evento {
                 let (x, y) = local(*q);
                 if en_linea.pulsar(x, y) {
+                    continue;
+                }
+            }
+            // Las pegatinas de comentario, antes que la tinta y el lector.
+            if !e.fotografiando {
+                texto_para_comentar.al_dia(&e);
+                let ubicar = comentar::UbicarVisor {
+                    e: &e,
+                    m: marco,
+                    t: &texto_para_comentar,
+                };
+                let r = comentarios.evento(
+                    &evento,
+                    &crate::comentarios::Contexto {
+                        area,
+                        e: marco.e,
+                        reserva_abajo: RESERVA_ABAJO * marco.e,
+                        ubicar: &ubicar,
+                        ocupado: false,
+                        dueno: ventana.handle().0 as isize,
+                        atajo: None,
+                    },
+                );
+                if let Some(c) = r.cursor {
+                    ventana.poner_cursor(c);
+                }
+                if let Some(crate::comentarios::Pedido::IrA(a)) = &r.pedido {
+                    comentar::ir_a(&mut e, marco, &texto_para_comentar, a);
+                }
+                if r.consumido {
                     continue;
                 }
             }
@@ -927,6 +965,9 @@ pub fn abrir(
         if paso_de_las_fotos(&mut e, marco) {
             hay_que_pintar = true;
         }
+        if comentarios.al_dia() {
+            hay_que_pintar = true;
+        }
         if hay_que_pintar {
             hay_que_pintar = false;
             if let Ok(destino) = superficie.empezar(&motor) {
@@ -940,6 +981,28 @@ pub fn abrir(
                     }
                     acotar(&mut e, marco);
                     pintar(&mut e, p, marco, textos);
+                    if !e.fotografiando {
+                        texto_para_comentar.al_dia(&e);
+                        let ubicar = comentar::UbicarVisor {
+                            e: &e,
+                            m: marco,
+                            t: &texto_para_comentar,
+                        };
+                        comentarios.pintar_pegatinas(p, &ubicar, marco.e);
+                        comentarios.pintar_interfaz(
+                            p,
+                            &crate::comentarios::Contexto {
+                                area,
+                                e: marco.e,
+                                reserva_abajo: RESERVA_ABAJO * marco.e,
+                                ubicar: &ubicar,
+                                ocupado: false,
+                                dueno: 0,
+                                atajo: None,
+                            },
+                            64.0 * marco.e,
+                        );
+                    }
                     en_linea.pintar(p, 14.0 * marco.e, 14.0 * marco.e, marco.e, textos);
                 });
                 let _ = superficie.presentar();
@@ -3590,7 +3653,7 @@ mod pruebas {
     use super::*;
     use pindesk_docs::documento::{Bloque, Trozo};
 
-    fn marco() -> Marco {
+    pub(super) fn marco() -> Marco {
         Marco {
             ancho: 1600.0,
             alto: 900.0,

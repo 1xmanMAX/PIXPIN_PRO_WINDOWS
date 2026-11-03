@@ -3359,3 +3359,30 @@ nube-cerrar-pregunta =
     はい：その変更を破棄します（ほかの人の変更は残ります）。
     いいえ：オンラインに戻してアップロードします。
     キャンセル：次回までオフラインのままにします。
+
+## Comentario avanzado: la pegatina con su minichat (3-nov-2026)
+comentario-tipo-urgente = 緊急
+comentario-tipo-alta = 優先度：高
+comentario-tipo-media = 優先度：中
+comentario-tipo-nota = メモ
+comentario-abrir = チャットを開く
+comentario-resolver = 解決
+comentario-reabrir = 再オープン
+comentario-crear-tarea = タスクを作成
+comentario-tarea-creada = 受信トレイにタスクを作成しました
+comentario-quitar = 削除
+comentario-lista-titulo = コメント
+comentario-lista-vacia = まだコメントはありません。種類を選んで、貼りたい場所をクリックします。
+comentario-plantando = コメントを貼る場所をクリック（Esc で終了）
+comentario-escribir = 入力…（Enter で送信）
+comentario-sin-entradas = 最初のメッセージを書くか、画像を貼り付けるか、ファイルを添付します。
+comentario-resuelto = 解決済み
+comentario-sin-sitio = このドキュメントは保存されていないため、添付できません。
+comentario-abre-el-chat = そのメッセージに移動するにはチャットを開いてください。
+comentario-elegir-atajo = ショートカット先…
+comentario-sin-atajos = キャンバスで何かを選択するか、チャットのドキュメントを開くとショートカットを作れます。
+comentario-elemento = 要素
+comentario-mensaje = チャットのメッセージ
+comentario-lienzo-propio = キャンバス
+comentario-anotar = 注釈を付ける
+comentario-anotada = 注釈あり

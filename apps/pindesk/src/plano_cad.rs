@@ -520,10 +520,12 @@ pub fn lanzar(idioma: Idioma, ubicacion: Ubicacion, ruta: &Path) {
             });
             // Anotar: el motor del lienzo sobre la capa del plano (anot-<uid>).
             let capa = anotar::rutas_de_la_capa(&raiz, &ruta);
+            // Y encima, las pegatinas de comentario del plano.
+            let doc = ruta.clone();
             let anotador: Box<
                 dyn FnOnce(&pindesk_cad::modelo::Modelo) -> Box<dyn pindesk_cad::anotado::Anotador>,
             > = Box::new(move |m| {
-                Box::new(anotar::MotorDelPlano::nuevo(capa, m))
+                Box::new(anotar::MotorDelPlano::nuevo(capa, m).con_comentarios(&doc))
                     as Box<dyn pindesk_cad::anotado::Anotador>
             });
             // El boton «Aa»: las letras del usuario, en `<raiz>/fuentes-shx`, que

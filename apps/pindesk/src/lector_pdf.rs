@@ -100,6 +100,8 @@ use crate::overlay::Recursos;
 /// Lo que otro escribe en las capas con el lector abierto, a la vista.
 mod al_dia;
 mod cola;
+/// Las pegatinas de comentario (`crate::comentarios`) sobre sus paginas.
+mod comentar;
 pub(crate) mod elegir;
 /// Imprimir el PDF entero (el clic derecho en el boton del marco).
 mod entero;
@@ -783,6 +785,10 @@ enum Arrastre {
     Elegir,
 }
 
+/// Lo que ocupa abajo la barra del lector (escuchar, subir sola): el boton
+/// de comentar va encima.
+const RESERVA_ABAJO: f32 = 56.0;
+
 #[derive(Debug, Clone, Copy)]
 struct Marco {
     ancho: f32,
@@ -1117,6 +1123,8 @@ fn abrir_con(
     let mut vivo = true;
     // «En línea / Sin conexión», si el PDF es de un chat de la nube.
     let en_linea = crate::en_linea::EnLinea::de(ruta);
+    // Las pegatinas de comentario del documento (`crate::comentarios`).
+    let mut comentarios = crate::comentarios::Pegador::del_documento(ruta);
     // La ruta cambia si se renombra un PDF suelto (D5).
     let mut ruta_viva = ruta.to_path_buf();
     let mut ruta_nueva: Option<PathBuf> = None;
@@ -1230,6 +1238,32 @@ fn abrir_con(
             if let EventoOverlay::BotonPulsado(q) = &evento {
                 let (x, y) = local(*q);
                 if en_linea.pulsar(x, y) {
+                    continue;
+                }
+            }
+            // Las pegatinas de comentario, antes que la tinta y el lector:
+            // su boton, su tira y cada pegatina son botones.
+            if !e.fotografiando {
+                let ubicar = comentar::UbicarPdf { e: &e, m: marco };
+                let r = comentarios.evento(
+                    &evento,
+                    &crate::comentarios::Contexto {
+                        area,
+                        e: marco.e,
+                        reserva_abajo: RESERVA_ABAJO * marco.e,
+                        ubicar: &ubicar,
+                        ocupado: e.arrastre.is_some(),
+                        dueno: ventana.handle().0 as isize,
+                        atajo: None,
+                    },
+                );
+                if let Some(c) = r.cursor {
+                    ventana.poner_cursor(c);
+                }
+                if let Some(crate::comentarios::Pedido::IrA(a)) = &r.pedido {
+                    comentar::ir_a(&mut e, marco, a);
+                }
+                if r.consumido {
                     continue;
                 }
             }
@@ -1644,6 +1678,9 @@ fn abrir_con(
             alternar_espacio(&mut e, lado, ruta);
             hay_que_pintar = true;
         }
+        if comentarios.al_dia() {
+            hay_que_pintar = true;
+        }
         let sucias = e.capas.values().any(|c| c.sucia) && !e.tinta.trazando();
         if sucias && ahora > e.ultimo_trazo + MS_PARA_GUARDAR {
             guardar_capas(&mut e, ruta);
@@ -1669,6 +1706,23 @@ fn abrir_con(
                 let t = std::time::Instant::now();
                 let dibujado = motor.dibujar(&destino, |p: &Pintor| {
                     pintar(&mut e, p, marco, textos);
+                    if !e.fotografiando {
+                        let ubicar = comentar::UbicarPdf { e: &e, m: marco };
+                        comentarios.pintar_pegatinas(p, &ubicar, marco.e);
+                        comentarios.pintar_interfaz(
+                            p,
+                            &crate::comentarios::Contexto {
+                                area,
+                                e: marco.e,
+                                reserva_abajo: RESERVA_ABAJO * marco.e,
+                                ubicar: &ubicar,
+                                ocupado: false,
+                                dueno: 0,
+                                atajo: None,
+                            },
+                            64.0 * marco.e,
+                        );
+                    }
                     en_linea.pintar(p, 14.0 * marco.e, 14.0 * marco.e, marco.e, textos);
                 });
                 let _ = superficie.presentar();

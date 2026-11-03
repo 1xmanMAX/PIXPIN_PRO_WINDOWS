@@ -244,6 +244,29 @@ Para que la web de la nube (AGENTE) las enseñe, lo mismo que hace el PC:
   Word no son este fichero: son trazos de su capa (`marca-texto-*` en
   `groupIds`), que la web ya pinta como la tinta.
 
+## Las pegatinas de comentario (3-nov-2026)
+
+Lo anotado de un documento puede traer pegatinas de comentario
+([`comentarios.md`](comentarios.md)): van en el mismo
+`anot-<uid>.comentarios.json` (clave `pegatinas`), con lo adjuntado en
+`anot-<uid>.a<huella>.adjunto` (terminación nueva `ADJUNTO`, binario, no
+cambia nunca: su nombre es la huella de su contenido) y los lienzos de sus
+entradas en `anot-<uid>.c<id>.excalidraw.gz` (trazos: suben como delta, como
+cualquier capa). Las de un lienzo, junto a su dibujo
+(`pins/draw/<d>.comentarios.json`, `<d>.a….adjunto`, `<d>.c….excalidraw.gz`).
+
+- **No gana el más nuevo**: al bajar un `.comentarios.json` que también
+  cambió aquí, `Disco::escribir_archivo_de` lo junta
+  (`disco::juntar_comentarios`, el mismo camino de la red local): pegatinas
+  por id, lo de cada una gana el último cambio y los hilos se suman entrada a
+  entrada. La web de la nube, si las enseña, debe hacer lo mismo
+  (`crates/pindesk-comentarios/src/fusion.rs`, reglas en `comentarios.md` §4).
+- «Sin conexión» las retiene con lo demás del documento (`anot-<uid>…`, o
+  `pins/draw/<d>.*` de un lienzo) y descartar las devuelve.
+- La web puede pintar las de un lienzo sin leer el fichero: su **espejo** es
+  un texto Excalidraw normal (el emoticono del tipo) con
+  `customData.comentario`.
+
 ## Pruebas
 
 - `cargo test -p pindesk-sincro nube`: los deltas (regla, empates,

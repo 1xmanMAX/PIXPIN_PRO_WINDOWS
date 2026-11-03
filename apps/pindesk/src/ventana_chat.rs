@@ -638,6 +638,20 @@ fn pedir_ir_a_mensaje(proyecto: String, codigo: String) {
     }
 }
 
+/// **Lleva el chat abierto a un mensaje** (un atajo de una pegatina de
+/// comentario, `comentarios::minichat`). Sin chat abierto queda pedido para
+/// cuando se abra y devuelve `false`.
+pub(crate) fn pedir_ir_a(proyecto: String, codigo: String) -> bool {
+    pedir_ir_a_mensaje(proyecto, codigo);
+    let ya = ABIERTA.load(std::sync::atomic::Ordering::SeqCst);
+    if ya > 0 {
+        VentanaOverlay::restaurar_de_hwnd(windows::Win32::Foundation::HWND(ya as *mut _));
+        pindesk_shell::overlay::despertar(ya);
+        return true;
+    }
+    false
+}
+
 fn tomar_ir_a() -> Option<(String, Option<String>)> {
     IR_A.lock().ok().and_then(|mut g| g.take())
 }
@@ -15545,7 +15559,10 @@ pub(crate) fn guardar_hoja_dibujada(
 ) -> bool {
     use pindesk_motor2d::excalidraw::{con_escena, escribir};
     let antes = escribir(lienzo);
-    let despues = escribir(&con_escena(lienzo, escena));
+    // Con el espejo de cada pegatina de comentario puesto al dia, para que
+    // un movil sin pegatinas vea su icono (`comentarios::lienzo`).
+    let con_espejos = crate::comentarios::lienzo::con_espejos(ruta, lienzo);
+    let despues = escribir(&con_escena(&con_espejos, escena));
     if antes == despues {
         return false;
     }

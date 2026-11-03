@@ -59,6 +59,7 @@ fn estado<'l>(libro: &'l mut Libro, e: f32, ancho: u32, alto: u32) -> Estado<'l>
         vistas: Default::default(),
         sin_interfaz: false,
         en_linea: None,
+        comentarios: None,
         marcar: super::marcar::Marcar::default(),
     }
 }
@@ -1149,4 +1150,32 @@ fn el_globo_del_riel_sale_entero() {
     )
     .expect("guardar");
     println!("{}", salida.display());
+}
+
+/// **Las pegatinas de comentario en la hoja**: el ancla va en pixeles de la
+/// hoja al 100 %, asi que al acercar sigue en la misma celda; sobre los
+/// encabezados no hay ancla, y las de otra hoja no se ven.
+#[test]
+fn la_pegatina_de_la_hoja_sigue_a_su_celda() {
+    use crate::comentarios::Ubicar;
+    let mut libro = libro_de_tabla(50, 10);
+    let mut est = estado(&mut libro, 1.0, 900, 700);
+    est.digito = Some(7.0);
+    est.abrir_hoja_con_digito(0);
+    leida_entera(&mut est);
+    let u = est.ubicar_comentarios();
+    let (cx, cy) = (u.celdas.x + 200.0, u.celdas.y + 150.0);
+    let a = u.de_pantalla((cx, cy)).expect("en las celdas");
+    let p = u.a_pantalla(&a).unwrap();
+    assert!((p.0 - cx).abs() < 0.5 && (p.1 - cy).abs() < 0.5);
+    // Caso negativo: en los encabezados, nada.
+    assert!(u.de_pantalla((u.celdas.x - 5.0, cy)).is_none());
+    // Al doble de aumento, el mismo punto de la hoja cae mas lejos.
+    est.abierta_mut().zoom = 2.0;
+    let u = est.ubicar_comentarios();
+    let q = u.a_pantalla(&a).unwrap();
+    assert!(q.0 > p.0 && q.1 > p.1);
+    // Las de otra hoja no se ven.
+    let otra = pindesk_comentarios::Ancla::pagina(3, 10.0, 10.0);
+    assert!(u.a_pantalla(&otra).is_none());
 }
