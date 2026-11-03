@@ -3271,3 +3271,30 @@ nube-cerrar-pregunta =
     Sim: descartar essas alterações (as dos outros ficam).
     Não: voltar a ficar on-line e enviá-las.
     Cancelar: deixá-lo off-line para a próxima vez.
+
+## Comentario avanzado: la pegatina con su minichat (3-nov-2026)
+comentario-tipo-urgente = Urgente
+comentario-tipo-alta = Prioridade alta
+comentario-tipo-media = Prioridade média
+comentario-tipo-nota = Nota
+comentario-abrir = Abrir o chat
+comentario-resolver = Resolver
+comentario-reabrir = Reabrir
+comentario-crear-tarea = Criar tarefa
+comentario-tarea-creada = Tarefa criada na Caixa de entrada
+comentario-quitar = Remover
+comentario-lista-titulo = Comentários
+comentario-lista-vacia = Ainda não há comentários. Escolha um tipo e clique onde quiser colá-lo.
+comentario-plantando = Clique onde quiser colar o comentário (Esc para sair)
+comentario-escribir = Escreva… (Enter envia)
+comentario-sin-entradas = Escreva a primeira mensagem, cole uma imagem ou anexe um arquivo.
+comentario-resuelto = Resolvido
+comentario-sin-sitio = Este documento não está salvo: não é possível anexar.
+comentario-abre-el-chat = Abra o chat para ir até essa mensagem.
+comentario-elegir-atajo = Atalho para…
+comentario-sin-atajos = Selecione algo na tela, ou abra um documento de um chat, para criar um atalho.
+comentario-elemento = Elemento
+comentario-mensaje = Mensagem do chat
+comentario-lienzo-propio = Tela
+comentario-anotar = Anotar
+comentario-anotada = Anotada

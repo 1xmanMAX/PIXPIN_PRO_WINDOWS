@@ -3354,3 +3354,30 @@ nube-cerrar-pregunta =
     예: 그 변경을 버립니다(다른 사람의 변경은 남습니다).
     아니요: 온라인으로 돌아가 올립니다.
     취소: 다음번까지 오프라인으로 둡니다.
+
+## Comentario avanzado: la pegatina con su minichat (3-nov-2026)
+comentario-tipo-urgente = 긴급
+comentario-tipo-alta = 높은 우선순위
+comentario-tipo-media = 보통 우선순위
+comentario-tipo-nota = 메모
+comentario-abrir = 채팅 열기
+comentario-resolver = 해결
+comentario-reabrir = 다시 열기
+comentario-crear-tarea = 작업 만들기
+comentario-tarea-creada = 받은편지함에 작업을 만들었습니다
+comentario-quitar = 제거
+comentario-lista-titulo = 댓글
+comentario-lista-vacia = 아직 댓글이 없습니다. 종류를 고르고 붙일 곳을 클릭하세요.
+comentario-plantando = 댓글을 붙일 곳을 클릭하세요(Esc로 나가기)
+comentario-escribir = 입력…(Enter로 보내기)
+comentario-sin-entradas = 첫 메시지를 쓰거나 이미지를 붙여 넣거나 파일을 첨부하세요.
+comentario-resuelto = 해결됨
+comentario-sin-sitio = 이 문서는 저장되지 않아 첨부할 수 없습니다.
+comentario-abre-el-chat = 해당 메시지로 가려면 채팅을 여세요.
+comentario-elegir-atajo = 바로 가기 대상…
+comentario-sin-atajos = 캔버스에서 무언가를 선택하거나 채팅의 문서를 열면 바로 가기를 만들 수 있습니다.
+comentario-elemento = 요소
+comentario-mensaje = 채팅 메시지
+comentario-lienzo-propio = 캔버스
+comentario-anotar = 주석 달기
+comentario-anotada = 주석 있음

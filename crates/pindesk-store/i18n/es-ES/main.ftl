@@ -3419,3 +3419,30 @@ nube-cerrar-pregunta =
     Sí: descartar esos cambios (se queda lo de los demás).
     No: volver a en línea y subirlos.
     Cancelar: dejarlo sin conexión para la próxima vez.
+
+## Comentario avanzado: la pegatina con su minichat (3-nov-2026)
+comentario-tipo-urgente = Urgente
+comentario-tipo-alta = Prioridad alta
+comentario-tipo-media = Prioridad media
+comentario-tipo-nota = Nota
+comentario-abrir = Abrir el chat
+comentario-resolver = Resolver
+comentario-reabrir = Reabrir
+comentario-crear-tarea = Crear tarea
+comentario-tarea-creada = Tarea creada en el Inbox
+comentario-quitar = Quitar
+comentario-lista-titulo = Comentarios
+comentario-lista-vacia = Aún no hay comentarios. Elige un tipo y haz clic donde quieras pegarlo.
+comentario-plantando = Haz clic donde quieras pegar el comentario (Esc para salir)
+comentario-escribir = Escribe… (Intro envía)
+comentario-sin-entradas = Escribe lo primero, pega una imagen o adjunta un archivo.
+comentario-resuelto = Resuelto
+comentario-sin-sitio = Este documento no está guardado: no se puede adjuntar.
+comentario-abre-el-chat = Abre el chat para ir a ese mensaje.
+comentario-elegir-atajo = Atajo a…
+comentario-sin-atajos = Elige algo en el lienzo, o abre un documento de un chat, para hacer un atajo.
+comentario-elemento = Elemento
+comentario-mensaje = Mensaje del chat
+comentario-lienzo-propio = Lienzo
+comentario-anotar = Anotar
+comentario-anotada = Anotada

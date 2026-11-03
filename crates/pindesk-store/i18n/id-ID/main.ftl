@@ -3341,3 +3341,30 @@ nube-cerrar-pregunta =
     Ya: buang perubahan itu (milik orang lain tetap).
     Tidak: kembali daring dan unggah.
     Batal: biarkan luring untuk lain kali.
+
+## Comentario avanzado: la pegatina con su minichat (3-nov-2026)
+comentario-tipo-urgente = Mendesak
+comentario-tipo-alta = Prioritas tinggi
+comentario-tipo-media = Prioritas sedang
+comentario-tipo-nota = Catatan
+comentario-abrir = Buka obrolan
+comentario-resolver = Selesaikan
+comentario-reabrir = Buka lagi
+comentario-crear-tarea = Buat tugas
+comentario-tarea-creada = Tugas dibuat di Kotak Masuk
+comentario-quitar = Hapus
+comentario-lista-titulo = Komentar
+comentario-lista-vacia = Belum ada komentar. Pilih jenis lalu klik tempat menempelkannya.
+comentario-plantando = Klik tempat untuk menempelkan komentar (Esc untuk keluar)
+comentario-escribir = Tulis… (Enter mengirim)
+comentario-sin-entradas = Tulis pesan pertama, tempel gambar, atau lampirkan file.
+comentario-resuelto = Selesai
+comentario-sin-sitio = Dokumen ini belum disimpan: tidak bisa melampirkan apa pun.
+comentario-abre-el-chat = Buka obrolan untuk menuju pesan itu.
+comentario-elegir-atajo = Pintasan ke…
+comentario-sin-atajos = Pilih sesuatu di kanvas, atau buka dokumen dari obrolan, untuk membuat pintasan.
+comentario-elemento = Elemen
+comentario-mensaje = Pesan obrolan
+comentario-lienzo-propio = Kanvas
+comentario-anotar = Anotasi
+comentario-anotada = Beranotasi

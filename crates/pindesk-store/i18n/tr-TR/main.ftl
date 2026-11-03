@@ -3404,3 +3404,30 @@ nube-cerrar-pregunta =
     Evet: bu değişiklikleri at (diğerlerininkiler kalır).
     Hayır: çevrimiçine dön ve yükle.
     İptal: bir dahaki sefere kadar çevrimdışı bırak.
+
+## Comentario avanzado: la pegatina con su minichat (3-nov-2026)
+comentario-tipo-urgente = Acil
+comentario-tipo-alta = Yüksek öncelik
+comentario-tipo-media = Orta öncelik
+comentario-tipo-nota = Not
+comentario-abrir = Sohbeti aç
+comentario-resolver = Çöz
+comentario-reabrir = Yeniden aç
+comentario-crear-tarea = Görev oluştur
+comentario-tarea-creada = Gelen Kutusu'nda görev oluşturuldu
+comentario-quitar = Kaldır
+comentario-lista-titulo = Yorumlar
+comentario-lista-vacia = Henüz yorum yok. Bir tür seçin ve yapıştırmak istediğiniz yere tıklayın.
+comentario-plantando = Yorumu yapıştırmak istediğiniz yere tıklayın (çıkmak için Esc)
+comentario-escribir = Yazın… (Enter gönderir)
+comentario-sin-entradas = İlk mesajı yazın, bir resim yapıştırın veya dosya ekleyin.
+comentario-resuelto = Çözüldü
+comentario-sin-sitio = Bu belge kaydedilmedi: hiçbir şey eklenemez.
+comentario-abre-el-chat = O mesaja gitmek için sohbeti açın.
+comentario-elegir-atajo = Kısayol…
+comentario-sin-atajos = Kısayol oluşturmak için tuvalde bir şey seçin veya bir sohbetteki belgeyi açın.
+comentario-elemento = Öğe
+comentario-mensaje = Sohbet mesajı
+comentario-lienzo-propio = Tuval
+comentario-anotar = Açıklama ekle
+comentario-anotada = Açıklamalı

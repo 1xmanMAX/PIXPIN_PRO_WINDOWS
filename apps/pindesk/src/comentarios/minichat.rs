@@ -309,15 +309,10 @@ pub(crate) fn abrir(
         }
         if sucio {
             sucio = false;
-            pintar(
-                &motor,
-                &superficie,
-                peg,
-                &mut st,
-                marco.ancho,
-                marco.alto,
-                e,
-            );
+            if let Ok(destino) = superficie.empezar(&motor) {
+                pintar(&motor, &destino, peg, &mut st, marco.ancho, marco.alto, e);
+                let _ = superficie.presentar();
+            }
             ventana.validar();
         }
         pindesk_shell::overlay::esperar_eventos(Some(500));
@@ -414,6 +409,20 @@ fn pulsar(
     let cuando = ahora();
     match a {
         Accion::Boton(BotonChat::Cerrar) => return true,
+        Accion::Boton(BotonChat::Quitar) => {
+            if peg.pegatinas.quitar(&st.id, cuando) {
+                peg.guardar();
+            }
+            return true;
+        }
+        Accion::Boton(BotonChat::CambiarTipo) => {
+            let t = peg.pegatinas.get(&st.id).map(|c| c.tipo.siguiente());
+            if let Some(t) = t
+                && peg.pegatinas.cambiar_tipo(&st.id, t, cuando)
+            {
+                peg.guardar();
+            }
+        }
         Accion::Boton(BotonChat::Resolver) => {
             let si = !peg.pegatinas.get(&st.id).is_some_and(|c| c.resuelto);
             if peg.pegatinas.resolver(&st.id, si, cuando) {
@@ -604,6 +613,8 @@ fn icono_de(b: BotonChat) -> &'static Icono {
         BotonChat::Resolver => &material::CHECK_CIRCLE,
         BotonChat::Tarea => &material::CHECKLIST,
         BotonChat::Cerrar => &material::CLOSE,
+        BotonChat::Quitar => &material::DELETE,
+        BotonChat::CambiarTipo => &material::FORUM,
         BotonChat::Adjuntar => &material::ATTACH_FILE,
         BotonChat::Pegar => &material::CONTENT_PASTE,
         BotonChat::Atajo => &material::LINK,
@@ -632,7 +643,7 @@ fn icono_en(p: &Pintor<'_>, i: &Icono, r: RectF, lado: f32, color: Color) {
 #[allow(clippy::too_many_arguments)] // lo que se pinta y donde
 fn pintar(
     motor: &MotorRender,
-    superficie: &Superficie,
+    destino: &ID2D1Bitmap1,
     peg: &Pegador,
     st: &mut Estado,
     ancho: u32,
@@ -640,9 +651,6 @@ fn pintar(
     e: f32,
 ) {
     let Some(c) = peg.pegatinas.get(&st.id).cloned() else {
-        return;
-    };
-    let Ok(destino) = superficie.empezar(motor) else {
         return;
     };
     // Las miniaturas que falten, antes de pintar.
@@ -675,7 +683,7 @@ fn pintar(
         lista::se_puede_crear_tarea(&c) || c.tarea.is_some(),
     );
     let mut zonas: Vec<(RectF, Accion)> = Vec::new();
-    let _ = motor.dibujar(&destino, |p| {
+    let _ = motor.dibujar(destino, |p| {
         p.limpiar_transparente();
         p.desplazar(aire, aire);
         let tarjeta = Caja {
@@ -714,7 +722,7 @@ fn pintar(
         let tope = d
             .botones
             .iter()
-            .filter(|(b, _)| b.y < d.cabecera.abajo())
+            .filter(|(b, t)| b.y < d.cabecera.abajo() && *t != BotonChat::CambiarTipo)
             .map(|(b, _)| b.x)
             .fold(w, f32::min);
         p.texto_linea(&titulo, x0, 8.0 * e, 14.0 * e, tope - x0 - 6.0 * e, TINTA);
@@ -748,9 +756,13 @@ fn pintar(
             true,
             Instant::now(),
         );
-        // Los botones.
+        // Los botones (el redondel de la cabecera ya esta pintado).
         for (caja, b) in &d.botones {
             let r = rf(*caja);
+            if *b == BotonChat::CambiarTipo {
+                zonas.push((r, Accion::Boton(*b)));
+                continue;
+            }
             let encendido = match b {
                 BotonChat::Resolver => c.resuelto,
                 BotonChat::Tarea => c.tarea.is_some(),
@@ -764,6 +776,7 @@ fn pintar(
                 BotonChat::Enviar if !st.caja.texto().trim().is_empty() => pintar::color(c.tipo),
                 BotonChat::Resolver if c.resuelto => pintar::VERDE,
                 BotonChat::Tarea if c.tarea.is_some() => pintar::VERDE,
+                BotonChat::Quitar => pintar::color(pindesk_comentarios::Tipo::Urgente),
                 _ => TINTA,
             };
             icono_en(p, icono_de(*b), r, 20.0 * e, color);
@@ -846,7 +859,7 @@ fn pintar(
             p.texto(a, r.x + 10.0 * e, r.y + 5.0 * e, tam, Color::BLANCO);
         }
     });
-    let _ = superficie.presentar();
+
     st.zonas = zonas;
 }
 
@@ -1123,4 +1136,173 @@ fn pintar_adjunto(
         TINTA,
     );
     r
+}
+
+#[cfg(test)]
+mod pruebas {
+    use super::*;
+    use pindesk_comentarios::{Ancla, Quien, Tipo};
+
+    #[test]
+    fn la_miniatura_no_pasa_de_su_lado() {
+        let img = pindesk_codec::ImagenRgba {
+            ancho: 1000,
+            alto: 500,
+            pixeles: vec![255; 1000 * 500 * 4],
+        };
+        let (w, h, px) = reducida(&img);
+        assert_eq!((w, h), (MINIATURA, MINIATURA / 2));
+        assert_eq!(px.len(), (w * h * 4) as usize);
+        let chica = pindesk_codec::ImagenRgba {
+            ancho: 10,
+            alto: 10,
+            pixeles: vec![0; 400],
+        };
+        assert_eq!(reducida(&chica).0, 10);
+    }
+
+    /// **La muestra** (`cargo test -p pindesk --bin pindesk muestra_de_las_pegatinas
+    /// -- --ignored`, con GPU): los cuatro tipos sobre un papel (en reposo,
+    /// con el raton encima, con entradas, resuelta y a doble escala), el
+    /// boton con la tira y el menu, y un minichat abierto con su hilo. PNG en
+    /// `PINDESK_MUESTRAS` (o la carpeta temporal).
+    #[test]
+    #[ignore = "necesita GPU; genera PNG para mirarlos"]
+    fn muestra_de_las_pegatinas_y_del_minichat() {
+        use pindesk_render::fuera_de_pantalla::FueraDePantalla;
+        use pindesk_ui::pegatinas::{Boton, DestinoBoton, Menu};
+
+        let carpeta = std::env::var_os("PINDESK_MUESTRAS")
+            .map(PathBuf::from)
+            .unwrap_or_else(std::env::temp_dir);
+        let d = pindesk_capture::Dispositivo::nuevo().expect("GPU real");
+        let motor = MotorRender::nuevo(d.d3d()).expect("motor");
+        let guardar = |fuera: &FueraDePantalla, ancho: u32, alto: u32, nombre: &str| {
+            fuera.esperar_gpu().expect("esperar");
+            let (_, _, pixeles) = fuera.leer_rgba().expect("leer");
+            let png = pindesk_codec::imagen::codificar_png(&pindesk_codec::imagen::ImagenRgba {
+                ancho,
+                alto,
+                pixeles,
+            })
+            .expect("codificar");
+            let ruta = carpeta.join(nombre);
+            std::fs::write(&ruta, png).expect("guardar");
+            println!("{}", ruta.display());
+        };
+
+        // 1. Las pegatinas, el boton con la tira y el menu.
+        let (ancho, alto) = (900u32, 560u32);
+        let fuera = FueraDePantalla::nuevo(&motor, d.d3d(), ancho, alto).expect("superficie");
+        let mut p = pindesk_comentarios::Pegatinas::default();
+        let q = Quien {
+            autor: "PC".into(),
+            aparato: "pc".into(),
+        };
+        let ids: Vec<String> = Tipo::TODOS
+            .iter()
+            .map(|t| p.poner(*t, Ancla::escena(0.0, 0.0), &q, 1))
+            .collect();
+        p.escribir(&ids[1], &q, 2, "Revisar la viga", vec![]);
+        p.resolver(&ids[3], true, 3);
+        motor
+            .dibujar(&fuera.destino, |pi| {
+                pi.limpiar(hex(0xfafafa));
+                for i in 0..10 {
+                    pi.linea(
+                        (0.0, 30.0 + i as f32 * 52.0),
+                        (ancho as f32, 10.0 + i as f32 * 52.0),
+                        1.5,
+                        hex(0x9a9aa2),
+                    );
+                }
+                for (k, t) in Tipo::TODOS.iter().enumerate() {
+                    let x = 80.0 + k as f32 * 90.0;
+                    pintar::pegatina(pi, *t, (x, 90.0), 1.0, false, 0, false, 1.0);
+                    pintar::pegatina(pi, *t, (x, 170.0), 1.0, false, 0, true, 1.0);
+                    pintar::pegatina(pi, *t, (x, 250.0), 1.0, false, 3, false, 1.0);
+                    pintar::pegatina(pi, *t, (x, 330.0), 1.0, true, 0, false, 1.0);
+                    pintar::pegatina(pi, *t, (x, 440.0), 2.0, false, 1, false, 1.0);
+                }
+                let b = Boton::colocar(ancho as f32, alto as f32, 1.0, true, 0.0);
+                pintar::boton(
+                    pi,
+                    &b,
+                    1.0,
+                    p.abiertas(),
+                    true,
+                    Some(Tipo::Alta),
+                    Some(DestinoBoton::Lista),
+                );
+                let c = p.get(&ids[0]).unwrap();
+                let m = Menu::colocar(
+                    &c.id,
+                    &pindesk_ui::pegatinas::opciones(c),
+                    (520.0, 40.0),
+                    (ancho as f32, alto as f32),
+                    1.0,
+                );
+                pintar::menu(pi, &m, c, textos(), 1.0, (560.0, 120.0));
+            })
+            .expect("pintar");
+        guardar(&fuera, ancho, alto, "comentario-pegatinas.png");
+
+        // 2. Un minichat abierto, con texto, un fichero, un atajo y un lienzo.
+        let (ancho, alto) = (
+            (ui::ANCHO_MINICHAT + 2.0 * AIRE) as u32,
+            (ui::ALTO_MINICHAT + 2.0 * AIRE) as u32,
+        );
+        let fuera = FueraDePantalla::nuevo(&motor, d.d3d(), ancho, alto).expect("superficie");
+        let mut peg = Pegador::sin_fichero();
+        let id = peg.pegatinas.poner(
+            Tipo::Urgente,
+            Ancla::escena(0.0, 0.0),
+            &q,
+            1_793_700_000_000,
+        );
+        let otro = Quien {
+            autor: "Movil de Ana".into(),
+            aparato: "and".into(),
+        };
+        let yo = peg.quien.clone();
+        peg.pegatinas.escribir(
+            &id,
+            &otro,
+            1_793_700_060_000,
+            "La viga del eje B no cuadra con el plano de estructuras. ¿Lo miras?",
+            vec![],
+        );
+        peg.pegatinas.escribir(
+            &id,
+            &yo,
+            1_793_700_120_000,
+            "Mirado: te dejo el plano y un atajo a la nota.",
+            vec![
+                Adjunto::archivo("pins/draw/anot-X.a1.adjunto", "estructuras-B.pdf"),
+                Adjunto::mensaje("proyecto", "ABCDE23456", "Nota de obra del lunes"),
+            ],
+        );
+        peg.pegatinas.escribir(
+            &id,
+            &otro,
+            1_793_700_180_000,
+            "",
+            vec![Adjunto::lienzo("pins/draw/anot-X.cpc-1.excalidraw.gz")],
+        );
+        let mut st = Estado {
+            id: id.clone(),
+            caja: CajaLinea::con_texto("Gracias, lo corrijo hoy").en_varias_lineas(),
+            subido: 0.0,
+            tope: 0.0,
+            zonas: Vec::new(),
+            raton: (-1.0, -1.0),
+            miniaturas: HashMap::new(),
+            atajos: None,
+            pedido: None,
+            aviso: None,
+        };
+        pintar(&motor, &fuera.destino, &peg, &mut st, ancho, alto, 1.0);
+        guardar(&fuera, ancho, alto, "comentario-minichat.png");
+        assert!(!st.zonas.is_empty());
+    }
 }

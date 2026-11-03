@@ -103,6 +103,13 @@ impl Tipo {
         self as u8
     }
 
+    /// El siguiente en la tira (el ultimo vuelve al primero): un clic en el
+    /// redondel del minichat cambia el tipo asi.
+    pub fn siguiente(self) -> Tipo {
+        let i = Tipo::TODOS.iter().position(|t| *t == self).unwrap_or(0);
+        Tipo::TODOS[(i + 1) % Tipo::TODOS.len()]
+    }
+
     pub fn es_urgencia(self) -> bool {
         self != Tipo::Nota
     }
@@ -675,6 +682,8 @@ mod pruebas {
         assert_eq!(colores.len(), 4);
         assert!(Tipo::Urgente.orden() < Tipo::Media.orden());
         assert!(!Tipo::Nota.es_urgencia());
+        assert_eq!(Tipo::Media.siguiente(), Tipo::Nota);
+        assert_eq!(Tipo::Nota.siguiente(), Tipo::Urgente);
     }
 
     #[test]

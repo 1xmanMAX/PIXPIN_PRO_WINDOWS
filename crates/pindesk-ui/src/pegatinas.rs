@@ -462,6 +462,10 @@ pub enum BotonChat {
     /// Crear la tarea (solo urgencias).
     Tarea,
     Cerrar,
+    /// Quitar la pegatina (con su hilo).
+    Quitar,
+    /// El redondel de la cabecera: pasa al tipo siguiente.
+    CambiarTipo,
     /// Adjuntar un fichero (el cuadro de abrir de Windows).
     Adjuntar,
     /// Pegar del portapapeles (una imagen, un fichero copiado).
@@ -509,7 +513,7 @@ impl MiniChat {
         let mut botones = Vec::new();
         let mut x = ancho - 8.0 * e - b;
         let y = (cab - b) / 2.0;
-        for bt in [BotonChat::Cerrar, BotonChat::Resolver]
+        for bt in [BotonChat::Cerrar, BotonChat::Quitar, BotonChat::Resolver]
             .into_iter()
             .chain(con_tarea.then_some(BotonChat::Tarea))
         {
@@ -545,6 +549,7 @@ impl MiniChat {
             alto: alto_texto,
         };
         botones.push((enviar, BotonChat::Enviar));
+        botones.push((pegatina, BotonChat::CambiarTipo));
         let fila = barra.y + 8.0 * e + alto_texto + 6.0 * e;
         for (i, bt) in [
             BotonChat::Adjuntar,

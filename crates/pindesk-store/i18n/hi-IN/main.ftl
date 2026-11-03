@@ -3405,3 +3405,30 @@ nube-cerrar-pregunta =
     हाँ: ये बदलाव छोड़ दें (दूसरों के बदलाव रहेंगे)।
     नहीं: फिर से ऑनलाइन होकर इन्हें अपलोड करें।
     रद्द करें: अगली बार के लिए ऑफ़लाइन रखें।
+
+## Comentario avanzado: la pegatina con su minichat (3-nov-2026)
+comentario-tipo-urgente = अत्यावश्यक
+comentario-tipo-alta = उच्च प्राथमिकता
+comentario-tipo-media = मध्यम प्राथमिकता
+comentario-tipo-nota = नोट
+comentario-abrir = चैट खोलें
+comentario-resolver = हल करें
+comentario-reabrir = फिर से खोलें
+comentario-crear-tarea = कार्य बनाएँ
+comentario-tarea-creada = इनबॉक्स में कार्य बनाया गया
+comentario-quitar = हटाएँ
+comentario-lista-titulo = टिप्पणियाँ
+comentario-lista-vacia = अभी कोई टिप्पणी नहीं। एक प्रकार चुनें और जहाँ चिपकाना हो वहाँ क्लिक करें।
+comentario-plantando = जहाँ टिप्पणी चिपकानी हो वहाँ क्लिक करें (बाहर निकलने के लिए Esc)
+comentario-escribir = लिखें… (Enter भेजता है)
+comentario-sin-entradas = पहला संदेश लिखें, कोई चित्र चिपकाएँ या फ़ाइल जोड़ें।
+comentario-resuelto = हल हो गया
+comentario-sin-sitio = यह दस्तावेज़ सहेजा नहीं गया है: कुछ जोड़ा नहीं जा सकता।
+comentario-abre-el-chat = उस संदेश पर जाने के लिए चैट खोलें।
+comentario-elegir-atajo = इसका शॉर्टकट…
+comentario-sin-atajos = शॉर्टकट बनाने के लिए कैनवास पर कुछ चुनें, या किसी चैट का दस्तावेज़ खोलें।
+comentario-elemento = तत्व
+comentario-mensaje = चैट संदेश
+comentario-lienzo-propio = कैनवास
+comentario-anotar = एनोटेट करें
+comentario-anotada = एनोटेट किया गया

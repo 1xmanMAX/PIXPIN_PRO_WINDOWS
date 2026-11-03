@@ -3383,3 +3383,30 @@ nube-cerrar-pregunta =
     Oui : abandonner ces modifications (celles des autres restent).
     Non : repasser en ligne et les envoyer.
     Annuler : le laisser hors ligne pour la prochaine fois.
+
+## Comentario avanzado: la pegatina con su minichat (3-nov-2026)
+comentario-tipo-urgente = Urgent
+comentario-tipo-alta = Priorité haute
+comentario-tipo-media = Priorité moyenne
+comentario-tipo-nota = Note
+comentario-abrir = Ouvrir la discussion
+comentario-resolver = Résoudre
+comentario-reabrir = Rouvrir
+comentario-crear-tarea = Créer une tâche
+comentario-tarea-creada = Tâche créée dans la boîte de réception
+comentario-quitar = Retirer
+comentario-lista-titulo = Commentaires
+comentario-lista-vacia = Pas encore de commentaires. Choisissez un type et cliquez là où vous voulez le coller.
+comentario-plantando = Cliquez là où vous voulez coller le commentaire (Échap pour quitter)
+comentario-escribir = Écrivez… (Entrée envoie)
+comentario-sin-entradas = Écrivez le premier message, collez une image ou joignez un fichier.
+comentario-resuelto = Résolu
+comentario-sin-sitio = Ce document n’est pas enregistré : impossible de joindre quoi que ce soit.
+comentario-abre-el-chat = Ouvrez la discussion pour aller à ce message.
+comentario-elegir-atajo = Raccourci vers…
+comentario-sin-atajos = Sélectionnez quelque chose sur la toile, ou ouvrez un document d’une discussion, pour créer un raccourci.
+comentario-elemento = Élément
+comentario-mensaje = Message de la discussion
+comentario-lienzo-propio = Toile
+comentario-anotar = Annoter
+comentario-anotada = Annotée

@@ -3419,3 +3419,30 @@ nube-cerrar-pregunta =
     Yes: discard those changes (the others' stay).
     No: go back online and upload them.
     Cancel: keep it offline for next time.
+
+## Comentario avanzado: la pegatina con su minichat (3-nov-2026)
+comentario-tipo-urgente = Urgent
+comentario-tipo-alta = High priority
+comentario-tipo-media = Medium priority
+comentario-tipo-nota = Note
+comentario-abrir = Open the chat
+comentario-resolver = Resolve
+comentario-reabrir = Reopen
+comentario-crear-tarea = Create task
+comentario-tarea-creada = Task created in the Inbox
+comentario-quitar = Remove
+comentario-lista-titulo = Comments
+comentario-lista-vacia = No comments yet. Pick a type and click where you want to stick it.
+comentario-plantando = Click where you want to stick the comment (Esc to leave)
+comentario-escribir = Write… (Enter sends)
+comentario-sin-entradas = Write the first message, paste an image or attach a file.
+comentario-resuelto = Resolved
+comentario-sin-sitio = This document isn't saved: nothing can be attached.
+comentario-abre-el-chat = Open the chat to go to that message.
+comentario-elegir-atajo = Shortcut to…
+comentario-sin-atajos = Select something on the canvas, or open a document from a chat, to make a shortcut.
+comentario-elemento = Element
+comentario-mensaje = Chat message
+comentario-lienzo-propio = Canvas
+comentario-anotar = Annotate
+comentario-anotada = Annotated
