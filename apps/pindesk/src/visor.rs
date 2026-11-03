@@ -85,9 +85,9 @@ use crate::leer_en_voz::{self, LeerEnVoz, Suceso};
 use crate::overlay::Recursos;
 use pindesk_docs::voz_alta;
 
-pub(crate) mod como_texto;
 /// Las pegatinas de comentario (`crate::comentarios`), ancladas por su cita.
 mod comentar;
+pub(crate) mod como_texto;
 mod imagenes;
 mod maqueta_movil;
 mod maqueta_vieja;
