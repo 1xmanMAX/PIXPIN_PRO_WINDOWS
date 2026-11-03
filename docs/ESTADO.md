@@ -13,6 +13,9 @@ lo que hace falta para seguir trabajando.
 - **Emparejar sin IP** (rama `emparejar-sin-ip`, 3-nov-2026): unirse con el código busca por mDNS
   y por la baliza a la vez, «Dar permiso de red» para el cortafuegos, el QR `pindesk://emparejar` y
   sincronizar al volver de la suspensión. Pendiente en Android: [emparejar.md](emparejar.md).
+- **Comentario avanzado** (rama `comentario-avanzado`, 3-nov-2026): la pegatina de comentario
+  con su minichat en el lienzo, el PDF/Office, el lector de Word y libros, las hojas y el plano
+  CAD. Formato y lo que falta (pines, HTML y notas): [comentarios.md](comentarios.md).
 - **Pruebas que ya fallaban** (no son regresiones; pendientes de arreglar):
   - `compartir::pruebas::cada_mensaje_solo_ofrece_sus_formatos_y_su_original`
   - `compartir::ventana::pruebas::la_hoja_se_pinta_entera_y_dice_cuanto_pesa`

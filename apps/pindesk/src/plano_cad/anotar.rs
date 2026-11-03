@@ -537,6 +537,9 @@ fn area_de(v: &VistaPlano) -> Rect {
 
 /// El motor del lienzo sobre un plano.
 pub struct MotorDelPlano {
+    /// Las pegatinas de comentario del plano (3-nov-2026), encima de todo y
+    /// tambien sin anotar (`Anotador::antes`).
+    comentarios: Option<crate::comentarios::Pegador>,
     rutas: Rutas,
     capa: Capa,
     tinta: Tinta,
@@ -706,7 +709,29 @@ impl MotorDelPlano {
             mirado: None,
             aviso: 0,
             leida: 0,
+            comentarios: None,
         }
+    }
+
+    /// Las pegatinas de comentario y su boton, encima de todo.
+    fn pintar_comentarios(&self, motor: &MotorRender, destino: &ID3D11Texture2D, v: &VistaPlano) {
+        let Some(peg) = &self.comentarios else {
+            return;
+        };
+        let ubicar = UbicarPlano { v };
+        let cx = contexto_del_plano(v, &ubicar);
+        if let Ok(bitmap) = motor.destino_backbuffer(destino) {
+            let _ = motor.dibujar(&bitmap, |p| {
+                peg.pintar_pegatinas(p, &ubicar, cx.e);
+                peg.pintar_interfaz(p, &cx, 64.0 * cx.e);
+            });
+        }
+    }
+
+    /// Con las pegatinas de comentario del plano `doc` (`crate::comentarios`).
+    pub fn con_comentarios(mut self, doc: &std::path::Path) -> MotorDelPlano {
+        self.comentarios = Some(crate::comentarios::Pegador::del_documento(doc));
+        self
     }
 
     /// **Relee la capa del disco** (lo que dejo la sincronizacion), con su
@@ -1055,7 +1080,86 @@ fn poner_a_escala(
     }
 }
 
+/// **Las anclas del plano**: la pagina 0 y un punto en unidades del dibujo
+/// respecto a su origen, con y hacia arriba (las de la vista del plano).
+struct UbicarPlano<'a> {
+    v: &'a VistaPlano,
+}
+
+impl crate::comentarios::Ubicar for UbicarPlano<'_> {
+    fn a_pantalla(&self, a: &pindesk_comentarios::Ancla) -> Option<(f32, f32)> {
+        let pindesk_comentarios::Sitio::Pagina { x, y, .. } = a.sitio() else {
+            return None;
+        };
+        let v = self.v;
+        let px = v.px.max(1e-12);
+        Some((
+            ((x - v.centro[0]) / px + v.ancho as f64 / 2.0) as f32,
+            (v.alto as f64 / 2.0 - (y - v.centro[1]) / px) as f32,
+        ))
+    }
+
+    fn de_pantalla(&self, p: (f32, f32)) -> Option<pindesk_comentarios::Ancla> {
+        let v = self.v;
+        Some(pindesk_comentarios::Ancla::pagina(
+            0,
+            v.centro[0] + (p.0 as f64 - v.ancho as f64 / 2.0) * v.px,
+            v.centro[1] - (p.1 as f64 - v.alto as f64 / 2.0) * v.px,
+        ))
+    }
+}
+
+fn contexto_del_plano<'a>(
+    v: &VistaPlano,
+    ubicar: &'a dyn crate::comentarios::Ubicar,
+) -> crate::comentarios::Contexto<'a> {
+    crate::comentarios::Contexto {
+        area: area_de(v),
+        e: v.escala_por_cien as f32 / 100.0,
+        reserva_abajo: 0.0,
+        ubicar,
+        ocupado: false,
+        dueno: 0,
+        atajo: None,
+    }
+}
+
 impl Anotador for MotorDelPlano {
+    fn antes(&mut self, ev: EventoPlano, v: &VistaPlano) -> Respuesta {
+        let Some(peg) = self.comentarios.as_mut() else {
+            return Respuesta::default();
+        };
+        let p = |x: i32, y: i32| Punto { x, y };
+        let ev = match ev {
+            EventoPlano::Mover(x, y) => EventoOverlay::RatonMovido(p(x, y)),
+            EventoPlano::Bajar(x, y) => EventoOverlay::BotonPulsado(p(x, y)),
+            EventoPlano::Subir(x, y) => EventoOverlay::BotonSoltado(p(x, y)),
+            EventoPlano::BajarDerecho(x, y) => EventoOverlay::BotonDerechoPulsado(p(x, y)),
+            EventoPlano::Tecla {
+                vk,
+                shift,
+                ctrl,
+                alt,
+            } => EventoOverlay::Tecla {
+                vk,
+                shift,
+                ctrl,
+                alt,
+            },
+            _ => return Respuesta::default(),
+        };
+        let ubicar = UbicarPlano { v };
+        let r = peg.evento(&ev, &contexto_del_plano(v, &ubicar));
+        Respuesta {
+            consumido: r.consumido,
+            ..Respuesta::default()
+        }
+    }
+
+    fn al_dia(&mut self) -> bool {
+        self.comentarios.as_mut().is_some_and(|p| p.al_dia())
+    }
+
     fn evento(&mut self, ev: EventoPlano, v: &VistaPlano) -> Respuesta {
         let p = |x: i32, y: i32| Punto { x, y };
         let ev = match ev {
@@ -1078,6 +1182,7 @@ impl Anotador for MotorDelPlano {
             },
             EventoPlano::TeclaSoltada(vk) => EventoOverlay::TeclaSoltada(vk),
             EventoPlano::Caracter(c) => EventoOverlay::Caracter(c),
+            EventoPlano::BajarDerecho(x, y) => EventoOverlay::BotonDerechoPulsado(p(x, y)),
         };
         self.tinta.hoja = Some(0);
         let cam = camara_de(v);
@@ -1117,11 +1222,14 @@ impl Anotador for MotorDelPlano {
         if !anotando {
             self.mirar_el_disco();
         }
-        if self.capa.vacia() && !anotando {
-            // Nada que pintar: ni foto que guardar.
+        let solo_comentarios = self.capa.vacia() && !anotando;
+        if solo_comentarios {
+            // Nada de tinta que pintar: ni foto que guardar.
             self.foto.soltar();
             self.ultima_camara = None;
-            return;
+            if self.comentarios.is_none() {
+                return;
+            }
         }
         let clave = d3d.as_raw() as usize;
         if self.motor.as_ref().is_none_or(|(k, _)| *k != clave) {
@@ -1140,6 +1248,11 @@ impl Anotador for MotorDelPlano {
         let Some((_, motor)) = self.motor.take() else {
             return;
         };
+        if solo_comentarios {
+            self.pintar_comentarios(&motor, destino, v);
+            self.motor = Some((clave, motor));
+            return;
+        }
         let cam = camara_de(v);
         let camara = (cam.x, cam.y, cam.zoom);
         let moviendose = self.ultima_camara.is_some_and(|c| c != camara);
@@ -1156,6 +1269,7 @@ impl Anotador for MotorDelPlano {
         {
             tracing::warn!(?e, "no se pudo pintar la tinta del plano");
         }
+        self.pintar_comentarios(&motor, destino, v);
         self.motor = Some((clave, motor));
     }
 

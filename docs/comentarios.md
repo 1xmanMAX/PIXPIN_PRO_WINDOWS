@@ -223,16 +223,18 @@ está (`pindesk_comentarios::espejo`):
 | PDF y Office | `apps/pindesk/src/lector_pdf/comentar.rs` |
 | Word en lectura, libros, texto | `apps/pindesk/src/visor/comentar.rs` |
 | Hojas de cálculo | `apps/pindesk/src/visor_hoja/comentar.rs` |
+| Plano CAD | `apps/pindesk/src/plano_cad/anotar.rs` (`UbicarPlano`), con `Anotador::antes` de `crates/pindesk-cad/src/anotado.rs` |
 
 ## 9. Qué visores lo tienen (3-nov-2026)
 
 - **Hecho**: lienzo (también el de una foto del chat: la foto va de fondo en
   sus píxeles, así que el ancla de escena son píxeles de la imagen), lector
   de PDF y Office (Word, PowerPoint), lector que reajusta el texto (Word en
-  modo lectura, EPUB, texto), hojas de cálculo.
+  modo lectura, EPUB, texto), hojas de cálculo y plano CAD (ancla `pagina` 0
+  en unidades del dibujo respecto a su origen, con y hacia **arriba**; se ven
+  y se tocan también sin anotar).
 - **Pendiente**: los pines de imagen del escritorio (`crates/pindesk-pin`:
-  hace falta un pedido al gestor como el de los marcos), el visor de HTML y
-  el lector de notas Markdown (la página: el formato ya está, ancla `texto`
-  con `sobre` `html`/`markdown`, las mismas cuentas que `marcas-texto.mjs`),
-  y el plano CAD (ancla `pagina` 0 en unidades del dibujo, con y hacia
-  arriba).
+  hace falta un pedido al gestor como el de los marcos), y el visor de HTML
+  y el lector de notas Markdown (la página del WebView: el formato ya está,
+  ancla `texto` con `sobre` `html` o `markdown` y las mismas cuentas que
+  `marcas-texto.mjs`; falta el guion de la página y su mensaje al PC).
