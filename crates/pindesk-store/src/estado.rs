@@ -69,6 +69,11 @@ pub struct Estado {
     /// Los colores elegidos a mano hace poco en el selector de color del
     /// lienzo, el ultimo delante (`#rrggbb`).
     pub lienzo_colores_recientes: Vec<String>,
+    /// **Los ultimos parametros de cada plantilla** en la ventana de las
+    /// figuras del chat (del cuanto al cuanto, cuantos por hoja, el mes…):
+    /// su clave de serie y lo que no es de fabrica, «hasta=40;por-hoja=10»
+    /// (`figuras_de_serie::Parametros::a_texto`).
+    pub figuras_parametros: std::collections::BTreeMap<String, String>,
 }
 
 fn fichero(ubicacion: &Ubicacion) -> PathBuf {
@@ -123,6 +128,7 @@ mod pruebas {
             figuras_de_noche: Some(true),
             lienzo_rugosidad: Some(2),
             lienzo_colores_recientes: vec!["#123456".into(), "#abcdef".into()],
+            figuras_parametros: [("metas".to_string(), "hasta=30".to_string())].into(),
         };
         guardar(&u, &e).unwrap();
         assert_eq!(cargar(&u), e);

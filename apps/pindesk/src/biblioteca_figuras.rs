@@ -169,6 +169,40 @@ pub fn poner_de_noche(noche: bool) {
     }
 }
 
+/// **Los ultimos parametros de una plantilla** (su clave de serie) en la
+/// ventana de las figuras del chat, como los guarda
+/// `figuras_de_serie::Parametros::a_texto`. `None` si nunca se tocaron.
+pub fn parametros_de(clave: &str) -> Option<String> {
+    crate::oscuro::ubicacion().and_then(|u| {
+        pindesk_store::estado::cargar(&u)
+            .figuras_parametros
+            .remove(clave)
+    })
+}
+
+/// Los recuerda (vacio: los de serie, se olvidan). Si no se puede guardar
+/// solo se pierde que se recuerden.
+pub fn recordar_parametros(clave: &str, texto: &str) {
+    let Some(u) = crate::oscuro::ubicacion() else {
+        return;
+    };
+    let mut estado = pindesk_store::estado::cargar(&u);
+    let antes = estado.figuras_parametros.get(clave).cloned();
+    if texto.is_empty() {
+        estado.figuras_parametros.remove(clave);
+    } else {
+        estado
+            .figuras_parametros
+            .insert(clave.to_string(), texto.to_string());
+    }
+    if estado.figuras_parametros.get(clave) == antes.as_ref() {
+        return;
+    }
+    if let Err(e) = pindesk_store::estado::guardar(&u, &estado) {
+        tracing::warn!(?e, "figuras: no se pudieron recordar los parametros");
+    }
+}
+
 #[cfg(test)]
 mod pruebas {
     use super::*;
