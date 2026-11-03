@@ -130,7 +130,8 @@ pub enum TipoAdjunto {
     /// Una imagen (`ruta`, `nombre`); `tinta` es lo anotado encima en el
     /// lienzo, si se anoto.
     Imagen,
-    /// Un atajo a un mensaje del chat (`chat`, `mensaje`).
+    /// Un atajo a un mensaje del chat (`chat`: el id del proyecto;
+    /// `mensaje`: su `Codigos.unico`).
     Mensaje,
     /// Un atajo a un elemento de un lienzo (`lienzo`, `elemento`).
     Elemento,
@@ -204,6 +205,10 @@ pub struct Adjunto {
     /// El `id` Excalidraw del elemento.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub elemento: Option<String>,
+    /// Donde estaba el elemento al hacer el atajo (su centro, coordenadas
+    /// del mundo del lienzo): para ir a el aunque su id no se encuentre.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub punto: Option<[f64; 2]>,
     /// Lo que se ensena del atajo (el texto del mensaje, el del elemento).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rotulo: Option<String>,
@@ -236,11 +241,17 @@ impl Adjunto {
         }
     }
 
-    pub fn elemento(lienzo: &str, elemento: &str, rotulo: &str) -> Adjunto {
+    pub fn elemento(
+        lienzo: &str,
+        elemento: &str,
+        punto: Option<[f64; 2]>,
+        rotulo: &str,
+    ) -> Adjunto {
         Adjunto {
             tipo: TipoAdjunto::Elemento,
             lienzo: Some(lienzo.into()),
             elemento: Some(elemento.into()),
+            punto,
             rotulo: Some(rotulo.into()).filter(|r: &String| !r.is_empty()),
             ..Adjunto::default()
         }

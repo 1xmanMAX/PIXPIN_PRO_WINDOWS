@@ -1509,6 +1509,7 @@ dependencies = [
  "pindesk-cad",
  "pindesk-capture",
  "pindesk-codec",
+ "pindesk-comentarios",
  "pindesk-docs",
  "pindesk-frase",
  "pindesk-geom",
@@ -2012,6 +2013,7 @@ dependencies = [
 name = "pindesk-ui"
 version = "0.1.0"
 dependencies = [
+ "pindesk-comentarios",
  "pindesk-geom",
  "pindesk-motor2d",
 ]

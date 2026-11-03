@@ -458,6 +458,29 @@ pub fn vistas_del_lienzo(lienzo: &Path) -> Option<PathBuf> {
     junto_al_dibujo_del_movil(lienzo, a::VISTAS)
 }
 
+/// **La base de lo que cuelga de un lienzo del almacen** (3-nov-2026, las
+/// pegatinas de comentario): para `…/<ficha>/lienzos/<d>.excalidraw`, la
+/// base `<d>` en el chat de esa ficha. Con ella, `fichero(".comentarios.json")`
+/// es `pins/draw/<d>.comentarios.json` (ver
+/// `pindesk_sincro::anotado::comentarios_junto_a`). `None` si el lienzo no es
+/// de un chat del almacen.
+pub fn base_del_lienzo(lienzo: &Path) -> Option<Base> {
+    let d = lienzo.file_name()?.to_str()?.strip_suffix(".excalidraw")?;
+    let carpeta = lienzo
+        .parent()
+        .filter(|p| p.file_name().is_some_and(|n| n == "lienzos"))?
+        .parent()?;
+    let ficha = carpeta.file_name()?.to_str()?;
+    let raiz = raiz_de(carpeta)?;
+    Indice::leer(&raiz).buscar(ficha)?;
+    let chat = vista::chat_de_ficha(&raiz, ficha)?;
+    Some(Base {
+        raiz,
+        chat,
+        base: d.to_string(),
+    })
+}
+
 /// `pins/draw/<d><terminacion>` del chat del lienzo `…/<ficha>/lienzos/<d>.excalidraw`.
 fn junto_al_dibujo_del_movil(lienzo: &Path, terminacion: &str) -> Option<PathBuf> {
     let d = lienzo.file_name()?.to_str()?.strip_suffix(".excalidraw")?;
