@@ -42,6 +42,7 @@ mod mapas;
 mod marcas;
 mod mobiliario;
 mod negocio;
+mod parametros;
 mod personas;
 mod planta;
 mod plantillas;
@@ -57,6 +58,7 @@ pub use intervalo::{
     las_que_se_alargan, las_que_se_personalizan, mes_de_la_hoja, nombre_de, se_alarga,
     se_personaliza, secciones_de, tramo_de_serie,
 };
+pub use parametros::{Parametro, Parametros, tiene_parametros};
 pub use secciones::{AnchoSeccion, MAX_LINEAS, MAX_SECCIONES, Seccion, SeccionPedida, TipoSeccion};
 
 /// Entre la categoria y el nombre.
