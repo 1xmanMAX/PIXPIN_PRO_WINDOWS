@@ -781,6 +781,66 @@ mod pruebas {
         assert!(!svg(h2, OpcionesSvg::default(), &ninguna).contains("<pattern"));
     }
 
+    /// Un rectangulo a mano («artista»), con fondo y al 35 %.
+    fn a_mano(semilla: u32) -> crate::Elemento {
+        crate::Elemento {
+            figura: crate::Figura::Rectangulo,
+            x: 10.0,
+            y: 10.0,
+            ancho: 120.0,
+            alto: 80.0,
+            relleno: Some(ColorRgba::opaco(1.0, 0.79, 0.79)),
+            rugosidad: 1.0,
+            opacidad: 0.35,
+            semilla,
+            ..Default::default()
+        }
+    }
+
+    fn svg_de(e: crate::Elemento) -> String {
+        let mut escena = crate::Escena::nueva();
+        escena.anadir(e);
+        let h = &exportar::hojas(&escena, exportar::Alcance::Todo, &[], None)[0];
+        svg(h, OpcionesSvg::default(), &ninguna)
+    }
+
+    #[test]
+    fn el_trazo_a_mano_sale_igual_cada_vez_y_tras_pasar_por_el_fichero() {
+        // **El temblor es de la semilla del elemento**, no del momento: el
+        // SVG (y con el el HTML, que lo lleva dentro, y el PDF y el PNG, que
+        // pintan las mismas ordenes) sale igual en cada exportacion y
+        // despues de guardar y volver a abrir el `.excalidraw`.
+        let e = a_mano(4242);
+        let una = svg_de(e.clone());
+        assert_eq!(una, svg_de(e.clone()));
+        let fichero = crate::excalidraw::elementos_a_json(std::slice::from_ref(&e));
+        let leido = crate::excalidraw::elementos_de_json(&fichero).remove(0);
+        assert_eq!(leido.semilla, 4242);
+        assert_eq!(leido.rugosidad, 1.0);
+        assert_eq!(svg_de(leido), una);
+        // Caso negativo: otra semilla, otro temblor.
+        assert_ne!(svg_de(a_mano(7)), una);
+    }
+
+    #[test]
+    fn la_opacidad_del_elemento_llega_al_svg() {
+        let s = svg_de(a_mano(1));
+        // El contorno y el rayado del fondo (que son rayas), al 35 %; y
+        // ninguna raya opaca que se le escape.
+        assert!(s.contains("stroke-opacity=\"0.35\""), "{s}");
+        assert_eq!(
+            s.matches(" stroke=\"").count(),
+            s.matches("stroke-opacity=\"0.35\"").count(),
+            "{s}"
+        );
+        // Caso negativo: opaco no lleva opacidad que valga 1.
+        let opaco = svg_de(crate::Elemento {
+            opacidad: 1.0,
+            ..a_mano(1)
+        });
+        assert!(!opaco.contains("-opacity="), "{opaco}");
+    }
+
     #[test]
     fn una_imagen_recortada_ensena_solo_su_trozo() {
         let o = Orden::Imagen {

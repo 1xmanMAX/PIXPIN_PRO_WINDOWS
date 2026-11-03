@@ -583,10 +583,54 @@ fn novedades(raiz: PathBuf) {
 pub(crate) type Sitio = (PathBuf, String, String);
 
 /// El documento de un visor, si es un adjunto de un chat de la nube.
+///
+/// - **El PDF de un proyecto** (`lector_pdf`, `capas_del_pdf`): sus
+///   marcadores van en `anot-<unico del proyecto>…` y su tinta en el lienzo
+///   de cada hoja, asi que la clave lleva el codigo y esos lienzos
+///   ([clave_del_pdf_del_proyecto]).
+/// - Un adjunto del chat: el codigo de su mensaje.
+/// - Lo demas que tiene base `anot-<codigo>` (una nota de un proyecto en el
+///   lector de notas, `cache/riel-notas/…`): ese codigo.
 pub(crate) fn documento(doc: &Path) -> Option<Sitio> {
-    let raiz = pindesk_proyecto::anotado::raiz_de(doc)?;
-    let x = pindesk_proyecto::anotado::adjunto_de(&raiz, doc)?;
-    (modo(&raiz, &x.chat) == Modo::Nube).then_some((raiz, x.chat, x.uid))
+    if let Some(s) = clave_del_pdf_del_proyecto(doc) {
+        return Some(s);
+    }
+    let (raiz, chat, codigo) = match pindesk_proyecto::anotado::raiz_de(doc)
+        .and_then(|r| Some((pindesk_proyecto::anotado::adjunto_de(&r, doc)?, r)))
+    {
+        Some((x, raiz)) => (raiz, x.chat, x.uid),
+        None => {
+            let b = crate::anotado_del_adjunto::base_de(doc)?;
+            let codigo =
+                pindesk_sincro::anotado::uid_del_nombre(&format!("{}.marcas", b.base))?.to_string();
+            (b.raiz, b.chat, codigo)
+        }
+    };
+    (modo(&raiz, &chat) == Modo::Nube).then_some((raiz, chat, codigo))
+}
+
+/// **La clave del PDF de un proyecto** de un chat de la nube: el codigo de
+/// sus marcadores y el dibujo de cada hoja con pagina (los que el lector
+/// escribe, `lector_pdf_proyecto::DondeVa`, con la misma huella).
+fn clave_del_pdf_del_proyecto(pdf: &Path) -> Option<Sitio> {
+    if !pdf
+        .extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("pdf"))
+    {
+        return None;
+    }
+    let raiz = pindesk_proyecto::anotado::raiz_de(pdf)?;
+    use pindesk_proyecto::capas_del_pdf;
+    let p = capas_del_pdf::de_este_pdf(&raiz, pdf)?;
+    let b = pindesk_proyecto::anotado::base_del_pdf(&raiz, pdf, Some(&p.ficha))?;
+    if modo(&raiz, &b.chat) != Modo::Nube {
+        return None;
+    }
+    let codigo = b.base.strip_prefix(pindesk_sincro::anotado::PREFIJO)?;
+    let huella = capas_del_pdf::huella(&pdf.to_string_lossy());
+    let lienzos = capas_del_pdf::dibujos_de_las_paginas(&raiz, &p.ficha, &huella);
+    let clave = pindesk_sincro::nube::sin_conexion::clave_con_lienzos(codigo, &lienzos);
+    Some((raiz, b.chat, clave))
 }
 
 /// El lienzo `referencia` de la ficha `ficha` (una hoja DIBUJO o PAGINA, o

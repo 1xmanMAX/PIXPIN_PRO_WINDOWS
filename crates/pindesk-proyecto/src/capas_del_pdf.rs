@@ -130,6 +130,29 @@ pub fn dibujo_de_la_pagina(
     Some(d)
 }
 
+/// **Los dibujos de todas las hojas del PDF** del proyecto `ficha`: el de
+/// cada hoja con `pagina` (el suyo, o `pdf-<huella>-p<i>`, el que tendra al
+/// escribir; ver [`dibujo_de_la_pagina`]). Sin escribir nada. Es lo que el
+/// lector puede tocar de ese proyecto: «Sin conexión» lo retiene
+/// (`pindesk_sincro::nube::sin_conexion::clave_con_lienzos`).
+pub fn dibujos_de_las_paginas(raiz: &Path, ficha: &str, huella: &str) -> Vec<String> {
+    let Some(p) = leer_proyecto(raiz, ficha) else {
+        return Vec::new();
+    };
+    p.hojas
+        .iter()
+        .filter_map(|h| {
+            let i = h.pagina?;
+            Some(
+                h.dibujo
+                    .clone()
+                    .filter(|d| !d.is_empty())
+                    .unwrap_or_else(|| suelto(huella, i)),
+            )
+        })
+        .collect()
+}
+
 /// El fichero del dibujo `d` de ese proyecto.
 pub fn fichero(raiz: &Path, ficha: &str, dibujo: &str) -> PathBuf {
     almacen::lienzo(raiz, ficha, dibujo)
@@ -456,6 +479,21 @@ mod pruebas {
         assert_eq!(p.tocado, 99);
         // Caso negativo: una pagina sin hoja en el proyecto es tinta suelta.
         assert_eq!(dibujo_de_la_pagina(&r, &ficha.id, 2, "abc", true, 99), None);
+        let _ = std::fs::remove_dir_all(&r);
+    }
+
+    #[test]
+    fn los_dibujos_de_las_paginas_son_los_que_el_lector_escribiria() {
+        let r = raiz("dibujos");
+        let (ficha, _, _) = con_pdf(&r);
+        assert_eq!(
+            dibujos_de_las_paginas(&r, &ficha.id, "abc"),
+            ["dib-1", "pdf-abc-p1", "pdf-abc-p5"]
+        );
+        // Solo mirar: no apunta nada.
+        assert_eq!(leer_proyecto(&r, &ficha.id).unwrap().tocado, 10);
+        // Caso negativo: un proyecto que no esta no tiene dibujos.
+        assert!(dibujos_de_las_paginas(&r, "no-esta", "abc").is_empty());
         let _ = std::fs::remove_dir_all(&r);
     }
 
