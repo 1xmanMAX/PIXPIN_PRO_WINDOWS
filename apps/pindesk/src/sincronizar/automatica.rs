@@ -52,6 +52,12 @@
 //! - **Al volver la red** (`pindesk_shell::red`, cuando Windows cambia una
 //!   direccion) se sondea enseguida, al grupo y a las personas, y lo que
 //!   esperaba para reintentar se intenta ya ([`Reloj::volvio_la_red`]).
+//! - **Al volver de la suspension** (3-nov-2026, `pindesk_shell::red::
+//!   al_despertar`, y por si no avisa, el reloj: [`se_durmio`]): se sondea
+//!   ya y quien conteste cuenta como recien aparecido ([`Reloj::desperto`]),
+//!   asi que se sincroniza enseguida y no al siguiente [`PERIODO`]. La
+//!   politica entera, y lo que tiene que hacer Android, en
+//!   `docs/emparejar.md` («En segundo plano»).
 //!
 //! **Encendida salvo que el usuario la apague**, para los aparatos y para las
 //! personas de los chats compartidos: sin `automatica` en `ajustes.toml`
@@ -182,6 +188,9 @@ enum Entrada {
     },
     /// Windows cambio una direccion de red: puede que haya vuelto.
     Red,
+    /// El equipo volvio de la suspension (o el reloj salto como si
+    /// hubiera dormido): los que contestaban antes ya no se dan por vistos.
+    Desperto,
     /// Se guardo una grabacion en el chat de esta ficha: sale primero.
     Grabada(String),
     /// Acabo la vuelta con los chats de las grabaciones recien guardadas.
@@ -494,6 +503,17 @@ impl Reloj {
         }
     }
 
+    /// **Volvio de dormir** (3-nov-2026): lo que se sabia de quien contesta
+    /// es de antes de cerrar la tapa. Se olvida, para que el primero que
+    /// conteste a la sonda cuente como recien aparecido y se sincronice ya
+    /// (si no, seguia «visto» y esperaba al [`PERIODO`]); y lo que esperaba
+    /// para reintentar se intenta ya, como al volver la red.
+    pub fn desperto(&mut self, ahora: i64) {
+        self.responden.clear();
+        self.aparecidos.clear();
+        self.volvio_la_red(ahora);
+    }
+
     /// **Acabo una grabacion** (aqui o en otro del grupo): lo que se aplazo
     /// mientras tanto sale ya, sin esperar al [`PERIODO`].
     pub fn acabo_de_grabar(&mut self, ahora: i64) {
@@ -547,6 +567,19 @@ pub(crate) fn instalar(raiz: PathBuf, encendida: bool) {
             tracing::info!("sin aviso de cambios de red: se sondea a su ritmo");
         }
     }
+    // **Al volver de la suspension**: sondear y sincronizar ya, aunque la
+    // Wi-Fi vuelva con la misma direccion (entonces no hay aviso de red).
+    if let Some(tx) = AVISOS.get().cloned() {
+        let tx = std::sync::Mutex::new(tx);
+        let vigila = pindesk_shell::red::al_despertar(move || {
+            if let Ok(tx) = tx.lock() {
+                let _ = tx.send(Entrada::Desperto);
+            }
+        });
+        if !vigila {
+            tracing::info!("sin aviso al despertar: se nota por el reloj");
+        }
+    }
     let lanzado = std::thread::Builder::new()
         .name("sincro-automatica".into())
         .spawn(move || bucle(&raiz, rx));
@@ -554,6 +587,15 @@ pub(crate) fn instalar(raiz: PathBuf, encendida: bool) {
         Ok(_) => tracing::info!("sincronizacion automatica encendida"),
         Err(e) => tracing::warn!(?e, "no se pudo lanzar la sincronizacion automatica"),
     }
+}
+
+/// **Si el equipo durmio** entre dos miradas: el hilo pidio esperar como
+/// mucho `espera_ms` y el reloj de pared avanzo mucho mas (un minuto de
+/// margen por el trabajo de cada vuelta). Respaldo de
+/// `pindesk_shell::red::al_despertar`, por si Windows no avisa; un cambio de
+/// hora a mano tambien cuenta, y no pasa nada: solo se sondea antes.
+pub fn se_durmio(pared_antes: i64, pared_ahora: i64, espera_ms: i64) -> bool {
+    pared_ahora - pared_antes > espera_ms + 60_000
 }
 
 /// Cuanto dormir hasta la siguiente mirada: lo justo para mandar las tareas
@@ -614,14 +656,19 @@ fn bucle(raiz: &Path, rx: mpsc::Receiver<Entrada>) {
             corriendo,
             !grabadas.is_empty(),
         );
+        let pared_antes = super::ahora_ms();
         let primera = match rx.recv_timeout(espera) {
             Ok(e) => Some(e),
             Err(mpsc::RecvTimeoutError::Timeout) => None,
             Err(mpsc::RecvTimeoutError::Disconnected) => return,
         };
+        // Si el equipo durmio mientras se esperaba, como si Windows lo dijera.
+        let durmio = se_durmio(pared_antes, super::ahora_ms(), espera.as_millis() as i64)
+            .then_some(Entrada::Desperto);
         // Y las demas que hayan llegado juntas.
         for e in primera
             .into_iter()
+            .chain(durmio)
             .chain(std::iter::from_fn(|| rx.try_recv().ok()))
         {
             let ahora = super::ahora_ms();
@@ -631,6 +678,14 @@ fn bucle(raiz: &Path, rx: mpsc::Receiver<Entrada>) {
                 Entrada::Tareas(ficha) => reloj.avisan_tareas(&ficha, ahora),
                 Entrada::RespondePersona(id, si) => personas.responde(&id, si),
                 Entrada::SondeoAcabado => sondeando = false,
+                Entrada::Desperto => {
+                    tracing::info!("volvio de la suspension: se sondea y se sincroniza ya");
+                    presencia::sondear_ya();
+                    super::baliza::cambio_la_red();
+                    sondeado = None;
+                    reloj.desperto(ahora);
+                    personas.desperto(ahora);
+                }
                 Entrada::Red => {
                     tracing::info!("cambio la red: se sondea ya");
                     presencia::sondear_ya();
@@ -1350,6 +1405,35 @@ mod pruebas {
         r.acabo(Como::Fallo, firma(1), 0, 0.5);
         r.responde("tel", false);
         assert_eq!(r.toca(REINTENTO_TOPE), None);
+    }
+
+    #[test]
+    fn al_despertar_quien_ya_contestaba_cuenta_como_recien_aparecido() {
+        let mut r = con_tel();
+        r.empezo(0);
+        r.acabo(Como::Bien, firma(1), 1_000, 0.5);
+        // Visto antes de cerrar la tapa, y nada que hacer hasta el periodo.
+        assert_eq!(r.toca(60_000), None);
+        r.desperto(3_600_000);
+        // Hasta que la sonda conteste, no hay con quien.
+        assert_eq!(r.toca(3_600_000), None);
+        r.responde("tel", true);
+        assert_eq!(r.toca(3_600_100), Some(Motivo::Aparecio));
+        // Caso negativo: sin despertar, contestar otra vez no es aparecer.
+        let mut r = con_tel();
+        r.empezo(0);
+        r.acabo(Como::Bien, firma(1), 1_000, 0.5);
+        r.responde("tel", true);
+        assert_eq!(r.toca(60_000), None);
+    }
+
+    #[test]
+    fn se_nota_que_durmio_por_el_reloj_de_pared() {
+        // Pidio esperar 5 s y pasaron dos horas: durmio.
+        assert!(se_durmio(0, 7_200_000, 5_000));
+        // Caso negativo: lo que tarda una vuelta de trabajo no es dormir.
+        assert!(!se_durmio(0, 5_000 + 30_000, 5_000));
+        assert!(!se_durmio(0, 4_000, 5_000));
     }
 
     #[test]
