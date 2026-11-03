@@ -21,6 +21,11 @@
 //!   dice a la automatica que esta ([`super::presencia::Novedad::Responde`])
 //!   y, si este equipo graba, le manda el anuncio de la camara al momento.
 //!
+//! **Unirse con un codigo** (3-nov-2026, [`buscar_para_unirse`]): mientras
+//! alguien teclea el codigo de un grupo en Sincronizar, el oyente pregunta
+//! cada segundo con la clave de ese codigo (`pindesk_sincro::emparejar`) y
+//! quien contesta es donde llamar. A la vez que mDNS, y sin depender de el.
+//!
 //! **El modo prioritario** ([`grabando_alguien`]): mientras este equipo o
 //! uno del grupo graba, la sincronizacion automatica no arranca nada (ni la
 //! vuelta entera, ni las tareas, ni las personas: `automatica`), la sonda va
@@ -84,6 +89,104 @@ static GRABANDO_AQUI: AtomicBool = AtomicBool::new(false);
 static CAMBIO: AtomicBool = AtomicBool::new(false);
 /// Cambiaron las redes de este equipo: el oyente se vuelve a apuntar.
 static REDES_NUEVAS: AtomicBool = AtomicBool::new(false);
+
+/// **Quien se esta uniendo con un codigo** (3-nov-2026, `emparejar`): el
+/// oyente pregunta cada segundo con la clave que sale del codigo, desde su
+/// propio puerto, y lo que contesta el grupo va por `tx`.
+struct Uniendo {
+    clave: [u8; 32],
+    yo: String,
+    puerto_tcp: u16,
+    tx: mpsc::Sender<pindesk_sincro::emparejar::Encontrado>,
+    vuelta: u32,
+    ultima: Option<Instant>,
+    secuencia: u32,
+}
+
+static UNIENDO: Mutex<Option<Uniendo>> = Mutex::new(None);
+/// Si el oyente esta abierto (sin el, nadie oiria la respuesta).
+static OYENDO: AtomicBool = AtomicBool::new(false);
+
+/// **Buscar al grupo de `clave` por la baliza** mientras no se llame a
+/// [`dejar_de_buscar`]. `None` si la baliza no esta oyendo (presencia
+/// apagada u otro programa en el puerto): entonces queda solo mDNS.
+pub(crate) fn buscar_para_unirse(
+    clave: [u8; 32],
+    yo: String,
+    puerto_tcp: u16,
+) -> Option<mpsc::Receiver<pindesk_sincro::emparejar::Encontrado>> {
+    if !OYENDO.load(Ordering::SeqCst) {
+        return None;
+    }
+    let (tx, rx) = mpsc::channel();
+    let mut u = UNIENDO.lock().ok()?;
+    *u = Some(Uniendo {
+        clave,
+        yo,
+        puerto_tcp,
+        tx,
+        vuelta: 0,
+        ultima: None,
+        secuencia: 0,
+    });
+    Some(rx)
+}
+
+/// Se acabo de buscar para unirse (se encontro, o se rindio).
+pub(crate) fn dejar_de_buscar() {
+    if let Ok(mut u) = UNIENDO.lock() {
+        *u = None;
+    }
+}
+
+/// Si toca, la pregunta de quien se une, **desde el oyente**: la respuesta
+/// del grupo va al puerto de la baliza, y asi el cortafuegos la deja entrar
+/// como respuesta a nuestra difusion aunque PinDesk no tenga regla.
+fn preguntar_para_unirse(o: &Oyente) {
+    let Ok(mut u) = UNIENDO.lock() else {
+        return;
+    };
+    let Some(u) = u.as_mut() else {
+        return;
+    };
+    let cada = Duration::from_millis(pindesk_sincro::emparejar::CADA_PREGUNTA_MS as u64);
+    if u.ultima.is_some_and(|t| t.elapsed() < cada) {
+        return;
+    }
+    u.ultima = Some(Instant::now());
+    u.secuencia = u.secuencia.wrapping_add(1);
+    let p = pindesk_sincro::emparejar::pregunta(
+        &u.clave,
+        &u.yo,
+        u.puerto_tcp,
+        super::ahora_ms(),
+        u.secuencia,
+    );
+    let destinos = pindesk_sincro::emparejar::destinos(&redes(), u.vuelta);
+    let n = o.mandar(&p, &destinos, b::PUERTO_BALIZA);
+    if u.vuelta == 0 {
+        tracing::info!(n, "baliza: buscando al grupo del codigo tecleado");
+    }
+    u.vuelta += 1;
+}
+
+/// Si lo oido contesta a quien se une: se le pasa y no sigue.
+fn respuesta_para_unirse(bytes: &[u8], de: Ipv4Addr) -> bool {
+    let Ok(u) = UNIENDO.lock() else {
+        return false;
+    };
+    let Some(u) = u.as_ref() else {
+        return false;
+    };
+    match pindesk_sincro::emparejar::respuesta(bytes, de, &u.clave, &u.yo) {
+        Some(e) => {
+            tracing::info!(id = %e.id, host = %e.host, puerto = e.puerto, "baliza: contesto uno del grupo del codigo");
+            let _ = u.tx.send(e);
+            true
+        }
+        None => false,
+    }
+}
 
 /// La baliza sale ya, sin esperar a su latido: empezo, se pauso, siguio o
 /// acabo la grabacion (lo llama el aviso a los moviles, `camara`).
@@ -390,8 +493,10 @@ fn oir(raiz: &Path, contestar: mpsc::Sender<Ipv4Addr>) {
                 Ok(o) => {
                     oyente = Some(o);
                     fallo = None;
+                    OYENDO.store(true, Ordering::SeqCst);
                 }
                 Err(e) => {
+                    OYENDO.store(false, Ordering::SeqCst);
                     // Otro programa en el puerto (otro PinDesk abierto): sin
                     // oir, se sigue mandando y quedan mDNS y la sonda.
                     tracing::warn!(?e, puerto = b::PUERTO_BALIZA, "baliza: no se puede oir");
@@ -403,6 +508,7 @@ fn oir(raiz: &Path, contestar: mpsc::Sender<Ipv4Addr>) {
         let Some(o) = oyente.as_ref() else {
             continue;
         };
+        preguntar_para_unirse(o);
         let (n, de) = match o.oir(&mut buf) {
             Ok(Some(x)) => x,
             Ok(None) => continue,
@@ -413,6 +519,11 @@ fn oir(raiz: &Path, contestar: mpsc::Sender<Ipv4Addr>) {
                 continue;
             }
         };
+        if let IpAddr::V4(ip) = de.ip()
+            && respuesta_para_unirse(&buf[..n], ip)
+        {
+            continue;
+        }
         let Some(g) = GRUPO.lock().ok().and_then(|g| g.clone()) else {
             continue;
         };

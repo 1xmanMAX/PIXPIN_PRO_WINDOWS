@@ -60,9 +60,12 @@ mod enviar_wifi;
 mod galeria;
 pub(crate) mod nube;
 mod nube_ui;
+mod permiso_red;
 pub(crate) mod por_su_hora;
 pub(crate) mod presencia;
 mod recibir_wifi;
+
+use permiso_red::permiso_de_red;
 
 const ANCHO_LOGICO: u32 = 480;
 const ALTO_LOGICO: u32 = 760;
@@ -346,6 +349,10 @@ enum Aviso {
     Identidad,
     /// Una linea para «Actividad».
     Registro(String),
+    /// Si los demas pueden llegar a PinDesk (el cortafuegos, `permiso_red`).
+    PermisoRed(Option<bool>),
+    /// Como acabo «Dar permiso de red».
+    PermisoDado(permiso_red::Resultado),
     /// Lo que cuentan los hilos de «Recibir por Wi-Fi», con el turno de la
     /// pantalla que los lanzo: lo de una pantalla ya cerrada no pisa la nueva.
     Recibir(u64, recibir_wifi::Estado),
@@ -469,6 +476,8 @@ enum Accion {
     Elegir(elegir::Toque),
     ConectarDireccion,
     VerCodigo,
+    /// «Dar permiso de red»: las reglas del cortafuegos, como administrador.
+    DarPermisoRed,
     SalirDelGrupo,
     ConfirmarSalir,
     /// Los dos botones de «Pasar algo a otra persona».
@@ -503,6 +512,15 @@ struct Pantalla {
     fase: Fase,
     campo: Option<Campo>,
     ver_codigo: bool,
+    /// Desde cuando se ensena el codigo, y su QR (`pindesk://emparejar`):
+    /// se ocultan solos a los `emparejar::VIGENCIA_QR_MS`, que el codigo es
+    /// la llave del grupo.
+    ver_codigo_desde: Option<std::time::Instant>,
+    qr_emparejar: Option<qrcodegen::QrCode>,
+    /// Lo que dice el cortafuegos (`None`: aun no se sabe, o no se puede).
+    permiso_red: Option<bool>,
+    /// «Dar permiso de red» en marcha (el aviso de Windows esta delante).
+    pidiendo_permiso: bool,
     saliendo: bool,
     registro: Vec<String>,
     mi_direccion: String,
@@ -688,6 +706,10 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
         fase: Fase::Nada,
         campo: None,
         ver_codigo: false,
+        ver_codigo_desde: None,
+        qr_emparejar: None,
+        permiso_red: None,
+        pidiendo_permiso: false,
         saliendo: false,
         registro: Vec::new(),
         mi_direccion: match (ip_local(), puerto) {
@@ -702,10 +724,29 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
         tx: tx.clone(),
     };
 
+    // El cortafuegos, en un hilo (COM tarda un poco): si bloquea, la portada
+    // lo dice con su boton.
+    {
+        let tx = tx.clone();
+        let _ = std::thread::Builder::new()
+            .name("sincro-permiso-red".into())
+            .spawn(move || {
+                let _ = tx.send(Aviso::PermisoRed(permiso_de_red()));
+            });
+    }
+
     let mut zonas: Vec<(RectF, Accion)> = Vec::new();
     let mut arrastre: Option<(Punto, Rect)> = None;
     let mut hay_que_pintar = true;
     'bucle: loop {
+        // El QR de emparejar no se queda a la vista: pasado su rato, se
+        // ocultan el y el codigo.
+        if pantalla.ver_codigo_desde.is_some_and(|d| {
+            d.elapsed().as_millis() as i64 > pindesk_sincro::emparejar::VIGENCIA_QR_MS
+        }) {
+            ocultar_codigo(&mut pantalla);
+            hay_que_pintar = true;
+        }
         // Lo que pidieron desde fuera (hoy: «Enviar por Wi-Fi» desde el menu
         // de un mensaje del chat). Se mira en CADA vuelta y no solo al nacer:
         // con la ventana ya abierta, quien lo deja la despierta y el pedido se
@@ -944,6 +985,21 @@ pub fn abrir(recursos: &Recursos, textos: &Catalogo, ubicacion: &Ubicacion) -> R
                     pantalla.registro.insert(0, linea);
                     pantalla.registro.truncate(5);
                 }
+                Aviso::PermisoRed(v) => pantalla.permiso_red = v,
+                Aviso::PermisoDado(r) => {
+                    pantalla.pidiendo_permiso = false;
+                    let texto = textos.t(permiso_red::clave_del_texto(r));
+                    pantalla.fase = if r == permiso_red::Resultado::Hecho {
+                        Fase::Terminado {
+                            titulo: textos.t("sinc-red-listo"),
+                            texto,
+                            aviso: None,
+                            trajo: false,
+                        }
+                    } else {
+                        Fase::Fallo(texto)
+                    };
+                }
                 Aviso::Recibir(turno, estado) => {
                     if let Sub::Recibir(r) = &mut pantalla.sub
                         && r.turno == turno
@@ -1037,10 +1093,32 @@ fn atender(
             Ok(i) => s.identidad = i,
             Err(e) => s.fase = Fase::Fallo(e.to_string()),
         },
-        Accion::VerCodigo => s.ver_codigo = !s.ver_codigo,
+        Accion::VerCodigo => {
+            if s.ver_codigo {
+                ocultar_codigo(s);
+            } else {
+                s.ver_codigo = true;
+                s.ver_codigo_desde = Some(std::time::Instant::now());
+                s.qr_emparejar = enlace_de_emparejar(s).and_then(|t| crate::recibir::qr_de(&t));
+            }
+        }
+        Accion::DarPermisoRed => {
+            if !s.pidiendo_permiso {
+                s.pidiendo_permiso = true;
+                let tx = tx.clone();
+                let _ = std::thread::Builder::new()
+                    .name("sincro-dar-permiso".into())
+                    .spawn(move || {
+                        let r = permiso_red::dar_permiso();
+                        let _ = tx.send(Aviso::PermisoRed(permiso_de_red()));
+                        let _ = tx.send(Aviso::PermisoDado(r));
+                    });
+            }
+        }
         Accion::SalirDelGrupo => s.saliendo = true,
         Accion::ConfirmarSalir => {
             s.saliendo = false;
+            ocultar_codigo(s);
             match salir_del_grupo(&s.raiz) {
                 Ok(i) => {
                     s.identidad = i;
@@ -1162,6 +1240,36 @@ fn aceptar_campo(s: &mut Pantalla, tx: &mpsc::Sender<Aviso>, puerto: Option<u16>
             lanzar_vuelta(&s.raiz, tx, host.clone(), p, host, puerto);
         }
     }
+}
+
+/// Oculta el codigo y su QR.
+fn ocultar_codigo(s: &mut Pantalla) {
+    s.ver_codigo = false;
+    s.ver_codigo_desde = None;
+    s.qr_emparejar = None;
+}
+
+/// **El enlace del QR de emparejar** (`pindesk_sincro::emparejar::Enlace`):
+/// el codigo del grupo, las direcciones de este equipo en la red local, su
+/// puerto y su nombre, y hasta cuando vale. Quien lo escanea con la camara
+/// abre PinDesk, que se une llamando aqui sin buscar nada (docs/emparejar.md).
+fn enlace_de_emparejar(s: &Pantalla) -> Option<String> {
+    use pindesk_sincro::emparejar::{Enlace, VIGENCIA_QR_MS, direcciones_para_el_enlace};
+    let codigo = s.identidad.codigo.clone()?;
+    let ips: Vec<std::net::Ipv4Addr> = pindesk_shell::red::interfaces_ipv4()
+        .into_iter()
+        .map(|(ip, _)| ip)
+        .collect();
+    Some(
+        Enlace {
+            codigo,
+            hosts: direcciones_para_el_enlace(&ips),
+            puerto: presencia::puerto().unwrap_or(pindesk_sincro::PUERTO),
+            nombre: s.identidad.yo.nombre.clone(),
+            expira: Some(ahora_ms() + VIGENCIA_QR_MS),
+        }
+        .texto(),
+    )
 }
 
 // ------------------------------------------------------------ identidad
@@ -1862,22 +1970,88 @@ fn explicar(e: &anyhow::Error, nombre: &str) -> String {
     e.to_string()
 }
 
-/// Busca por la red, hasta `tope`, un aparato que anuncie la etiqueta del
-/// grupo y no sea este. Es `red.buscar(...) { it["g"] == etiqueta }` del
-/// movil, que espera 25 s antes de rendirse.
-fn buscar_del_grupo(
-    etiqueta: &str,
+/// **Busca un aparato del grupo de `codigo` que no sea este**, hasta 25 s
+/// (`red.buscar(...) { it["g"] == etiqueta }` del movil), por dos caminos a
+/// la vez y gana el primero:
+///
+/// - **mDNS**, la etiqueta `g` del anuncio. Ya no se rinde al primer error
+///   (`emparejar::buscar_mientras`): antes, `buscar(...).ok()?` tiraba la
+///   busqueda entera si Windows fallaba una vez.
+/// - **La baliza** (`baliza::buscar_para_unirse`): una pregunta firmada con
+///   la clave del codigo por difusion y multidifusion, que el grupo contesta
+///   directa. No depende del mDNS de nadie (docs/emparejar.md).
+///
+/// Devuelve donde llamar y por que camino se encontro.
+fn buscar_para_unirse(
+    codigo: &str,
     yo: &str,
-    tope: Duration,
-) -> Option<pindesk_shell::mdns::Vecino> {
-    let empezo = std::time::Instant::now();
-    while empezo.elapsed() < tope {
-        let vistos = pindesk_shell::mdns::buscar(TIPO_MDNS, Duration::from_secs(3)).ok()?;
-        if let Some(v) = vistos.into_iter().find(|v| es_del_grupo(v, etiqueta, yo)) {
-            return Some(v);
-        }
+    mi_puerto: Option<u16>,
+) -> Option<(pindesk_sincro::emparejar::Encontrado, &'static str)> {
+    use pindesk_sincro::emparejar::{self, Encontrado};
+    let tope =
+        std::time::Instant::now() + Duration::from_millis(emparejar::TOPE_BUSQUEDA_MS as u64);
+    let parar = Arc::new(AtomicBool::new(false));
+    let (tx, rx) = mpsc::channel::<(Encontrado, &'static str)>();
+    // La baliza: lo que conteste el grupo, al canal comun.
+    let clave = pindesk_sincro::codigo::clave_de_grupo(codigo);
+    if let Some(rx_baliza) =
+        baliza::buscar_para_unirse(clave, yo.to_string(), mi_puerto.unwrap_or(0))
+    {
+        let (tx, parar) = (tx.clone(), parar.clone());
+        let _ = std::thread::Builder::new()
+            .name("sincro-unirse-baliza".into())
+            .spawn(move || {
+                while !parar.load(Ordering::SeqCst) {
+                    match rx_baliza.recv_timeout(Duration::from_millis(200)) {
+                        Ok(e) => {
+                            let _ = tx.send((e, "baliza"));
+                            return;
+                        }
+                        Err(mpsc::RecvTimeoutError::Timeout) => {}
+                        Err(mpsc::RecvTimeoutError::Disconnected) => return,
+                    }
+                }
+            });
+    } else {
+        tracing::info!("unirse: la baliza no esta oyendo, solo mDNS");
     }
-    None
+    // mDNS.
+    {
+        let (tx, parar) = (tx.clone(), parar.clone());
+        let etiqueta = etiqueta_de(codigo);
+        let yo = yo.to_string();
+        let _ = std::thread::Builder::new()
+            .name("sincro-unirse-mdns".into())
+            .spawn(move || {
+                let hallado = emparejar::buscar_mientras(
+                    || !parar.load(Ordering::SeqCst) && std::time::Instant::now() < tope,
+                    || {
+                        pindesk_shell::mdns::buscar(TIPO_MDNS, Duration::from_secs(3)).map_err(
+                            |e| {
+                                tracing::info!(?e, "unirse: mDNS fallo, se sigue buscando");
+                                std::thread::sleep(Duration::from_secs(1));
+                                e
+                            },
+                        )
+                    },
+                    |v| es_del_grupo(v, &etiqueta, &yo),
+                );
+                if let Some(v) = hallado {
+                    let e = Encontrado {
+                        id: v.datos.get("id").cloned().unwrap_or_default(),
+                        host: v.host,
+                        puerto: v.puerto,
+                    };
+                    let _ = tx.send((e, "mDNS"));
+                }
+            });
+    }
+    drop(tx);
+    let queda = tope.saturating_duration_since(std::time::Instant::now());
+    let hallado = rx.recv_timeout(queda).ok();
+    parar.store(true, Ordering::SeqCst);
+    baliza::dejar_de_buscar();
+    hallado
 }
 
 fn es_del_grupo(v: &pindesk_shell::mdns::Vecino, etiqueta: &str, yo: &str) -> bool {
@@ -1980,16 +2154,25 @@ fn lanzar_union(
             let yo = leer_identidad(&raiz).map(|i| i.yo.id).unwrap_or_default();
             let hallado = match direccion {
                 Some(d) => Some(d),
-                None => buscar_del_grupo(&etiqueta_de(&codigo), &yo, Duration::from_secs(25))
-                    .map(|v| (v.host.to_string(), v.puerto)),
+                None => buscar_para_unirse(&codigo, &yo, mi_puerto).map(|(e, por)| {
+                    tracing::info!(host = %e.host, puerto = e.puerto, por, "unirse: encontrado");
+                    (e.host.to_string(), e.puerto)
+                }),
             };
             let Some((host, puerto)) = hallado else {
-                let _ = tx.send(Aviso::Fase(Fase::Fallo(
+                let mut texto = String::from(
                     "No apareció ningún aparato con ese código. Comprueba el código, que los dos \
                      estáis en la misma Wi-Fi y que el otro tiene PinDesk abierto. También puedes \
-                     escribir su dirección."
-                        .into(),
-                )));
+                     escribir su dirección.",
+                );
+                // Si es el cortafuegos, decirlo: es lo que el usuario no ve.
+                if permiso_de_red() == Some(false) {
+                    texto.push_str(
+                        "\n\nEl cortafuegos de Windows no deja entrar a PinDesk: usa «Dar \
+                         permiso de red» en Sincronizar.",
+                    );
+                }
+                let _ = tx.send(Aviso::Fase(Fase::Fallo(texto)));
                 return;
             };
             let _ = tx.send(Aviso::Fase(Fase::Trabajando(format!(
@@ -2799,6 +2982,33 @@ fn pintar_portada(
     );
     y += r.alto;
 
+    // **Sin permiso de red** (3-nov-2026): el cortafuegos no deja entrar a
+    // PinDesk y nadie lo veria. Se dice aqui, arriba, con su boton.
+    if s.permiso_red == Some(false) {
+        y += 12.0 * e;
+        let titulo = textos.t("sinc-red-titulo");
+        let txt = textos.t("sinc-red-texto");
+        let h = l.alto_de(&txt, 13.0 * e, wi);
+        let alto_caja = 16.0 * e + 22.0 * e + h + 12.0 * e + 44.0 * e + 16.0 * e;
+        let r = rect(x0, y, w, alto_caja);
+        caja(p, r, e);
+        p.texto(&titulo, xi, y + 16.0 * e, 15.0 * e, ERROR);
+        l.parrafo(&txt, xi, y + 40.0 * e, wi, 13.0 * e, TEXTO);
+        let rotulo = if s.pidiendo_permiso {
+            textos.t("sinc-red-pidiendo")
+        } else {
+            textos.t("sinc-red-boton")
+        };
+        l.boton(
+            rect(xi, y + 52.0 * e + h, wi, 44.0 * e),
+            &rotulo,
+            None,
+            true,
+            Accion::DarPermisoRed,
+        );
+        y += alto_caja;
+    }
+
     // Tus aparatos
     l.titulo(&textos.t("sinc-tus-aparatos"), x0, &mut y);
     if s.identidad.codigo.is_none() {
@@ -3091,7 +3301,22 @@ fn pintar_grupo(
     // Anadir otro aparato
     let como = textos.t("sinc-anadir-como");
     let hc_como = l.alto_de(&como, 14.0 * e, wi);
-    let hc = 16.0 * e + 26.0 * e + hc_como + 10.0 * e + 60.0 * e + 4.0 * e + 40.0 * e + 12.0 * e;
+    // Con el codigo a la vista, su QR debajo (`pindesk://emparejar`).
+    let lado_qr = 200.0 * e;
+    let qr_como = textos.t("sinc-qr-como");
+    let alto_qr = match &s.qr_emparejar {
+        Some(_) => 12.0 * e + lado_qr + 8.0 * e + l.alto_de(&qr_como, 12.0 * e, wi),
+        None => 0.0,
+    };
+    let hc = 16.0 * e
+        + 26.0 * e
+        + hc_como
+        + 10.0 * e
+        + 60.0 * e
+        + alto_qr
+        + 4.0 * e
+        + 40.0 * e
+        + 12.0 * e;
     caja(p, rect(x0, y, w, hc), e);
     p.texto(&textos.t("sinc-anadir"), xi, y + 16.0 * e, 16.0 * e, TEXTO);
     l.parrafo(&como, xi, y + 42.0 * e, wi, 14.0 * e, TEXTO);
@@ -3114,9 +3339,19 @@ fn pintar_grupo(
         TEXTO,
     );
     l.zonas.push((rc, Accion::VerCodigo));
+    if let Some(qr) = &s.qr_emparejar {
+        let rq = rect(
+            xi + (wi - lado_qr) / 2.0,
+            rc.y + rc.alto + 12.0 * e,
+            lado_qr,
+            lado_qr,
+        );
+        crate::recibir::pintar_qr(p, rq, qr);
+        l.parrafo_centrado(&qr_como, xi, rq.y + lado_qr + 8.0 * e, wi, 12.0 * e, SUAVE);
+    }
     l.boton_texto(
         xi - 12.0 * e,
-        rc.y + rc.alto + 4.0 * e,
+        rc.y + rc.alto + alto_qr + 4.0 * e,
         &textos.t("sinc-salir"),
         ERROR,
         Accion::SalirDelGrupo,
