@@ -122,6 +122,11 @@ pub(crate) fn junto_a(dibujo: &Path) -> Junto {
 
 pub(crate) struct Junto(());
 
+/// El dibujo que tiene abierto el editor de este hilo, si se dijo.
+pub(crate) fn dibujo_abierto() -> Option<PathBuf> {
+    DIBUJO.with(|d| d.borrow().clone())
+}
+
 impl Drop for Junto {
     fn drop(&mut self) {
         DIBUJO.with(|d| *d.borrow_mut() = None);
@@ -277,6 +282,10 @@ pub(super) struct Contexto<'a> {
     pub ocupado: bool,
     /// La y de ventana del borde de abajo de la barra de herramientas.
     pub bajo_la_barra: i32,
+    /// La ventana del editor (el minichat de una pegatina es suyo).
+    pub dueno: isize,
+    /// Lo elegido en el lienzo, como atajo para una pegatina de comentario.
+    pub atajo: Option<pindesk_comentarios::Adjunto>,
 }
 
 /// Lo que el editor tiene que hacer despues.
@@ -295,6 +304,9 @@ pub(super) struct Respuesta {
     pub editar: bool,
     /// Se pulso la ficha del marco `i`: ir a el.
     pub ir_a_marco: Option<usize>,
+    /// Llevar la camara a este punto del mundo (una pegatina de la lista
+    /// de comentarios, o el elemento de un atajo).
+    pub ir_a_mundo: Option<(f32, f32)>,
 }
 
 impl Respuesta {
@@ -333,6 +345,11 @@ pub(super) struct Marcador {
     pub marcos: Vec<[f32; 4]>,
     /// El nombre de cada uno de `marcos` (vacio si no tiene).
     pub nombres: Vec<String>,
+    /// **Las pegatinas de comentario** del lienzo (3-nov-2026,
+    /// `crate::comentarios`): el boton de comentar, la tira, las pegatinas y
+    /// su minichat. Van con el riel porque viven en los mismos sitios: las
+    /// pegatinas, con la escena; el boton, con la interfaz.
+    pub pegador: crate::comentarios::Pegador,
 }
 
 impl Marcador {
@@ -341,7 +358,14 @@ impl Marcador {
         let dibujo = DIBUJO.with(|d| d.borrow().clone());
         let marcas = dibujo.as_deref().map(leer).unwrap_or_default();
         let vistas = dibujo.as_deref().map(leer_vistas).unwrap_or_default();
-        Self::con(marcas, vistas, dibujo)
+        let pegador = dibujo
+            .as_deref()
+            .map(crate::comentarios::lienzo::pegador_del_lienzo)
+            .unwrap_or_else(crate::comentarios::Pegador::sin_fichero);
+        Self {
+            pegador,
+            ..Self::con(marcas, vistas, dibujo)
+        }
     }
 
     fn con(
@@ -362,6 +386,7 @@ impl Marcador {
             editando: false,
             marcos: Vec::new(),
             nombres: Vec::new(),
+            pegador: crate::comentarios::Pegador::sin_fichero(),
         }
     }
 
@@ -483,6 +508,10 @@ impl Marcador {
     /// Si la pastilla de «vista guardada» se acaba de ir: hay que repintar
     /// la interfaz para que deje de verse.
     pub fn caduca(&mut self) -> bool {
+        // Lo que llegue de otro aparato a las pegatinas, a la vista.
+        if self.pegador.al_dia() {
+            return true;
+        }
         if self
             .guardada
             .as_ref()
@@ -500,14 +529,72 @@ impl Marcador {
         if self.vuelo.is_some() {
             return Some(8);
         }
-        self.guardada
+        let aviso = self
+            .guardada
             .as_ref()
-            .map(|(desde, _)| AVISO_VISTA.saturating_sub(desde.elapsed()).as_millis() as u32 + 1)
+            .map(|(desde, _)| AVISO_VISTA.saturating_sub(desde.elapsed()).as_millis() as u32 + 1);
+        // Con pegatinas que viajan, se mira de vez en cuando si llego algo.
+        let pegatinas = self.pegador.sitio.is_some().then_some(2000);
+        match (aviso, pegatinas) {
+            (Some(a), Some(b)) => Some(a.min(b)),
+            (a, b) => a.or(b),
+        }
+    }
+
+    /// **Las pegatinas de comentario**: primero que nada, porque la tira,
+    /// el menu y la lista van encima de todo y una pegatina es un boton.
+    fn comentarios(&mut self, ev: &EventoOverlay, cx: &Contexto) -> Respuesta {
+        let ubicar = crate::comentarios::lienzo::UbicarLienzo {
+            camara: cx.efectiva,
+        };
+        let r = self.pegador.evento(
+            ev,
+            &crate::comentarios::Contexto {
+                area: cx.area,
+                e: pindesk_escala(cx.escala_por_cien),
+                reserva_abajo: 0.0,
+                ubicar: &ubicar,
+                ocupado: cx.ocupado,
+                dueno: cx.dueno,
+                atajo: cx.atajo.clone(),
+            },
+        );
+        let ir_a_mundo = match r.pedido {
+            Some(crate::comentarios::Pedido::IrA(a)) => match a.sitio() {
+                pindesk_comentarios::Sitio::Escena { x, y } => Some((x as f32, y as f32)),
+                _ => None,
+            },
+            Some(crate::comentarios::Pedido::Elemento {
+                punto: Some([x, y]),
+                ..
+            }) => Some((x as f32, y as f32)),
+            _ => None,
+        };
+        Respuesta {
+            consumido: r.consumido,
+            repintar: r.repintar,
+            cursor: r.cursor,
+            ir_a_mundo,
+            ..Respuesta::default()
+        }
     }
 
     /// Atiende un evento de la ventana. Lo que no es suyo sale con
     /// `consumido: false` y sigue su camino.
     pub fn evento(&mut self, ev: &EventoOverlay, cx: &Contexto) -> Respuesta {
+        let de_comentarios = self.comentarios(ev, cx);
+        if de_comentarios.consumido || de_comentarios.ir_a_mundo.is_some() {
+            return de_comentarios;
+        }
+        let mut r = self.evento_del_riel(ev, cx);
+        r.repintar |= de_comentarios.repintar;
+        if r.cursor.is_none() {
+            r.cursor = de_comentarios.cursor;
+        }
+        r
+    }
+
+    fn evento_del_riel(&mut self, ev: &EventoOverlay, cx: &Contexto) -> Respuesta {
         let local = |p: &Punto| Punto {
             x: p.x - cx.area.x,
             y: p.y - cx.area.y,
@@ -799,6 +886,13 @@ impl Marcador {
         escala_por_cien: u32,
     ) -> bool {
         let radio = RADIO_MARCA * pindesk_escala(escala_por_cien);
+        let ubicar = crate::comentarios::lienzo::UbicarLienzo { camara: efectiva };
+        if self
+            .pegador
+            .alguna_toca(&ubicar, zona, pindesk_escala(escala_por_cien))
+        {
+            return true;
+        }
         self.marcas.iter().any(|m| {
             self.en_pantalla(m.id, efectiva).is_some_and(|s| {
                 s.x + radio >= zona.0
@@ -833,7 +927,12 @@ impl Marcador {
             alto_px,
             e,
         );
+        let ubicar = crate::comentarios::lienzo::UbicarLienzo { camara: efectiva };
         if self.marcas.is_empty() {
+            if self.pegador.pegatinas.vivas().next().is_some() {
+                p.desplazar(margen, margen);
+                self.pegador.pintar_pegatinas(p, &ubicar, e);
+            }
             return;
         }
         // La vista del mundo que dejo puesta la escena se cambia por pixeles
@@ -852,6 +951,8 @@ impl Marcador {
             }
             pintar_redondel(p, &m.emoji, (s.x, s.y), radio, 0.82);
         }
+        // Las pegatinas de comentario, encima de las marcas.
+        self.pegador.pintar_pegatinas(p, &ubicar, e);
     }
 
     /// **El riel y la tira**, en la capa de la interfaz. `ancho` y `alto` son
@@ -881,6 +982,25 @@ impl Marcador {
             let fichas = crate::marcos_doc::fichas_de(self.marcos.len(), alto as f32, e);
             crate::marcos_doc::pintar_fichas(p, &fichas, e);
         }
+        // El boton de comentar, su tira, su menu y su lista.
+        self.pegador.pintar_interfaz(
+            p,
+            &crate::comentarios::Contexto {
+                area: Rect {
+                    x: 0,
+                    y: 0,
+                    ancho,
+                    alto,
+                },
+                e: pindesk_escala(escala_por_cien),
+                reserva_abajo: 0.0,
+                ubicar: &crate::comentarios::lienzo::SinUbicar,
+                ocupado: false,
+                dueno: 0,
+                atajo: None,
+            },
+            bajo_la_barra as f32,
+        );
         // La pastilla de «vista guardada», donde va la de plantar.
         if let Some((_, emoji)) = &self.guardada
             && self.poniendo == Poniendo::No
@@ -1199,6 +1319,8 @@ mod pruebas {
             escribiendo: false,
             ocupado: false,
             bajo_la_barra: 64,
+            dueno: 0,
+            atajo: None,
         }
     }
 

@@ -422,6 +422,34 @@ pub(crate) fn transformada_de_camara(
     }
 }
 
+/// **Lo elegido en el lienzo como atajo** para una pegatina de comentario
+/// (el boton del eslabon de su minichat): el centro de lo elegido y, si es
+/// un texto, lo que dice. `None` sin nada elegido. El id es el de la
+/// escena: al ir al atajo manda el punto.
+fn atajo_de_lo_elegido(gesto: &Gesto, escena: &Escena) -> Option<pindesk_comentarios::Adjunto> {
+    let c = gesto.seleccion.centro(escena)?;
+    let primero = gesto.seleccion.ids().first().copied()?;
+    let rotulo = match escena.buscar(primero).map(|e| &e.figura) {
+        Some(Figura::Texto { texto, .. }) => texto
+            .lines()
+            .next()
+            .unwrap_or_default()
+            .chars()
+            .take(40)
+            .collect(),
+        _ => String::new(),
+    };
+    let lienzo = marcas::dibujo_abierto()
+        .and_then(|d| d.file_stem().map(|n| n.to_string_lossy().into_owned()))
+        .unwrap_or_default();
+    Some(pindesk_comentarios::Adjunto::elemento(
+        &lienzo,
+        &primero.to_string(),
+        Some([c.x as f64, c.y as f64]),
+        &rotulo,
+    ))
+}
+
 /// Abre el editor y no vuelve hasta que se cierra la ventana.
 ///
 /// Devuelve la escena tal como quedo, compactada: los elementos borrados de
@@ -1689,8 +1717,30 @@ fn abrir_en_modo(
                         escribiendo: gesto.esta_escribiendo(),
                         ocupado: !gesto.en_reposo() || gesto.lazo.is_some() || mano.borrando,
                         bajo_la_barra: bajo_la_barra(&caja, area),
+                        dueno: ventana.handle().0 as isize,
+                        // Lo elegido, como atajo de una pegatina: solo hace
+                        // falta al soltar (es cuando se abre el minichat).
+                        atajo: matches!(
+                            ev,
+                            EventoOverlay::BotonSoltado(_) | EventoOverlay::BotonPulsado(_)
+                        )
+                        .then(|| atajo_de_lo_elegido(&gesto, &escena))
+                        .flatten(),
                     },
                 );
+                // Una pegatina de la lista (o el elemento de un atajo): la
+                // camara a ese punto, con el aumento de ahora.
+                if let Some((x, y)) = r.ir_a_mundo {
+                    let k = escala_por_cien as f32 / 100.0;
+                    let (w, h) = (area.ancho as f32 / k, area.alto as f32 / k);
+                    camara.x = x - w / (2.0 * camara.zoom);
+                    camara.y = y - h / (2.0 * camara.zoom);
+                    efectiva = vista_efectiva(&camara, escala_por_cien);
+                    todo_sucio = true;
+                    contenido_sucio = true;
+                    interfaz_sucia = true;
+                    ventana.invalidar();
+                }
                 if let Some(c) = r.cursor {
                     ventana.poner_cursor(c);
                 }

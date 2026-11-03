@@ -92,6 +92,8 @@ mod capa;
 mod captura2;
 mod centro_bandeja;
 mod cielo;
+/// La pegatina de comentario con su minichat, igual en todos los visores.
+mod comentarios;
 mod compartir;
 mod conversacion;
 mod cuenta_atras;

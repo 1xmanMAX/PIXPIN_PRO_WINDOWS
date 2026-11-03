@@ -58,6 +58,8 @@ pindesk-store = { version = "0.1.0", path = "../../crates/pindesk-store" }
 pindesk-hojas = { path = "../../crates/pindesk-hojas" }
 pindesk-tinta = { version = "0.1.0", path = "../../crates/pindesk-tinta" }
 pindesk-ui = { version = "0.1.0", path = "../../crates/pindesk-ui" }
+# La pegatina de comentario con su minichat (`comentarios`).
+pindesk-comentarios = { version = "0.1.0", path = "../../crates/pindesk-comentarios" }
 pindesk-cad = { path = "../../crates/pindesk-cad" }
 pindesk-bim = { path = "../../crates/pindesk-bim" }
 pindesk-web = { version = "0.1.0", path = "../../crates/pindesk-web" }
