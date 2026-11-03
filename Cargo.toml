@@ -57,6 +57,9 @@ pindesk-store = { path = "crates/pindesk-store" }
 # como pindesk-audio: solo WebView2 y geometria, sin ver ningun otro crate.
 pindesk-web = { path = "crates/pindesk-web" }
 pindesk-ui = { path = "crates/pindesk-ui" }
+# El comentario avanzado: la pegatina con su minichat, igual en todos los
+# visores y aparatos (solo cuentas y JSON, docs/comentarios.md).
+pindesk-comentarios = { path = "crates/pindesk-comentarios" }
 # El compresor de PDF del autor (github.com/1xmanMAX/Thesis), copiado: el
 # repositorio es privado y una dependencia git no compilaria sin credenciales.
 # Ver crates/pdfsqueeze-core/PROCEDENCIA.md.

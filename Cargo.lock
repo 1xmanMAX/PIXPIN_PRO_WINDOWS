@@ -1630,6 +1630,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "pindesk-comentarios"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "pindesk-docs"
 version = "0.1.0"
 dependencies = [

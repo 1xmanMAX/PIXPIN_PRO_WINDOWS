@@ -1,0 +1,15 @@
+[package]
+name = "pindesk-comentarios"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+# El comentario avanzado (3-nov-2026): la pegatina de comentario que se pega
+# en un punto de cualquier visor, con su minichat. Solo cuentas y JSON, sin
+# ventanas ni disco: lo usan los visores, la sincronizacion (juntar dos
+# versiones al llegar) y lo pueden copiar tal cual Android, Mac y iPad.
+# Ver docs/comentarios.md.
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
