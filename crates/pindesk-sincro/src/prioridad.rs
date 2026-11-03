@@ -261,6 +261,7 @@ fn referencias(
             crate::anotado::marcas_junto_a(r)
                 .into_iter()
                 .chain(crate::anotado::vistas_junto_a(r))
+                .chain(crate::anotado::comentarios_junto_a(r))
         })
         .collect();
     s.extend(marcas);

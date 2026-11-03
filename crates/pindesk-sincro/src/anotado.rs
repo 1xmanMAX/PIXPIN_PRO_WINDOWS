@@ -30,6 +30,13 @@
 //! - `anot-<uid>.marcas-texto.json`: **las marcas de texto** de una nota o
 //!   de una pagina web (resaltar, subrayar, tachar..., 2-nov,
 //!   [`MARCAS_TEXTO`]), ancladas por su cita.
+//! - **Las pegatinas de comentario** (3-nov, `pindesk_comentarios`): van en
+//!   el mismo `anot-<uid>.comentarios.json` (clave `pegatinas`); lo que se
+//!   les adjunta, en `anot-<uid>.a<huella>.adjunto` ([`ADJUNTO`]), y sus
+//!   lienzos (una imagen anotada, un lienzo propio) en
+//!   `anot-<uid>.c<id>.excalidraw.gz`. Las de un lienzo, junto a su dibujo:
+//!   `<dibujo>.comentarios.json`, `<dibujo>.a<huella>.adjunto` y
+//!   `<dibujo>.c<id>.excalidraw.gz` ([`comentarios_junto_a`]).
 //!
 //! El PDF de un proyecto lleva su tinta en las hojas (ya viajan); sus
 //! marcadores y espacios van aqui con el codigo **del proyecto**. Y los
@@ -49,7 +56,7 @@ pub const CARPETA: &str = "pins/draw";
 pub const PREFIJO: &str = "anot-";
 
 /// Las terminaciones de lo anotado (`TERMINACIONES`): ni temporales ni otra cosa.
-pub const TERMINACIONES: [&str; 12] = [
+pub const TERMINACIONES: [&str; 13] = [
     ".excalidraw.gz",
     ".marcas",
     ".espacios",
@@ -62,7 +69,63 @@ pub const TERMINACIONES: [&str; 12] = [
     MARCOS,
     VISTAS,
     MARCAS_TEXTO,
+    ADJUNTO,
 ];
+
+/// **Lo adjuntado a una pegatina de comentario** (3-nov-2026,
+/// `pindesk_comentarios`): `<base>.a<huella>.adjunto`, el fichero tal cual
+/// (una foto, un PDF...). La huella es la de su contenido, asi que el mismo
+/// fichero mandado desde dos aparatos es uno; no cambia nunca. Su nombre y
+/// su extension van en la entrada del hilo.
+pub const ADJUNTO: &str = ".adjunto";
+
+/// La ruta portatil de un adjunto de pegatina de la base `base`
+/// (`anot-<uid>` o un dibujo).
+pub fn adjunto_de_comentario(base: &str, huella: &str) -> String {
+    rel(&format!("{base}.a{}", sin_raros(huella)), ADJUNTO)
+}
+
+/// La ruta portatil del lienzo de una entrada de pegatina (la imagen
+/// anotada o el lienzo propio): `<base>.c<id>.excalidraw.gz`.
+pub fn lienzo_de_comentario(base: &str, id: &str) -> String {
+    rel(&format!("{base}.c{}", sin_raros(id)), ".excalidraw.gz")
+}
+
+fn sin_raros(s: &str) -> String {
+    s.chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '_' || c == '-' {
+                c
+            } else {
+                '_'
+            }
+        })
+        .collect()
+}
+
+/// **Las pegatinas de un lienzo** (3-nov-2026): `pins/draw/X.excalidraw.gz`
+/// → `pins/draw/X.comentarios.json`, al lado de sus marcas. Lo que se les
+/// adjunta lo nombra el propio fichero ([`rutas_de_comentarios`]).
+pub fn comentarios_junto_a(rel: &str) -> Option<String> {
+    let marcas = marcas_junto_a(rel)?;
+    Some(format!("{}{COMENTARIOS}", marcas.strip_suffix(".marcas")?))
+}
+
+/// Las rutas portatiles de lo adjuntado a las pegatinas de un fichero de
+/// comentarios: lo que tiene que viajar con el (solo de `pins/draw/`, sin
+/// subcarpetas). Un fichero roto no nombra nada.
+pub fn rutas_de_comentarios(texto: &str) -> Vec<String> {
+    pindesk_comentarios::fichero::leer(texto)
+        .map(|p| p.rutas())
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|r| {
+            r.strip_prefix(CARPETA)
+                .and_then(|x| x.strip_prefix('/'))
+                .is_some_and(|n| !n.is_empty() && !n.contains('/') && !n.contains(".."))
+        })
+        .collect()
+}
 
 /// Los marcos numerados de un documento (`anot-<uid>.marcos.json`, 20-oct,
 /// `marcos_doc`): la lista `[{caja, parte, vista}]` en las coordenadas del
@@ -799,6 +862,46 @@ mod pruebas {
         let (ex, ey, dx, dy) = otro.desde(&propio);
         assert!((ex - 0.5).abs() < 1e-6 && (ey - 1000.0 / 1980.0).abs() < 1e-6);
         assert_eq!((dx, dy), (100.0, 50.0));
+    }
+
+    /// **Las pegatinas de comentario** (3-nov-2026): su fichero, lo
+    /// adjuntado y sus lienzos viajan con su mensaje; los de un lienzo, con
+    /// su dibujo.
+    #[test]
+    fn las_pegatinas_viajan_con_su_mensaje_y_las_del_lienzo_con_su_dibujo() {
+        assert!(TERMINACIONES.contains(&ADJUNTO));
+        assert!(TERMINACIONES.contains(&COMENTARIOS));
+        let adj = adjunto_de_comentario("anot-ABCDE23456", "9f1c/../x");
+        assert_eq!(adj, "pins/draw/anot-ABCDE23456.a9f1c____x.adjunto");
+        let lz = lienzo_de_comentario("anot-ABCDE23456", "pc1-18f2a-0");
+        assert_eq!(lz, "pins/draw/anot-ABCDE23456.cpc1-18f2a-0.excalidraw.gz");
+        let rels = [
+            adj.as_str(),
+            lz.as_str(),
+            "pins/draw/anot-ABCDE23456.comentarios.json",
+            "pins/draw/anot-ABCDE23456.a12.adjunto.tmp",
+            "pins/draw/anot-ABCDE23456.a12.png",
+        ];
+        let m = por_uid(rels);
+        assert_eq!(m["ABCDE23456"].len(), 3, "{m:?}");
+        // Las de un lienzo, al lado de sus marcas.
+        assert_eq!(
+            comentarios_junto_a("pins/draw/d1.excalidraw.gz").as_deref(),
+            Some("pins/draw/d1.comentarios.json")
+        );
+        assert_eq!(comentarios_junto_a("pins/draw/d1.marcas"), None);
+        assert_eq!(comentarios_junto_a("croquis3d/c.croquis.gz"), None);
+        // Lo adjuntado lo nombra el fichero; nada de fuera de pins/draw.
+        let t = r#"{"pegatinas":[{"id":"a","hilo":[{"id":"e","adjuntos":[
+            {"tipo":"imagen","ruta":"pins/draw/d1.a77.adjunto","tinta":"pins/draw/d1.ce.excalidraw.gz"},
+            {"tipo":"archivo","ruta":"guardados/x.pdf"},
+            {"tipo":"archivo","ruta":"pins/draw/../../x"},
+            {"tipo":"archivo","ruta":"C:/Users/x.pdf"}]}]}]}"#;
+        assert_eq!(
+            rutas_de_comentarios(t),
+            ["pins/draw/d1.a77.adjunto", "pins/draw/d1.ce.excalidraw.gz"]
+        );
+        assert!(rutas_de_comentarios("{roto").is_empty());
     }
 
     #[test]
