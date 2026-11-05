@@ -87,6 +87,26 @@ pub fn hilo_actual() -> u32 {
     unsafe { windows::Win32::System::Threading::GetCurrentThreadId() }
 }
 
+/// El nombre del hilo que llama, preguntado a Windows y no a
+/// `std::thread::current()`: sirve tambien mientras el hilo se esta
+/// muriendo (sus `thread_local!` ya destruidos), que es justo cuando lo pide
+/// el registro de un panico. Vacio si no tiene.
+pub fn nombre_del_hilo() -> String {
+    use windows::Win32::System::Threading::{GetCurrentThread, GetThreadDescription};
+    // SAFETY: el pseudo-identificador del hilo actual siempre vale; la cadena
+    // que devuelve Windows se lee y se libera con LocalFree.
+    unsafe {
+        let Ok(p) = GetThreadDescription(GetCurrentThread()) else {
+            return String::new();
+        };
+        let nombre = p.to_string().unwrap_or_default();
+        let _ = windows::Win32::Foundation::LocalFree(Some(windows::Win32::Foundation::HLOCAL(
+            p.0 as *mut _,
+        )));
+        nombre
+    }
+}
+
 /// Las ventanas de primer nivel de un hilo, en el orden de Windows.
 pub fn ventanas_del_hilo(hilo: u32) -> Vec<isize> {
     unsafe extern "system" fn cada(hwnd: HWND, l: LPARAM) -> windows::core::BOOL {

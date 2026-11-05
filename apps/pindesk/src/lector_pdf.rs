@@ -1922,8 +1922,25 @@ fn zoom_minimo(e: &Estado, m: Marco) -> f32 {
     cabe.min(ZOOM_MINIMO_PDF)
 }
 
+/// **Lo que mas se acerca este PDF**: el seis del movil para una hoja A4, y
+/// en proporcion para las mas grandes. Todas las hojas miden lo mismo en el
+/// lector (`ANCHO_HOJA`), asi que con seis un plano A1 (cuatro A4 de ancho)
+/// solo llegaba a la cuarta parte del detalle de un A4 y sus cotas no se
+/// leian (4-nov-2026, el usuario: «el zoom no es suficiente»). Con esto se
+/// ve lo mismo de cerca en un A1 que en un A4.
+fn zoom_maximo(e: &Estado) -> f32 {
+    zoom_maximo_para(&e.medidas)
+}
+
+fn zoom_maximo_para(medidas: &[(f32, f32)]) -> f32 {
+    /// El ancho de un A4 en puntos, la hoja a la que se ajusto el seis.
+    const ANCHO_A4: f32 = 595.0;
+    let mas_ancha = medidas.iter().map(|&(w, _)| w).fold(0.0f32, f32::max);
+    vista::ZOOM_MAXIMO_PDF * (mas_ancha / ANCHO_A4).clamp(1.0, 8.0)
+}
+
 fn acotar(e: &mut Estado, m: Marco) {
-    e.zoom = e.zoom.clamp(zoom_minimo(e, m), vista::ZOOM_MAXIMO_PDF);
+    e.zoom = e.zoom.clamp(zoom_minimo(e, m), zoom_maximo(e));
     let s = px(e, m);
     let (izq, der) = limites(e);
     let (x, y) = vista::dentro(
@@ -3002,7 +3019,7 @@ fn lado(e: &mut Estado, cuanto: f32, m: Marco) {
 
 fn acercar(e: &mut Estado, muescas: f32, m: Marco) {
     let antes = px(e, m);
-    e.zoom = vista::zoom_con_rueda(e.zoom, muescas, zoom_minimo(e, m), vista::ZOOM_MAXIMO_PDF);
+    e.zoom = vista::zoom_con_rueda(e.zoom, muescas, zoom_minimo(e, m), zoom_maximo(e));
     let despues = px(e, m);
     e.x = vista::con_foco(e.x, e.raton.0, antes, despues);
     e.y = vista::con_foco(e.y, e.raton.1, antes, despues);
@@ -3433,7 +3450,7 @@ fn paso_de_las_fotos(e: &mut Estado, m: Marco) -> bool {
     if f.desde == 0 {
         let base = ancho_base(m) / vista::ANCHO_HOJA;
         let s = crate::marcos_doc::px_para_llenar(&marco, m.ancho, m.alto) as f32;
-        e.zoom = (s / base).clamp(0.05, vista::ZOOM_MAXIMO_PDF);
+        e.zoom = (s / base).clamp(0.05, zoom_maximo(e));
         let s = px(e, m);
         let c = marco.centro();
         e.x = c[0] as f32 - m.ancho / (2.0 * s);
@@ -4238,8 +4255,8 @@ fn nombre_del_pin(e: &Estado) -> String {
 }
 
 /// El zoom que da `s` pixeles por unidad del lector.
-fn zoom_para(_e: &Estado, m: Marco, s: f32) -> f32 {
-    (s / (ancho_base(m) / vista::ANCHO_HOJA)).clamp(0.05, vista::ZOOM_MAXIMO_PDF)
+fn zoom_para(e: &Estado, m: Marco, s: f32) -> f32 {
+    (s / (ancho_base(m) / vista::ANCHO_HOJA)).clamp(0.05, zoom_maximo(e))
 }
 
 #[cfg(test)]
@@ -4328,6 +4345,24 @@ mod pruebas {
             },
             como_texto: None,
         }
+    }
+
+    #[test]
+    fn un_plano_a1_se_acerca_tanto_como_un_a4() {
+        // Un A1 (2384 pt de ancho, el del usuario) mide cuatro A4 de ancho:
+        // su tope es cuatro veces el del A4, asi que de cerca se ve igual.
+        let a4 = zoom_maximo_para(&[(595.0, 842.0)]);
+        let a1 = zoom_maximo_para(&[(2384.0, 1684.0)]);
+        assert_eq!(a4, vista::ZOOM_MAXIMO_PDF);
+        assert!((a1 / a4 - 2384.0 / 595.0).abs() < 1e-3, "{a1}");
+        // Caso negativo: una hoja pequena, o un PDF sin medidas aun, no baja
+        // del seis, y un rollo enorme no se dispara.
+        assert_eq!(zoom_maximo_para(&[(300.0, 400.0)]), vista::ZOOM_MAXIMO_PDF);
+        assert_eq!(zoom_maximo_para(&[]), vista::ZOOM_MAXIMO_PDF);
+        assert_eq!(
+            zoom_maximo_para(&[(20_000.0, 1000.0)]),
+            vista::ZOOM_MAXIMO_PDF * 8.0
+        );
     }
 
     // ---- La pagina que sube sola y «Ver como texto» ----

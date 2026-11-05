@@ -15,14 +15,14 @@ use std::ffi::c_void;
 use windows::Win32::Foundation::{HMODULE, HWND};
 use windows::Win32::Graphics::Direct3D::Fxc::D3DCompile;
 use windows::Win32::Graphics::Direct3D::{
-    D3D_DRIVER_TYPE, D3D_DRIVER_TYPE_HARDWARE, D3D_DRIVER_TYPE_WARP,
+    D3D_DRIVER_TYPE, D3D_DRIVER_TYPE_HARDWARE, D3D_DRIVER_TYPE_UNKNOWN, D3D_DRIVER_TYPE_WARP,
     D3D_PRIMITIVE_TOPOLOGY_LINELIST, D3D_PRIMITIVE_TOPOLOGY_LINESTRIP,
     D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST, D3D_SRV_DIMENSION_BUFFEREX, ID3DBlob,
 };
 use windows::Win32::Graphics::Direct3D11::*;
 use windows::Win32::Graphics::Dxgi::Common::*;
 use windows::Win32::Graphics::Dxgi::*;
-use windows::core::{PCSTR, s};
+use windows::core::{Interface, PCSTR, s};
 
 use crate::modelo::{Modelo, Tramo};
 
@@ -321,8 +321,23 @@ impl Gpu {
         let mut ultimo = Err(windows::core::Error::from(
             windows::Win32::Foundation::E_FAIL,
         ));
-        for tipo in [D3D_DRIVER_TYPE_HARDWARE, D3D_DRIVER_TYPE_WARP] {
-            ultimo = crear_dispositivo(tipo, &mut dispositivo, &mut contexto);
+        // Primero la grafica de la pantalla principal, como las capturas
+        // (`pindesk_capture::Dispositivo`): en un portatil Intel + NVIDIA la
+        // de Windows puede ser la NVIDIA, que se apaga para ahorrar, y al
+        // volver de la suspension su controlador se quedo dando vueltas
+        // dentro de un plano ya cerrado (4-nov-2026: un nucleo entero, el
+        // chat sin poder cerrarse y la app sin poder salir).
+        let principal = adaptador_de_la_pantalla_principal();
+        let intentos = [
+            (principal, D3D_DRIVER_TYPE_UNKNOWN),
+            (None, D3D_DRIVER_TYPE_HARDWARE),
+            (None, D3D_DRIVER_TYPE_WARP),
+        ];
+        for (adaptador, tipo) in intentos {
+            if tipo == D3D_DRIVER_TYPE_UNKNOWN && adaptador.is_none() {
+                continue;
+            }
+            ultimo = crear_dispositivo(adaptador.as_ref(), tipo, &mut dispositivo, &mut contexto);
             if ultimo.is_ok() {
                 break;
             }
@@ -336,7 +351,13 @@ impl Gpu {
         // SAFETY: llamadas sobre el dispositivo recien creado; descripciones
         // locales que viven durante cada llamada.
         unsafe {
-            let fabrica: IDXGIFactory2 = CreateDXGIFactory2(DXGI_CREATE_FACTORY_FLAGS(0))?;
+            // La fabrica de la grafica del dispositivo: la cadena tiene que
+            // salir de la misma que el adaptador elegido.
+            let fabrica: IDXGIFactory2 = dispositivo
+                .cast::<IDXGIDevice>()
+                .and_then(|d| d.GetAdapter())
+                .and_then(|a| a.GetParent())
+                .or_else(|_| CreateDXGIFactory2(DXGI_CREATE_FACTORY_FLAGS(0)))?;
             let desc = DXGI_SWAP_CHAIN_DESC1 {
                 Width: ancho.max(1),
                 Height: alto.max(1),
@@ -903,15 +924,41 @@ impl Gpu {
     }
 }
 
+/// El adaptador que tiene conectada la pantalla principal (la del punto
+/// 0,0), o `None` si no se encuentra: entonces decide Windows.
+fn adaptador_de_la_pantalla_principal() -> Option<IDXGIAdapter> {
+    use windows::Win32::Foundation::POINT;
+    use windows::Win32::Graphics::Gdi::{MONITOR_DEFAULTTOPRIMARY, MonitorFromPoint};
+    // SAFETY: consultas de solo lectura a DXGI y a GDI; las interfaces que se
+    // devuelven tienen su propia cuenta de referencias.
+    unsafe {
+        let principal = MonitorFromPoint(POINT { x: 0, y: 0 }, MONITOR_DEFAULTTOPRIMARY);
+        let fabrica: IDXGIFactory1 = CreateDXGIFactory1().ok()?;
+        let mut i = 0;
+        while let Ok(adaptador) = fabrica.EnumAdapters1(i) {
+            let mut j = 0;
+            while let Ok(salida) = adaptador.EnumOutputs(j) {
+                if salida.GetDesc().is_ok_and(|d| d.Monitor == principal) {
+                    return adaptador.cast().ok();
+                }
+                j += 1;
+            }
+            i += 1;
+        }
+    }
+    None
+}
+
 fn crear_dispositivo(
+    adaptador: Option<&IDXGIAdapter>,
     tipo: D3D_DRIVER_TYPE,
     d: &mut Option<ID3D11Device>,
     c: &mut Option<ID3D11DeviceContext>,
 ) -> windows::core::Result<()> {
-    // SAFETY: salidas locales; sin adaptador concreto (el de Windows).
+    // SAFETY: salidas locales; el adaptador, si lo hay, vive durante la llamada.
     unsafe {
         D3D11CreateDevice(
-            None,
+            adaptador,
             tipo,
             HMODULE::default(),
             D3D11_CREATE_DEVICE_BGRA_SUPPORT,
