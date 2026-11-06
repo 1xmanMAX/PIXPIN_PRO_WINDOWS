@@ -49,7 +49,7 @@ pub const CARPETA: &str = "pins/draw";
 pub const PREFIJO: &str = "anot-";
 
 /// Las terminaciones de lo anotado (`TERMINACIONES`): ni temporales ni otra cosa.
-pub const TERMINACIONES: [&str; 12] = [
+pub const TERMINACIONES: [&str; 13] = [
     ".excalidraw.gz",
     ".marcas",
     ".espacios",
@@ -62,7 +62,16 @@ pub const TERMINACIONES: [&str; 12] = [
     MARCOS,
     VISTAS,
     MARCAS_TEXTO,
+    URGENCIA,
 ];
+
+/// **La revision de urgencia de una lista de tareas** (4-nov-2026, Android
+/// v0.161.0): `anot-<uid de la lista>.urgencia.json`, lo que dijo Jev de
+/// cada tarea. Se junta tarea a tarea ([`crate::urgencias`]). En este espejo
+/// solo se reconoce y se puede leer y escribir: que viaje con cualquier
+/// mensaje (no solo adjuntos y notas) y que se junte al llegar esta en la
+/// version de Windows (`crates/pindesk-sincro`), aun sin traer aqui.
+pub const URGENCIA: &str = ".urgencia.json";
 
 /// Los marcos numerados de un documento (`anot-<uid>.marcos.json`, 20-oct,
 /// `marcos_doc`): la lista `[{caja, parte, vista}]` en las coordenadas del

@@ -72,6 +72,7 @@ pub mod mezcla;
 pub mod prioridad;
 pub mod protocolo;
 pub mod reintentos;
+pub mod urgencias;
 pub mod valla;
 pub mod vuelta;
 

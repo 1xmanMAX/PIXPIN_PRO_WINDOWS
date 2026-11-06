@@ -201,6 +201,54 @@ impl Json {
         salida
     }
 
+    /// El texto con sangria, como `Json { prettyPrint = true;
+    /// prettyPrintIndent = sangria }` de kotlinx: cada elemento de una lista
+    /// y cada clave de un objeto en su linea, `"clave": valor`, y las listas
+    /// y objetos vacios como `[]` y `{}`. Sin `\n` al final.
+    pub fn a_texto_con_sangria(&self, sangria: &str) -> String {
+        let mut salida = String::new();
+        self.escribir_con_sangria(sangria, 0, &mut salida);
+        salida
+    }
+
+    fn escribir_con_sangria(&self, sangria: &str, nivel: usize, salida: &mut String) {
+        let linea = |nivel: usize, salida: &mut String| {
+            salida.push('\n');
+            for _ in 0..nivel {
+                salida.push_str(sangria);
+            }
+        };
+        match self {
+            Json::Lista(l) if !l.is_empty() => {
+                salida.push('[');
+                for (i, e) in l.iter().enumerate() {
+                    if i > 0 {
+                        salida.push(',');
+                    }
+                    linea(nivel + 1, salida);
+                    e.escribir_con_sangria(sangria, nivel + 1, salida);
+                }
+                linea(nivel, salida);
+                salida.push(']');
+            }
+            Json::Objeto(o) if !o.is_empty() => {
+                salida.push('{');
+                for (i, (k, v)) in o.iter().enumerate() {
+                    if i > 0 {
+                        salida.push(',');
+                    }
+                    linea(nivel + 1, salida);
+                    escribir_entrecomillada(k, salida);
+                    salida.push_str(": ");
+                    v.escribir_con_sangria(sangria, nivel + 1, salida);
+                }
+                linea(nivel, salida);
+                salida.push('}');
+            }
+            otro => otro.escribir(salida),
+        }
+    }
+
     fn escribir(&self, salida: &mut String) {
         match self {
             Json::Nulo => salida.push_str("null"),
@@ -564,6 +612,33 @@ fn ordenar(e: Json) -> Json {
     }
 }
 
+/// `Double.toString` de Kotlin (el de la JVM): la representacion decimal
+/// mas corta que vuelve al mismo numero, con al menos un decimal (`1.0`), y
+/// en notacion cientifica fuera de `[1e-3, 1e7)` (`1.0E-4`, `1.5E7`). Es como
+/// escribe kotlinx un `JsonPrimitive(Double)`. Lo que no es finito sale como
+/// en Kotlin (`NaN`, `Infinity`), aunque eso no sea JSON.
+pub fn double_de_kotlin(v: f64) -> String {
+    if v.is_nan() {
+        return "NaN".into();
+    }
+    if v.is_infinite() {
+        return if v > 0.0 { "Infinity" } else { "-Infinity" }.into();
+    }
+    let a = v.abs();
+    if a == 0.0 || (1e-3..1e7).contains(&a) {
+        let t = format!("{v}");
+        return if t.contains('.') { t } else { format!("{t}.0") };
+    }
+    let t = format!("{v:e}");
+    let (mantisa, exponente) = t.split_once('e').unwrap_or((&t, "0"));
+    let mantisa = if mantisa.contains('.') {
+        mantisa.to_string()
+    } else {
+        format!("{mantisa}.0")
+    };
+    format!("{mantisa}E{exponente}")
+}
+
 /// SHA-256 en hexadecimal minuscula, como `sha256(bytes)` de Android.
 pub fn sha256_hex(bytes: &[u8]) -> String {
     Sha256::digest(bytes)
@@ -581,6 +656,40 @@ pub fn resumen(texto: &str) -> String {
 #[cfg(test)]
 mod pruebas {
     use super::*;
+
+    #[test]
+    fn los_double_salen_como_los_escribe_kotlin() {
+        let casos = [
+            (0.0, "0.0"),
+            (-0.0, "-0.0"),
+            (1.0, "1.0"),
+            (0.05, "0.05"),
+            (0.6, "0.6"),
+            (0.001, "0.001"),
+            (1e-4, "1.0E-4"),
+            (5e-4, "5.0E-4"),
+            (1.2345e-5, "1.2345E-5"),
+            (1234567.0, "1234567.0"),
+            (1e7, "1.0E7"),
+            (-2.5, "-2.5"),
+        ];
+        for (v, t) in casos {
+            assert_eq!(double_de_kotlin(v), t, "{v}");
+        }
+    }
+
+    #[test]
+    fn con_sangria_como_kotlinx() {
+        let j = Json::analizar(r#"{"a":[1,{"b":"x\n"}],"c":[],"d":{},"e":1.50}"#).unwrap();
+        assert_eq!(
+            j.a_texto_con_sangria("  "),
+            "{\n  \"a\": [\n    1,\n    {\n      \"b\": \"x\\n\"\n    }\n  ],\n  \"c\": [],\n  \"d\": {},\n  \"e\": 1.50\n}"
+        );
+        // Caso negativo: un primitivo suelto, sin saltos.
+        assert_eq!(Json::cadena("x").a_texto_con_sangria("  "), "\"x\"");
+        // Y lo escrito con sangria se lee igual.
+        assert_eq!(Json::analizar(&j.a_texto_con_sangria("  ")).unwrap(), j);
+    }
 
     #[test]
     fn ordena_las_claves_y_quita_los_nulos_de_los_objetos() {
