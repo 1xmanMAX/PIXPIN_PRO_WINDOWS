@@ -1359,6 +1359,8 @@ figuras-todas = Alle
 figuras-vacia = Noch keine Formen. Wählen Sie auf einer Leinwand etwas aus und dann „Als Form speichern“.
 figuras-borrar = Form löschen
 figuras-borrar-seguro = Zum Löschen erneut drücken
+# El boton de una figura que vino de PinDesk Plantillas; $app es su nombre.
+figuras-abrir-en-plantillas = In { $app } öffnen
 figuras-elegir-para = Form für „{ $chat }“ auswählen
 figuras-adjuntar-a = An „{ $chat }“ anhängen
 figuras-adjuntar-pista = Oder doppelt auf die Form klicken oder Eingabe drücken.

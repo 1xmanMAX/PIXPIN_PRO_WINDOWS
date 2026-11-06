@@ -1295,6 +1295,8 @@ figuras-todas = Tutte
 figuras-vacia = Non ci sono ancora forme. In una tela, seleziona qualcosa e usa «Salva come forma».
 figuras-borrar = Elimina la forma
 figuras-borrar-seguro = Fai clic di nuovo per eliminare
+# El boton de una figura que vino de PinDesk Plantillas; $app es su nombre.
+figuras-abrir-en-plantillas = Apri in { $app }
 figuras-elegir-para = Scegli una forma per «{ $chat }»
 figuras-adjuntar-a = Allega a «{ $chat }»
 figuras-adjuntar-pista = Oppure doppio clic sulla forma, o Invio.

@@ -1348,6 +1348,8 @@ figuras-todas = 全部
 figuras-vacia = 还没有形状。在画布上选中内容，然后选择“保存为形状”。
 figuras-borrar = 删除形状
 figuras-borrar-seguro = 再按一次以删除
+# El boton de una figura que vino de PinDesk Plantillas; $app es su nombre.
+figuras-abrir-en-plantillas = 在 { $app } 中打开
 figuras-elegir-para = 为“{ $chat }”选择形状
 figuras-adjuntar-a = 附加到“{ $chat }”
 figuras-adjuntar-pista = 也可以双击形状或按 Enter。

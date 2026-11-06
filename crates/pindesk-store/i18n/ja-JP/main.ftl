@@ -1348,6 +1348,8 @@ figuras-todas = すべて
 figuras-vacia = まだ図形はありません。キャンバスで何かを選択して「図形として保存」してください。
 figuras-borrar = 図形を削除
 figuras-borrar-seguro = もう一度押すと削除します
+# El boton de una figura que vino de PinDesk Plantillas; $app es su nombre.
+figuras-abrir-en-plantillas = { $app } で開く
 figuras-elegir-para = 「{ $chat }」用の図形を選択
 figuras-adjuntar-a = 「{ $chat }」に添付
 figuras-adjuntar-pista = 図形をダブルクリックするか、Enter を押しても添付できます。

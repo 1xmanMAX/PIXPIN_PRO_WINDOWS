@@ -248,11 +248,14 @@ pub(super) fn letras_de(f: &FiguraGuardada) -> Vec<String> {
 fn orden_del_grupo(g: &str) -> usize {
     if g == MIS_FIGURAS {
         0
+    } else if g == pindesk_plantillas::exportar::figura::CATEGORIA {
+        // Las de PinDesk Plantillas, justo detras de las del usuario.
+        1
     } else {
         CATEGORIAS
             .iter()
             .position(|c| *c == g)
-            .map_or(CATEGORIAS.len() + 1, |i| i + 1)
+            .map_or(CATEGORIAS.len() + 2, |i| i + 2)
     }
 }
 
@@ -370,6 +373,8 @@ enum Zona {
     Valor(Parametro),
     /// Los parametros, como los de serie.
     Restablecer,
+    /// «Abrir en Plantillas» (una figura que vino de PinDesk Plantillas).
+    AbrirEnPlantillas,
 }
 
 /// **La elegida como se adjunta**: sus hojas (la figura tal cual, o la
@@ -490,7 +495,9 @@ impl Galeria {
             .elegida
             .and_then(|i| self.figuras.get(i))
             .map(|f| f.id.clone());
-        let figuras = biblioteca::cargar(&crate::biblioteca_figuras::ruta());
+        let mut figuras = biblioteca::cargar(&crate::biblioteca_figuras::ruta());
+        // Y las de PinDesk Plantillas, de su carpeta (docs/plantillas.md).
+        figuras.extend(crate::biblioteca_figuras::de_plantillas());
         self.poner_figuras(&figuras, elegida);
     }
 
@@ -646,6 +653,13 @@ impl Galeria {
                 crate::biblioteca_figuras::poner_de_noche(noche);
             }
             Some(Zona::Cerrar) => *vivo = false,
+            Some(Zona::AbrirEnPlantillas) => {
+                if let Some(f) = self.elegida.and_then(|i| self.figuras.get(i))
+                    && !crate::biblioteca_figuras::abrir_en_plantillas(&f.id)
+                {
+                    tracing::warn!(id = %f.id, "figuras: no se pudo abrir en Plantillas");
+                }
+            }
             _ => {}
         }
         zona
@@ -885,6 +899,8 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, g: &mut Galeria) -> Result<()> 
         .and_then(|m| m.modified())
         .ok();
     let mut mirado = std::time::Instant::now();
+    // La carpeta de PinDesk Plantillas: una plantilla mandada desde alli.
+    let mut plantillas = crate::biblioteca_figuras::plantillas_cambiadas();
     while vivo {
         pindesk_shell::overlay::bombear_pendientes();
         // Donde esta la ventana AHORA: si otro la movio (AltSnap, Win+flecha),
@@ -1084,8 +1100,10 @@ fn bucle(recursos: &Recursos, textos: &Catalogo, g: &mut Galeria) -> Result<()> 
             let ahora = std::fs::metadata(crate::biblioteca_figuras::ruta())
                 .and_then(|m| m.modified())
                 .ok();
-            if ahora != leida {
+            let ahora_plantillas = crate::biblioteca_figuras::plantillas_cambiadas();
+            if ahora != leida || ahora_plantillas != plantillas {
                 leida = ahora;
+                plantillas = ahora_plantillas;
                 g.leer();
                 pintar = true;
             }
@@ -1658,7 +1676,9 @@ fn pintar_previa(
         arriba += nh + 12.0 * e;
     }
 
-    // Abajo del todo, «Adjuntar a …» y, si es del usuario, «Borrar».
+    // Abajo del todo, «Adjuntar a …» y, si es del usuario, «Borrar» (o,
+    // si vino de PinDesk Plantillas, «Abrir en Plantillas»: se borra alli).
+    let de_plantillas = pindesk_plantillas::carpeta::es_de_plantillas(&f.id);
     let con_borrar = !f.de_serie;
     if g.destino.is_some() || con_borrar {
         let alto_boton = ALTO_ADJUNTAR as f32 * e;
@@ -1719,7 +1739,11 @@ fn pintar_previa(
                 ancho: ancho_borrar,
                 alto: alto_boton,
             });
-            let rojo = crate::caja_dibujo::hex(0xd9534f);
+            let rojo = if de_plantillas {
+                crate::caja_dibujo::hex(0x5b5bd6)
+            } else {
+                crate::caja_dibujo::hex(0xd9534f)
+            };
             p.rellenar_redondeado(
                 rf(boton),
                 12.0 * e,
@@ -1729,7 +1753,11 @@ fn pintar_previa(
                     con_alfa(rojo, 0.75)
                 },
             );
-            let rotulo = if g.borrar_pedido {
+            let rotulo = if de_plantillas {
+                let mut args = fluent_bundle::FluentArgs::new();
+                args.set("app", pindesk_plantillas::NOMBRE_PRODUCTO);
+                textos.t_args("figuras-abrir-en-plantillas", &args)
+            } else if g.borrar_pedido {
                 textos.t("figuras-borrar-seguro")
             } else {
                 textos.t("figuras-borrar")
@@ -1744,7 +1772,14 @@ fn pintar_previa(
                 tw,
                 Color::BLANCO,
             );
-            zonas.push((boton, Zona::Borrar));
+            zonas.push((
+                boton,
+                if de_plantillas {
+                    Zona::AbrirEnPlantillas
+                } else {
+                    Zona::Borrar
+                },
+            ));
         }
         abajo = y - 12.0 * e;
     }

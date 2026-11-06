@@ -52,6 +52,20 @@ pub fn ejecutar_si_toca() -> Option<i32> {
             .chain(todas)
             .collect();
     }
+    // Los enlaces de PinDesk Plantillas (`pindesk://plantilla?…`) los
+    // atiende su app: se le pasan tal cual (docs/plantillas.md).
+    if let Some(url) = args
+        .iter()
+        .find(|a| pindesk_plantillas::enlace::es_enlace(a))
+    {
+        return Some(
+            if crate::biblioteca_figuras::lanzar_plantillas(&["--url", url]) {
+                codigo::ACEPTADO
+            } else {
+                codigo::SIN_APP
+            },
+        );
+    }
     let llamada = orden::de_argumentos(&args, &|p: &Path| p.is_file())?;
     Some(match llamada {
         Ok(l) => ejecutar(l),

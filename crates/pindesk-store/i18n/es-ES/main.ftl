@@ -1360,6 +1360,8 @@ figuras-todas = Todas
 figuras-vacia = Todavía no hay figuras. En un lienzo, elige algo y «Guardar como figura».
 figuras-borrar = Borrar la figura
 figuras-borrar-seguro = Pulsa otra vez para borrar
+# El boton de una figura que vino de PinDesk Plantillas; $app es su nombre.
+figuras-abrir-en-plantillas = Abrir en { $app }
 figuras-elegir-para = Elige una figura para «{ $chat }»
 figuras-adjuntar-a = Adjuntar a «{ $chat }»
 figuras-adjuntar-pista = O doble clic en la figura, o Intro.
