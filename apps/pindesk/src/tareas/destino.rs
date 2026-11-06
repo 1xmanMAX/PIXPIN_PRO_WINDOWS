@@ -105,6 +105,7 @@ mod pruebas {
             filas: filas_de(""),
             aparato: None,
             asignatura: None,
+            uid: None,
         }
     }
 

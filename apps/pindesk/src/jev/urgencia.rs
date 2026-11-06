@@ -12,20 +12,36 @@
 //!
 //! Va en segundo plano: al leer las listas ([`aplicar`]) se pone lo ya
 //! sabido y se pregunta por lo que falta en un hilo; al acabar, la ventana
-//! de Tareas relee. Lo sabido se queda en memoria (por el texto de la tarea,
-//! su lista y su chat) mientras la app este abierta; nada va al disco ni
-//! viaja con la sincronizacion.
+//! de Tareas relee.
+//!
+//! **Lo que dijo Jev se guarda y viaja** (4-nov-2026, Android v0.161.0; el
+//! usuario: «si una tarea ya fue revisada, que no se vuelva a hacer; lo
+//! revisado en el PC se sincroniza al celular y lo del celular al PC; sin
+//! gastar tokens»): en `pins/draw/anot-<uid de la lista>.urgencia.json`
+//! (`pindesk_sincro::urgencias`), que viaja con el mensaje de la lista y se
+//! junta tarea a tarea al llegar. Antes de preguntar se mira ahi: lo que ya
+//! esta, de este aparato o de otro, no se pregunta. Se guardan las senales,
+//! no la prioridad: el plazo cambia cada dia y la prioridad se recalcula.
+//! En memoria queda ademas lo leido y lo que fallo (no se vuelve a preguntar
+//! en 10 min), y lo que apura una reunion en vivo ([`poner_sabidas`]).
+//!
+//! **Cuando se pregunta**: las listas nacidas en este equipo, al cambiar sus
+//! mensajes, pasados 5 s, sin esperar a abrir Tareas ([`vigilar`]); las de
+//! otro aparato, solo al abrir Tareas y si su revision aun no ha llegado
+//! (quien la creo ya la hizo, y suele llegar en la misma vuelta).
 //!
 //! Sin clave o con la funcion apagada, `prioridad` se queda en `None` y
 //! Tareas ordena y ensena todo como siempre.
 
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use pindesk_proyecto::{almacen, cuaderno};
+use pindesk_sincro::disco::Disco;
+use pindesk_sincro::urgencias::{self as guardadas, Guardada};
 use pindesk_store::Ubicacion;
 use pindesk_typesafe::urgencia::{self as ju, Contexto, Marca, Senales};
 
@@ -112,9 +128,92 @@ fn texto_para_jev(f: &frase::Frase) -> String {
     }
 }
 
-/// Una tarea por preguntar: su clave, su lista (proyecto y mensaje) y lo
-/// que se manda.
-type Falta = (String, (String, String), Contexto);
+/// Una tarea por preguntar.
+struct Falta {
+    /// La de lo sabido en memoria ([`clave_de`]).
+    clave: String,
+    /// Su lista: el proyecto y el mensaje.
+    proyecto: String,
+    codigo: String,
+    /// Lo que se manda (`tarea` es tambien la clave en el fichero).
+    contexto: Contexto,
+    /// El fichero de la revision de su lista, si la lista es un mensaje del
+    /// cuaderno de un chat del almacen.
+    fichero: Option<PathBuf>,
+}
+
+/// Las senales de una tarea guardada en el fichero de su lista.
+fn senales_de(g: &Guardada) -> Senales {
+    Senales::de_partes(
+        g.consecuencia.clone(),
+        g.confianza,
+        g.bloquea,
+        g.plazo_ajeno,
+        g.piden_ya,
+    )
+}
+
+/// Lo que se guarda de lo que dijo Jev: cuando y en que aparato.
+fn guardada_de(s: &Senales, cuando: i64, aparato: &str) -> Guardada {
+    Guardada {
+        consecuencia: s.consecuencia.niveles.clone(),
+        confianza: s.consecuencia.confianza,
+        bloquea: s.bloquea,
+        plazo_ajeno: s.plazo_ajeno,
+        piden_ya: s.piden_ya,
+        cuando,
+        aparato: aparato.to_string(),
+    }
+}
+
+/// **Lo que ya se reviso de las listas, leido del disco una vez por
+/// tanda**: el fichero de cada lista y lo que tiene, por su codigo unico.
+struct DelDisco<'a> {
+    raiz: &'a Path,
+    /// El chat (`DiscoPc`) de cada proyecto.
+    chats: HashMap<String, Option<String>>,
+    listas: HashMap<String, (Option<PathBuf>, guardadas::Tareas)>,
+}
+
+impl<'a> DelDisco<'a> {
+    fn nuevo(raiz: &'a Path) -> DelDisco<'a> {
+        DelDisco {
+            raiz,
+            chats: HashMap::new(),
+            listas: HashMap::new(),
+        }
+    }
+
+    fn de(&mut self, l: &Lista) -> Option<&(Option<PathBuf>, guardadas::Tareas)> {
+        let uid = l.uid.as_deref()?;
+        if !self.listas.contains_key(uid) {
+            let raiz = self.raiz;
+            let chat = self
+                .chats
+                .entry(l.proyecto.clone())
+                .or_insert_with(|| pindesk_proyecto::vista::chat_de_ficha(raiz, &l.proyecto))
+                .clone();
+            let fichero = chat.map(|c| {
+                pindesk_proyecto::vista::DiscoPc::nuevo(raiz)
+                    .ruta(&c, &pindesk_proyecto::anotado::urgencia_rel(uid))
+            });
+            let dentro = fichero.as_deref().map(guardadas::leer).unwrap_or_default();
+            self.listas.insert(uid.to_string(), (fichero, dentro));
+        }
+        self.listas.get(uid)
+    }
+}
+
+/// El codigo de este equipo, el que va en `aparato` de lo que se pregunta
+/// aqui y el de los mensajes nacidos aqui.
+fn yo(raiz: &Path) -> String {
+    crate::letras_que_viajan::aparato(raiz)
+}
+
+/// Si la lista nacio en este equipo (o no se sabe donde).
+fn nacida_aqui(l: &Lista, yo: &str) -> bool {
+    l.aparato.as_deref().is_none_or(|a| a.is_empty() || a == yo)
+}
 
 /// Los dias que faltan para la fecha del titulo de la lista (dicha el dia
 /// en que se creo), contados desde `hoy` (dia local).
@@ -124,17 +223,24 @@ fn dias_de_la_lista(l: &Lista, hoy: i64) -> Option<i64> {
     ju::dias_de_la_lista(&l.titulo, Fecha::de_dias(creada), Fecha::de_dias(hoy))
 }
 
-/// **Pone la prioridad de cada tarea pendiente** con lo ya sabido, y lanza
-/// en su hilo las preguntas de lo que falta.
-pub fn aplicar(u: &Ubicacion, listas: &mut [Lista]) {
+/// **Pone la prioridad de cada tarea pendiente** con lo ya sabido (en
+/// memoria o en el fichero de su lista, venga de este aparato o de otro), y
+/// lanza en su hilo las preguntas de lo que falta. Con `solo_de_aqui` (lo de
+/// fondo, [`vigilar`]) solo se pregunta por las listas nacidas en este
+/// equipo; las demas ya las reviso quien las creo.
+pub fn aplicar(u: &Ubicacion, listas: &mut [Lista], solo_de_aqui: bool) {
     let Some(cliente) = super::para(u, Funcion::Urgencia) else {
         return;
     };
+    let raiz = u.raiz();
     let hoy = frase::ahora().dia;
+    let yo = solo_de_aqui.then(|| yo(raiz));
+    let mut disco = DelDisco::nuevo(raiz);
     let mut faltan: Vec<Falta> = Vec::new();
     for l in listas.iter_mut() {
         let lista = l.clone();
         let dias_lista = dias_de_la_lista(&lista, hoy);
+        let mia = yo.as_deref().is_none_or(|y| nacida_aqui(&lista, y));
         for f in l.filas.iter_mut().filter(|f| !f.hecha) {
             let m = frase::marcas(&f.texto);
             let texto = texto_para_jev(&m);
@@ -143,12 +249,21 @@ pub fn aplicar(u: &Ubicacion, listas: &mut [Lista]) {
             }
             let dias = m.hora.map(|h| h.dia - hoy).or(dias_lista);
             let clave = clave_de(&lista, &texto);
-            let sabido = con_sabido(|s| match s.get(&clave) {
+            let mut sabido = con_sabido(|s| match s.get(&clave) {
                 Some(Sabido::Senales(x)) => Some(Some(x.clone())),
                 Some(Sabido::Fallo(t)) if t.elapsed() < TRAS_UN_FALLO => Some(None),
                 Some(Sabido::Tema) => Some(None),
                 _ => None,
             });
+            // Lo que ya reviso este u otro aparato, del disco: no se
+            // pregunta otra vez (aunque aqui hubiera fallado hace poco).
+            if !matches!(sabido, Some(Some(_)))
+                && let Some(g) = disco.de(&lista).and_then(|(_, d)| d.get(&texto))
+            {
+                let s = senales_de(g);
+                con_sabido(|m| m.insert(clave.clone(), Sabido::Senales(s.clone())));
+                sabido = Some(Some(s));
+            }
             match sabido {
                 Some(Some(s)) => {
                     let marca = marca_de(m.urgencia);
@@ -158,16 +273,20 @@ pub fn aplicar(u: &Ubicacion, listas: &mut [Lista]) {
                 }
                 // Fallo reciente o tema de reunion: lo de siempre.
                 Some(None) => {}
-                None => faltan.push((
+                None if mia => faltan.push(Falta {
                     clave,
-                    (lista.proyecto.clone(), lista.codigo.clone()),
-                    Contexto {
+                    proyecto: lista.proyecto.clone(),
+                    codigo: lista.codigo.clone(),
+                    contexto: Contexto {
                         tarea: texto,
                         lista: lista.titulo.clone(),
                         chat: lista.chat.clone(),
                         recientes: Vec::new(),
                     },
-                )),
+                    fichero: disco.de(&lista).and_then(|(f, _)| f.clone()),
+                }),
+                // De otro aparato y de fondo: la revisa quien la creo.
+                None => {}
             }
         }
     }
@@ -188,6 +307,56 @@ pub fn aplicar(u: &Ubicacion, listas: &mut [Lista]) {
     }
 }
 
+/// Cada cuanto [`vigilar`] mira si cambiaron los mensajes (solo fechas y
+/// tamanos: [`crate::tareas::firma`]).
+const MIRAR_CADA: Duration = Duration::from_secs(2);
+/// El respiro tras un cambio antes de preguntar: lo que se esta escribiendo
+/// no se pregunta letra a letra.
+const RESPIRO: Duration = Duration::from_secs(5);
+
+/// **Revisar al momento lo apuntado aqui** (4-nov-2026, Android
+/// `alCambiarLasTareas`): un hilo que, cada vez que cambian los mensajes y
+/// pasado un respiro, pregunta por las tareas nuevas de las listas nacidas
+/// en este equipo, sin esperar a abrir Tareas. Lo ya revisado no cuesta
+/// nada: sale del disco. Las listas de otro aparato no se preguntan aqui.
+/// Tambien una vez al arrancar, por lo apuntado mientras estaba cerrada.
+pub fn vigilar(u: Ubicacion) {
+    let lanzado = std::thread::Builder::new()
+        .name("jev-urgencia-vigilar".into())
+        .spawn(move || {
+            let raiz = u.raiz().to_path_buf();
+            let mut proyectos: Vec<String> = Vec::new();
+            let mut vista = None;
+            let mut cambio: Option<Instant> = None;
+            loop {
+                std::thread::sleep(MIRAR_CADA);
+                let ahora = crate::tareas::firma(&raiz, &proyectos);
+                if vista.as_ref() != Some(&ahora) {
+                    vista = Some(ahora);
+                    cambio = Some(Instant::now());
+                }
+                // Mientras pregunta otra tanda, se espera: lo cambiado no se
+                // pierde.
+                if !cambio.is_some_and(|t| t.elapsed() >= RESPIRO)
+                    || PREGUNTANDO.load(Ordering::SeqCst)
+                {
+                    continue;
+                }
+                cambio = None;
+                if super::para(&u, Funcion::Urgencia).is_none() {
+                    continue;
+                }
+                let (mut listas, p) = crate::tareas::reunir(&raiz);
+                proyectos = p;
+                vista = Some(crate::tareas::firma(&raiz, &proyectos));
+                aplicar(&u, &mut listas, true);
+            }
+        });
+    if let Err(e) = lanzado {
+        tracing::warn!(%e, "jev: no se pudo vigilar las tareas");
+    }
+}
+
 /// Lo de [`aplicar`], en el hilo: los mensajes recientes de cada chat y las
 /// preguntas.
 fn preguntar(cliente: &pindesk_typesafe::Cliente, raiz: &Path, faltan: Vec<Falta>) {
@@ -195,16 +364,17 @@ fn preguntar(cliente: &pindesk_typesafe::Cliente, raiz: &Path, faltan: Vec<Falta
     let mut temas = Vec::new();
     let faltan: Vec<Falta> = faltan
         .into_iter()
-        .filter_map(|(clave, (proyecto, codigo), mut c)| {
+        .filter_map(|mut f| {
             let chat = chats
-                .entry(proyecto.clone())
-                .or_insert_with(|| leer_chat(raiz, &proyecto));
-            if chat.temas.contains(&(proyecto.clone(), codigo.clone())) {
-                temas.push(clave);
+                .entry(f.proyecto.clone())
+                .or_insert_with(|| leer_chat(raiz, &f.proyecto));
+            // Los temas de una reunion no se preguntan ni se guardan.
+            if chat.temas.contains(&(f.proyecto.clone(), f.codigo.clone())) {
+                temas.push(f.clave);
                 return None;
             }
-            c.recientes = chat.recientes.clone();
-            Some((clave, (proyecto, codigo), c))
+            f.contexto.recientes = chat.recientes.clone();
+            Some(f)
         })
         .collect();
     con_sabido(|s| {
@@ -212,26 +382,44 @@ fn preguntar(cliente: &pindesk_typesafe::Cliente, raiz: &Path, faltan: Vec<Falta
             s.insert(clave, Sabido::Tema);
         }
     });
-    let contextos: Vec<Contexto> = faltan.iter().map(|(_, _, c)| c.clone()).collect();
+    let contextos: Vec<Contexto> = faltan.iter().map(|f| f.contexto.clone()).collect();
     let empezo = Instant::now();
     let respuestas = ju::preguntar_varias(cliente, &contextos, A_LA_VEZ);
     let mut fallos = 0;
+    // Lo dicho, por lista: a su fichero, para que ningun aparato lo vuelva
+    // a preguntar.
+    let ahora = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis() as i64);
+    let aparato = yo(raiz);
+    let mut a_guardar: HashMap<PathBuf, guardadas::Tareas> = HashMap::new();
     con_sabido(|s| {
-        for ((clave, _, _), r) in faltan.into_iter().zip(respuestas) {
+        for (f, r) in faltan.into_iter().zip(respuestas) {
             match r {
                 Ok(x) => {
-                    s.insert(clave, Sabido::Senales(x));
+                    if let Some(fichero) = f.fichero {
+                        a_guardar
+                            .entry(fichero)
+                            .or_default()
+                            .insert(f.contexto.tarea, guardada_de(&x, ahora, &aparato));
+                    }
+                    s.insert(f.clave, Sabido::Senales(x));
                 }
                 Err(e) => {
                     fallos += 1;
                     if fallos == 1 {
                         tracing::warn!("jev: sin prioridad para una tarea: {e}");
                     }
-                    s.insert(clave, Sabido::Fallo(Instant::now()));
+                    s.insert(f.clave, Sabido::Fallo(Instant::now()));
                 }
             }
         }
     });
+    for (fichero, nuevas) in a_guardar {
+        if let Err(e) = guardadas::anadir(&fichero, &nuevas) {
+            tracing::warn!(%e, fichero = %fichero.display(), "jev: no se pudo guardar la urgencia");
+        }
+    }
     tracing::info!(
         tareas = contextos.len(),
         fallos,
@@ -297,9 +485,80 @@ mod pruebas {
             filas: crate::tareas::filas_de("- [ ] pagar la matrícula ⏫\n- [ ] pan"),
             aparato: None,
             asignatura: None,
+            uid: None,
         }];
-        aplicar(&u, &mut listas);
+        aplicar(&u, &mut listas, false);
         assert!(listas[0].filas.iter().all(|f| f.prioridad.is_none()));
+        aplicar(&u, &mut listas, true);
+        assert!(listas[0].filas.iter().all(|f| f.prioridad.is_none()));
+    }
+
+    #[test]
+    fn nacida_aqui_es_la_de_este_equipo_o_sin_aparato() {
+        let con = |a: Option<&str>| Lista {
+            aparato: a.map(str::to_string),
+            ..lista_de_prueba("p", None)
+        };
+        assert!(nacida_aqui(&con(None), "K7Q2"));
+        assert!(nacida_aqui(&con(Some("")), "K7Q2"));
+        assert!(nacida_aqui(&con(Some("K7Q2")), "K7Q2"));
+        // Caso negativo: la del movil la revisa el movil.
+        assert!(!nacida_aqui(&con(Some("MOVI")), "K7Q2"));
+    }
+
+    #[test]
+    fn lo_guardado_vuelve_con_las_mismas_senales() {
+        let s = Senales::de_partes(vec![0.05, 0.15, 0.5, 0.3], 0.6, 0.8, 0.9, Some(0.2));
+        let g = guardada_de(&s, 1_793_582_613_265, "K7Q2");
+        assert_eq!((g.cuando, g.aparato.as_str()), (1_793_582_613_265, "K7Q2"));
+        assert_eq!(senales_de(&g), s);
+        // Sin mensajes del chat no hay `piden_ya`, y asi vuelve.
+        let sin = Senales::de_partes(vec![1.0], 0.6, 0.0, 0.0, None);
+        assert_eq!(senales_de(&guardada_de(&sin, 1, "")).piden_ya, None);
+    }
+
+    fn lista_de_prueba(proyecto: &str, uid: Option<&str>) -> Lista {
+        Lista {
+            proyecto: proyecto.into(),
+            chat: "Mensajes guardados".into(),
+            guardados: true,
+            codigo: "c".into(),
+            titulo: "Inbox".into(),
+            cuando: 0,
+            filas: crate::tareas::filas_de("- [ ] pan"),
+            aparato: None,
+            asignatura: None,
+            uid: uid.map(str::to_string),
+        }
+    }
+
+    /// **Lo que ya reviso otro aparato se lee del fichero de su lista**, el
+    /// mismo que viaja: no se vuelve a preguntar.
+    #[test]
+    fn el_fichero_de_la_lista_es_el_que_viaja_y_se_lee() {
+        let raiz =
+            std::env::temp_dir().join(format!("pixpin-jev-urgencia-disco-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&raiz);
+        let g = almacen::asegurar_guardados(&raiz, 1, "K7Q2").unwrap();
+        let f =
+            pindesk_proyecto::anotado::urgencia_de_la_lista(&raiz, &g.id, "ABCDE23456").unwrap();
+        let s = Senales::de_partes(vec![0.0, 0.0, 1.0], 0.6, 0.1, 0.0, None);
+        let tareas = guardadas::Tareas::from([("pan".to_string(), guardada_de(&s, 5, "MOVI"))]);
+        assert!(guardadas::anadir(&f, &tareas).unwrap());
+        let mut disco = DelDisco::nuevo(&raiz);
+        let (fichero, dentro) = disco
+            .de(&lista_de_prueba(&g.id, Some("ABCDE23456")))
+            .unwrap();
+        assert_eq!(fichero.as_deref(), Some(f.as_path()));
+        assert_eq!(dentro.get("pan").map(senales_de), Some(s));
+        // Casos negativos: sin codigo no hay fichero, y de un chat que no
+        // esta en el almacen tampoco.
+        assert!(disco.de(&lista_de_prueba(&g.id, None)).is_none());
+        let (fichero, dentro) = disco
+            .de(&lista_de_prueba("no-esta", Some("ZZZZZ23456")))
+            .unwrap();
+        assert!(fichero.is_none() && dentro.is_empty());
+        let _ = std::fs::remove_dir_all(&raiz);
     }
 
     #[test]

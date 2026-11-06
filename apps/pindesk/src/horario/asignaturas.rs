@@ -620,6 +620,7 @@ mod pruebas {
             filas: Vec::new(),
             aparato: None,
             asignatura: None,
+            uid: None,
         }
     }
 

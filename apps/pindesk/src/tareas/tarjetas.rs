@@ -401,6 +401,7 @@ mod pruebas {
             filas: filas_de(doc),
             aparato: None,
             asignatura: None,
+            uid: None,
         }
     }
 

@@ -628,6 +628,10 @@ fn arrancar(
                 pindesk_web::precalentar();
             });
     }
+    // La urgencia de las tareas apuntadas aqui se revisa al momento, sin
+    // esperar a abrir Tareas, y viaja con su lista (4-nov-2026). Sin clave
+    // de Jev o con la funcion apagada no hace nada.
+    jev::urgencia::vigilar(ubicacion.clone());
 
     // 6. Idioma, antes de crear nada con texto.
     let lengua = idioma::resolver_idioma(&entorno::locale_del_sistema(), config.idioma);

@@ -897,7 +897,9 @@ impl Estado {
         let raiz = ubicacion.raiz();
         let (mut todas, proyectos) = super::reunir(raiz);
         // La prioridad de cada tarea por su contexto (Jev; sin clave, nada).
-        crate::jev::urgencia::aplicar(ubicacion, &mut todas);
+        // Con Tareas abierta se pregunta tambien por las listas de otro
+        // aparato cuya revision aun no ha llegado.
+        crate::jev::urgencia::aplicar(ubicacion, &mut todas, false);
         self.firma = super::firma(raiz, &proyectos);
         self.compartidos = todas
             .iter()
@@ -4871,6 +4873,7 @@ mod pruebas {
             filas: super::super::filas_de(doc),
             aparato: None,
             asignatura: None,
+            uid: None,
         };
         let mut e = Estado::nuevo();
         e.hoy = pindesk_proyecto::mini::Fecha {

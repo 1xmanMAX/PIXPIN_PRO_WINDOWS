@@ -133,6 +133,11 @@ pub struct Lista {
     /// `0xRRGGBB` (`horario::asignaturas::marcar`). Esas salen en la ventana
     /// aunque esten vacias, para poder apuntarles tareas.
     pub asignatura: Option<u32>,
+    /// El codigo unico del mensaje de la lista (`Mensaje::codigo_unico`):
+    /// el nombre de su revision de urgencia, la que viaja
+    /// (`pins/draw/anot-<uid>.urgencia.json`, `jev::urgencia`). `None` en lo
+    /// que no sale de un mensaje del cuaderno.
+    pub uid: Option<String>,
 }
 
 impl Lista {
@@ -216,6 +221,7 @@ pub fn lista_de(ficha: &almacen::Ficha, m: &cuaderno::Mensaje) -> Option<Lista> 
         filas,
         aparato: m.aparato.as_deref().map(aparato_corto),
         asignatura: None,
+        uid: Some(m.codigo_unico()),
     })
 }
 
@@ -900,6 +906,7 @@ mod pruebas {
             filas: filas_de(documento),
             aparato: None,
             asignatura: None,
+            uid: None,
         }
     }
 
