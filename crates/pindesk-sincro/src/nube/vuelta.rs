@@ -901,6 +901,9 @@ fn aplicar_archivo<D: Disco + ?Sized>(
         .map(|j| j.a_texto())
     };
     let mut escrito = true;
+    // Lo que se junto al escribirlo y quedo distinto de lo que bajo: tiene
+    // que volver a subir para que el otro tambien lo tenga.
+    let mut juntado_al_llegar = false;
     if disco::es_texto(rel) {
         let suyo = descomprimir(&bytes)?;
         let fin = if cambiado_aqui && es_json {
@@ -914,7 +917,12 @@ fn aplicar_archivo<D: Disco + ?Sized>(
             escribir_copia(f, &d.a_local(chat, suyo), gz)?;
         }
     } else {
-        let fin = if cambiado_aqui {
+        let fin = if rel.ends_with(crate::anotado::URGENCIA) {
+            // La revision de urgencia se junta tarea a tarea al escribirla
+            // (`disco::juntar_urgencia`), haya cambiado aqui o no: la
+            // fusion generica de JSON no sabe de `cuando` ni de `aparato`.
+            Some(bytes.clone())
+        } else if cambiado_aqui {
             if es_json {
                 let mio = std::fs::read_to_string(d.ruta(chat, rel)).unwrap_or_default();
                 std::str::from_utf8(&bytes)
@@ -930,16 +938,23 @@ fn aplicar_archivo<D: Disco + ?Sized>(
             Some(bytes.clone())
         };
         if let Some(b) = fin {
-            d.escribir_archivo_de(chat, rel, b.len() as i64, &mut |w| {
+            let puesto = d.escribir_archivo_de(chat, rel, b.len() as i64, &mut |w| {
                 w.write_all(&b)?;
                 Ok(true)
             })?;
+            // **Lo juntado al llegar vuelve a subir** (4-nov-2026, como
+            // `resumenAcordadoDe` en la red local): si lo escrito no es lo
+            // que bajo (se junto con lo de aqui), lo de aqui sigue «sin
+            // subir» y la vuelta lo sube.
+            juntado_al_llegar = puesto
+                && disco::se_junta_al_llegar(rel)
+                && d.resumen_de_archivo(chat, rel)? != canonico::sha256_hex(&bytes);
         }
         if let Some(f) = &copia {
             disco::escribir_atomico(f, &bytes)?;
         }
     }
-    e.local = if cambiado_aqui || !escrito {
+    e.local = if cambiado_aqui || !escrito || juntado_al_llegar {
         prev.map(|x| x.local).unwrap_or_default()
     } else {
         d.resumen_de_archivo(chat, rel)?

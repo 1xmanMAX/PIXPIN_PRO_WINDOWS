@@ -250,9 +250,9 @@ fn referencias(
         }
         _ => {}
     }
-    if crate::anotado::lleva_anotado(m)
-        && let Some(l) = anotado.get(&kotlin::unico(m))
-    {
+    // De cualquier mensaje, como `Disco.referencias` de Android (4-nov-2026):
+    // la revision de urgencia de una lista de tareas tambien es suya.
+    if let Some(l) = anotado.get(&kotlin::unico(m)) {
         s.extend(l.iter().cloned());
     }
     let marcas: Vec<String> = s

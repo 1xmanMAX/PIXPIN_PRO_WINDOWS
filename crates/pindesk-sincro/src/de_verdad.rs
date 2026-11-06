@@ -1626,3 +1626,81 @@ fn una_vuelta_con_archivos_en_varios_chats_los_deja_todos_acordados() {
         assert_eq!(pendiente, (0, 0), "{chat}: todo acordado");
     }
 }
+
+/// **La revision de urgencia de una lista viaja y se junta** (4-nov-2026,
+/// la parte de la urgencia de `SincronizarDeVerdadTest` de Android): el
+/// fichero de una lista de tareas (un MINIAPP, que no es adjunto ni nota)
+/// viaja con su mensaje, y si los dos revisan otra tarea a la vez, al cabo
+/// de dos vueltas los dos tienen las tres.
+#[test]
+fn la_urgencia_de_una_lista_viaja_y_se_junta_en_los_dos() {
+    use crate::urgencias::{self, Guardada, Tareas};
+    let p = montar("urgencia");
+    p.emparejar();
+    let lista = mensaje(
+        &p.tel,
+        &p.reloj,
+        Nuevo {
+            clase: "MINIAPP",
+            ..nota("ls", "# Obra\n- [ ] Mandar la cotización\n")
+        },
+    );
+    let rel = format!("pins/draw/anot-{}.urgencia.json", kotlin::unico(&lista));
+    let s = |cuando, aparato: &str| Guardada {
+        consecuencia: vec![0.1, 0.2, 0.3, 0.4],
+        confianza: 0.6,
+        bloquea: 0.8,
+        plazo_ajeno: 0.0,
+        piden_ya: None,
+        cuando,
+        aparato: aparato.into(),
+    };
+    let una = |t: &str, g| Tareas::from([(t.to_string(), g)]);
+    let (en_tel, en_tab) = (p.tel.raiz().join(&rel), p.tab.raiz().join(&rel));
+    assert!(urgencias::anadir(&en_tel, &una("Mandar la cotización", s(5, "tel"))).unwrap());
+    assert!(
+        p.tel
+            .alcance(GENERAL)
+            .unwrap()
+            .iter()
+            .any(|(r, _)| *r == rel),
+        "es del mensaje de la lista aunque no sea adjunto ni nota"
+    );
+    p.general();
+    assert!(
+        urgencias::leer(&en_tab).contains_key("Mandar la cotización"),
+        "la urgencia de la lista viaja"
+    );
+
+    // Los dos revisan otra tarea a la vez; la de la tableta, mas nueva.
+    urgencias::anadir(&en_tel, &una("Pedir cemento", s(7, "tel"))).unwrap();
+    urgencias::anadir(&en_tab, &una("Llamar al cliente", s(8, "tab"))).unwrap();
+    std::fs::File::options()
+        .write(true)
+        .open(&en_tab)
+        .unwrap()
+        .set_modified(std::time::SystemTime::now() + std::time::Duration::from_secs(60))
+        .unwrap();
+    p.general();
+    p.general();
+    for f in [&en_tel, &en_tab] {
+        assert_eq!(
+            urgencias::leer(f).into_keys().collect::<Vec<_>>(),
+            ["Llamar al cliente", "Mandar la cotización", "Pedir cemento"],
+            "en {}",
+            f.display()
+        );
+    }
+    assert_eq!(
+        std::fs::read(&en_tel).unwrap(),
+        std::fs::read(&en_tab).unwrap(),
+        "byte a byte"
+    );
+    // Y ya no queda nada por mover.
+    let pendiente = conectado(&p.tel, &p.tab, false, None, &p.reloj, |s| {
+        let prep = s.preparar(GENERAL).unwrap();
+        s.preparar_archivos(&prep).unwrap().pasos.len()
+    })
+    .unwrap();
+    assert_eq!(pendiente, 0, "todo acordado");
+}

@@ -2934,9 +2934,14 @@ impl<'a, D: Disco + ?Sized, F: Read + Write> Sesion<'a, D, F> {
         })?;
         let canal = &mut self.canal;
         let mut roto = None;
+        let mut llegado: Option<String> = None;
         let entero = d.escribir_archivo_de(&chat, rel, cabecera.bytes, &mut |s| {
             recibir_trozos(canal, cabecera.bytes, s, avance)
-                .map(|r| r.is_some())
+                .map(|r| {
+                    let vale = r.is_some();
+                    llegado = r;
+                    vale
+                })
                 .map_err(|e| {
                     let t = e.to_string();
                     roto = Some(e);
@@ -2947,10 +2952,20 @@ impl<'a, D: Disco + ?Sized, F: Read + Write> Sesion<'a, D, F> {
             return Err(e);
         }
         let entero = entero?;
-        Ok(if entero {
-            Some(d.resumen_de_archivo(&chat, rel)?)
-        } else {
+        Ok(if !entero {
             None
+        } else if let Some(sha) =
+            llegado.filter(|_| disco::se_junta_al_llegar(rel) && !es_texto(rel))
+        {
+            // **Lo acordado es lo que llego, no lo juntado** (4-nov-2026,
+            // `resumenAcordadoDe` de Android): si al escribirlo se junto con
+            // lo de aqui (comentarios, urgencia, una leccion), el archivo de
+            // ahora difiere de lo acordado, cuenta como cambiado aqui y lo
+            // juntado vuelve al otro en la vuelta siguiente. Si no se junto
+            // nada, es el mismo resumen que el del archivo.
+            Some(sha)
+        } else {
+            Some(d.resumen_de_archivo(&chat, rel)?)
         })
     }
 

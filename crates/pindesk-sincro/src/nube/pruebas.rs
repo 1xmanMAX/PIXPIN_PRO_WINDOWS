@@ -313,6 +313,63 @@ fn sin_conexion_no_sube_ve_lo_de_otros_y_al_descartar_queda_lo_de_la_nube() {
     assert!(ids(&leer_lienzo(&banco.b)).contains(&"sin-red-2".into()));
 }
 
+/// **La revision de urgencia por la nube** (4-nov-2026): los dos revisan
+/// otra tarea de la misma lista a la vez; con el 409 se junta tarea a tarea
+/// (no con la fusion generica de JSON) y lo juntado vuelve a subir.
+#[test]
+fn la_urgencia_de_una_lista_se_junta_por_la_nube() {
+    use crate::urgencias::{self, Guardada, Tareas};
+    let banco = montar("urgencia");
+    mensaje(&banco.a, "ls", "# Obra\n- [ ] Mandar", "MINIAPP", None);
+    let uid = kotlin::unico(
+        &banco
+            .a
+            .mensajes("p1")
+            .unwrap()
+            .into_iter()
+            .find(|m| kotlin::cadena(m, "id") == Some("ls"))
+            .unwrap(),
+    );
+    let rel = format!("pins/draw/anot-{uid}.urgencia.json");
+    let g = |cuando, aparato: &str| Guardada {
+        consecuencia: vec![0.0, 0.5, 0.5],
+        confianza: 0.6,
+        bloquea: 0.0,
+        plazo_ajeno: 0.0,
+        piden_ya: Some(0.25),
+        cuando,
+        aparato: aparato.into(),
+    };
+    let una = |t: &str, x| Tareas::from([(t.to_string(), x)]);
+    let (en_a, en_b) = (banco.a.raiz().join(&rel), banco.b.raiz().join(&rel));
+    urgencias::anadir(&en_a, &una("Mandar", g(1, "a"))).unwrap();
+    let f = NubeFalsa::nueva(true);
+    let n = nube(&f);
+    vuelta_de_chat(&banco.a, &n, "p1", &op(true, 10, &NadaRetenido, false)).unwrap();
+    vuelta_de_chat(&banco.b, &n, "p1", &op(true, 11, &NadaRetenido, true)).unwrap();
+    assert!(urgencias::leer(&en_b).contains_key("Mandar"), "viaja");
+    urgencias::anadir(&en_a, &una("Pedir cemento", g(2, "a"))).unwrap();
+    urgencias::anadir(&en_b, &una("Llamar", g(3, "b"))).unwrap();
+    vuelta_de_chat(&banco.a, &n, "p1", &op(true, 12, &NadaRetenido, false)).unwrap();
+    // B sube sin haber bajado: 409, baja, junta y vuelve a subir.
+    vuelta_de_chat(&banco.b, &n, "p1", &op(true, 13, &NadaRetenido, false)).unwrap();
+    vuelta_de_chat(&banco.a, &n, "p1", &op(true, 14, &NadaRetenido, true)).unwrap();
+    for f in [&en_a, &en_b] {
+        assert_eq!(
+            urgencias::leer(f).into_keys().collect::<Vec<_>>(),
+            ["Llamar", "Mandar", "Pedir cemento"],
+            "en {}",
+            f.display()
+        );
+        // Escrito como lo escribe el movil, no por la fusion generica.
+        let t = std::fs::read_to_string(f).unwrap();
+        assert!(
+            t.starts_with("{\n  \"version\": 1,\n  \"tareas\": [\n"),
+            "{t}"
+        );
+    }
+}
+
 #[test]
 fn la_firma_de_yo_es_la_del_texto_del_manual() {
     let ll = crate::compartidos::Llaves::nuevas();

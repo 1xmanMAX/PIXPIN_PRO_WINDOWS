@@ -56,7 +56,7 @@ pub const CARPETA: &str = "pins/draw";
 pub const PREFIJO: &str = "anot-";
 
 /// Las terminaciones de lo anotado (`TERMINACIONES`): ni temporales ni otra cosa.
-pub const TERMINACIONES: [&str; 13] = [
+pub const TERMINACIONES: [&str; 14] = [
     ".excalidraw.gz",
     ".marcas",
     ".espacios",
@@ -69,8 +69,16 @@ pub const TERMINACIONES: [&str; 13] = [
     MARCOS,
     VISTAS,
     MARCAS_TEXTO,
+    URGENCIA,
     ADJUNTO,
 ];
+
+/// **La revision de urgencia de una lista de tareas** (4-nov-2026, Android
+/// v0.161.0): `anot-<uid de la lista>.urgencia.json`, lo que dijo Jev de
+/// cada tarea (sus senales, no la prioridad). Viaja con el mensaje de la
+/// lista y se junta al llegar, tarea a tarea ([`crate::urgencias`]). Ver
+/// `docs/urgencia-que-viaja.md` de Android.
+pub const URGENCIA: &str = ".urgencia.json";
 
 /// **Lo adjuntado a una pegatina de comentario** (3-nov-2026,
 /// `pindesk_comentarios`): `<base>.a<huella>.adjunto`, el fichero tal cual
@@ -871,6 +879,7 @@ mod pruebas {
     fn las_pegatinas_viajan_con_su_mensaje_y_las_del_lienzo_con_su_dibujo() {
         assert!(TERMINACIONES.contains(&ADJUNTO));
         assert!(TERMINACIONES.contains(&COMENTARIOS));
+        assert!(TERMINACIONES.contains(&URGENCIA));
         let adj = adjunto_de_comentario("anot-ABCDE23456", "9f1c/../x");
         assert_eq!(adj, "pins/draw/anot-ABCDE23456.a9f1c____x.adjunto");
         let lz = lienzo_de_comentario("anot-ABCDE23456", "pc1-18f2a-0");
@@ -972,5 +981,23 @@ mod pruebas {
         // Caso negativo: un proyecto nuevo o sin cambios de hojas no quita nada.
         assert!(hojas_quitadas(None, &despues).is_empty());
         assert!(hojas_quitadas(Some(&despues), &antes).is_empty());
+    }
+
+    /// **La revision de urgencia de una lista** (4-nov-2026): es de su
+    /// mensaje, como los comentarios; su temporal no.
+    #[test]
+    fn la_urgencia_de_una_lista_es_de_su_mensaje_y_su_temporal_no() {
+        let rels = [
+            "pins/draw/anot-ABCDE23456.urgencia.json",
+            "pins/draw/anot-ABCDE23456.urgencia.json.tmp",
+            "pins/draw/anot-ABCDE23456.urgencia.json.sincro",
+            "pins/draw/otra-ABCDE23456.urgencia.json",
+        ];
+        let m = por_uid(rels);
+        assert_eq!(
+            m.get("ABCDE23456").map(Vec::as_slice),
+            Some(&["pins/draw/anot-ABCDE23456.urgencia.json".to_string()][..])
+        );
+        assert_eq!(m.len(), 1);
     }
 }

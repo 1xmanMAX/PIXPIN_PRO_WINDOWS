@@ -584,6 +584,8 @@ pub trait Disco {
             juntar_leccion(rel, &destino, &tmp)?;
             // Y unas pegatinas de comentario: se suman por id.
             juntar_comentarios(rel, &destino, &tmp)?;
+            // Y la revision de urgencia de una lista: tarea a tarea.
+            juntar_urgencia(rel, &destino, &tmp)?;
             reemplazar(&tmp, &destino)?;
             Ok(true)
         })();
@@ -1164,6 +1166,37 @@ pub fn juntar_comentarios(rel: &str, destino: &Path, tmp: &Path) -> io::Result<(
         std::fs::write(tmp, junta)?;
     }
     Ok(())
+}
+
+/// **La revision de urgencia que llega, junto con la de aqui** (4-nov-2026,
+/// Android `Disco.escribirArchivo`): por tarea, gana la respuesta mas nueva
+/// ([`crate::urgencias::al_llegar`]). Si lo que llega ya lo trae todo, o
+/// esta roto, `tmp` no se toca.
+pub fn juntar_urgencia(rel: &str, destino: &Path, tmp: &Path) -> io::Result<()> {
+    if !rel.ends_with(crate::anotado::URGENCIA) || !destino.is_file() {
+        return Ok(());
+    }
+    let (Ok(aqui), Ok(llega)) = (
+        std::fs::read_to_string(destino),
+        std::fs::read_to_string(tmp),
+    ) else {
+        return Ok(());
+    };
+    if let Some(junta) = crate::urgencias::al_llegar(&aqui, &llega) {
+        std::fs::write(tmp, junta)?;
+    }
+    Ok(())
+}
+
+/// **Si `rel` se junta con lo de aqui al llegar** (los comentarios, la
+/// urgencia y las lecciones) en vez de pisarlo. De esos, lo acordado tras
+/// traerlos es el resumen de lo que LLEGO, no el de lo juntado
+/// (`resumenAcordadoDe` de Android): asi lo juntado cuenta como cambiado
+/// aqui, vuelve al otro en la vuelta siguiente y los dos quedan iguales.
+pub fn se_junta_al_llegar(rel: &str) -> bool {
+    rel.ends_with(crate::anotado::COMENTARIOS)
+        || rel.ends_with(crate::anotado::URGENCIA)
+        || rel.ends_with(pindesk_lecciones::leccion::EXTENSION)
 }
 
 /// `Disco.permitida`: solo dentro de las carpetas de PinDesk y nunca los
@@ -1937,10 +1970,12 @@ pub fn alcance_de<D: Disco + ?Sized>(d: &D, chat: &str) -> io::Result<Vec<(Strin
         if let Some(rel) = kotlin::cadena(&m, "ruta").and_then(|r| r.strip_prefix(PORTATIL)) {
             poner(Some(rel.to_string()), &etiqueta, &mut salida);
         }
-        // De un adjunto o, desde el 30-sep, de una nota (sus comentarios).
-        if crate::anotado::lleva_anotado(&m)
-            && let Some(l) = anotado.get(&kotlin::unico(&m))
-        {
+        // Lo anotado con su codigo, de CUALQUIER mensaje (4-nov-2026,
+        // Android `alcanceCon`): antes solo de un adjunto o una nota, y la
+        // revision de urgencia de una lista de tareas (`.urgencia.json`), sus
+        // pegatinas y lo adjuntado a ellas no viajaban. Lo que se borra con
+        // el mensaje sigue siendo solo lo de [`crate::anotado::lleva_anotado`].
+        if let Some(l) = anotado.get(&kotlin::unico(&m)) {
             for rel in l {
                 poner(Some(rel.clone()), &etiqueta, &mut salida);
             }

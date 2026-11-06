@@ -40,6 +40,8 @@
 //! - `compartidos`, `valla` e `invitacion`: los chats compartidos con otras
 //!   personas (Android v0.122.0): llaves P-256, listas firmadas, la valla de
 //!   archivos, la invitacion `PXI1` y la vuelta entre personas `PXC1`.
+//! - `urgencias`: la revision de urgencia de una lista de tareas, que viaja
+//!   con su mensaje y se junta tarea a tarea (Android v0.161.0).
 //! - `protocolo`: el `Respondedor` y la `Sesion`, peticion a peticion;
 //!   `vuelta`, una vuelta entera como la lleva la pantalla del movil.
 //!
@@ -76,6 +78,7 @@ pub mod nube;
 pub mod prioridad;
 pub mod protocolo;
 pub mod reintentos;
+pub mod urgencias;
 pub mod valla;
 pub mod vuelta;
 
