@@ -9,11 +9,17 @@ Ahora ese chat es **donde va todo lo de las asignaturas**, agrupado por
 asignatura. Lo que entra en PinDesk (Windows) y lo que necesitan Android y
 `apple/`.
 
-**Un campo nuevo en lo que se sincroniza, y opcional**: el mensaje que es de
-una asignatura lleva `"asignatura": "<nombre>"`. Va en `resto`, como
-`escaneado` o `enGrabacion`; quien no lo entienda lo guarda tal cual y ve el
-chat como siempre, todo junto. Un mensaje sin el campo no es de ninguna (los
-de antes salen igual que antes).
+**Un campo nuevo en lo que se sincroniza**: el mensaje que es de
+una asignatura lleva `"asignatura": "<nombre>"`. En el PC va en `resto`, que
+guarda lo que el esquema no nombra. Un mensaje sin el campo no es de ninguna
+(los de antes salen igual que antes).
+
+> **Corregido el 6-nov** (`docs/novedades-2026-11-06-sincronizar-con-android.md`
+> §3.1): aquí ponía que Android lo guardaba «en `resto`» tal cual. No es así:
+> el `Mensaje` de Android no tiene dónde guardar lo que no conoce y lo tira al
+> leerlo (`ignoreUnknownKeys`), y lo mismo `"asignaturas": true` de su
+> `Proyecto`. Android tiene que añadir `asignatura: String? = null` a
+> `Mensaje` y `asignaturas: Boolean? = null` a `Proyecto`.
 
 ## 1. El chat
 
@@ -137,10 +143,14 @@ la caja de Tareas van a la lista de la asignatura, que está en este chat.
 
 ## 6. Lo que necesitan los otros aparatos
 
-- **Android**: nada obligatorio; el campo `asignatura` llega en `resto` y se
-  conserva. Recomendado, en este orden:
-  1. Conservar `asignatura` al editar o reenviar un mensaje (si se pierde,
-     el PC lo ve sin asignatura; no se rompe nada).
+- **Android**: **obligatorio**, los dos campos en sus clases
+  (`Mensaje.asignatura: String? = null`, `Proyecto.asignaturas: Boolean? =
+  null`): hoy los tira al leerlos, el resumen del mensaje le sale distinto
+  del del PC y, si su versión vuelve, el PC también pierde la asignatura (ver
+  `docs/novedades-2026-11-06-sincronizar-con-android.md` §3.1). Después,
+  recomendado, en este orden:
+  1. Conservar `asignatura` al editar o reenviar un mensaje (`copy(...)` ya
+     lo hace si el campo está en la clase).
   2. Reconocer el chat por `"asignaturas": true` en su `Proyecto` (el PC lo
      manda desde el 6-nov, como `"asistente": true`; no por el nombre) y
      fijarlo arriba, detrás de «Mensajes guardados» y el «Asistente». La foto
