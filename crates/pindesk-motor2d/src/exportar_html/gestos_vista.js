@@ -9,9 +9,15 @@
 //   con `ctrlKey` (en Windows y en macOS); Safari, como `gesturechange` con su `scale`. Se
 //   acerca hacia el cursor con `exp(-deltaY·K)`, que es suave y simétrico (ir y volver deja la
 //   vista donde estaba), y con tope por aviso para que una rueda con Ctrl no dé saltos.
-// - **Rueda del ratón**: mueve en vertical como en un documento; con Mayúsculas, en
-//   horizontal; con Ctrl (o ⌘), acerca. No se intenta adivinar si es ratón o trackpad: es lo
-//   que más falla, y así el trackpad siempre se comporta igual.
+// - **Rueda del ratón: acerca hacia el cursor**, suave (cada muesca se reparte en unos
+//   fotogramas) y con los topes de cada visor. Con Mayúsculas mueve de lado y con Alt en
+//   vertical, para quien no pueda arrastrar.
+// - **Ratón o trackpad** ([pareceRaton]): `deltaMode` de líneas o páginas es ratón; un `deltaX`
+//   es trackpad; en píxeles, la rueda da saltos grandes (|deltaY| ≥ 50: 100, 120, 53…, o 66,7
+//   con la pantalla al 150 %) o `wheelDeltaY` múltiplo de 120, y el trackpad da poquito y con
+//   decimales. Lo que diga el primer aviso vale para toda la ráfaga ([RAFAGA] ms sin avisos la
+//   cierran), para que una ráfaga no cambie de idea a mitad: la inercia del trackpad sigue
+//   moviendo aunque acabe con saltos grandes.
 // - `deltaMode` 1 (líneas, Firefox con ratón) y 2 (páginas) se pasan a píxeles.
 // - **Pantalla táctil**: un dedo arrastra y dos pellizcan y mueven a la vez, con Pointer
 //   Events, si el visor no lleva ya los suyos (`dedos:true`). El visor que los lleva usa
@@ -27,6 +33,9 @@ var PAGINA=800;        // píxeles por página (deltaMode 2) si la caja no dice 
 var K_ZOOM=0.01;       // cuánto acerca cada píxel de rueda con Ctrl
 var TOPE_ZOOM=25;      // píxeles de rueda como mucho por aviso: ×1,28
 var SALTO=250;         // lo más que se mueve de verdad el centro de dos dedos entre dos avisos
+var RAFAGA=200;        // ms sin avisos de rueda que cierran una ráfaga
+var MUESCA=50;         // |deltaY| en píxeles desde el que una rueda sin deltaX es de ratón
+var SUAVE=0.35;        // la parte del acercamiento del ratón que se da en cada fotograma
 /** Un delta de rueda en píxeles, sea cual sea su `deltaMode`. */
 function enPixeles(d,modo,pagina){
   d=+d||0;
@@ -34,18 +43,49 @@ function enPixeles(d,modo,pagina){
   if(modo===2) return d*(pagina||PAGINA);
   return d;
 }
+/** ¿Este aviso de rueda, solo, parece de la rueda de un ratón (y no de un trackpad)? */
+function pareceRaton(e){
+  if(e.deltaMode) return true;
+  var dx=+e.deltaX||0, dy=+e.deltaY||0;
+  if(dx||!dy) return false;
+  if(Math.abs(dy)>=MUESCA) return true;
+  var w=+e.wheelDeltaY||0;
+  return dy===Math.round(dy)&&w!==0&&w%120===0;
+}
 /**
- * Qué pide una rueda: `{zoom:f}` (f>1 acerca) con Ctrl o ⌘ —el pellizco del trackpad—, o
- * `{dx,dy}`, cuánto se desplaza lo de debajo en píxeles de pantalla.
+ * Lo que recuerda la ráfaga: `clasificar(e,t)` dice si el aviso es de ratón, con lo que dijo
+ * el primero de su ráfaga. Solo cambia a ratón a mitad si llega en líneas o páginas, que eso
+ * un trackpad no lo manda.
  */
-function deRueda(e,pagina){
+function rafaga(){
+  var hasta=-Infinity, raton=false;
+  return function(e,t){
+    if(t>hasta) raton=pareceRaton(e);
+    else if(e.deltaMode) raton=true;
+    hasta=t+RAFAGA;
+    return raton;
+  };
+}
+/**
+ * Qué pide una rueda: `{zoom:f}` (f>1 acerca) con Ctrl o ⌘ —el pellizco del trackpad— o con
+ * la rueda del ratón (`raton`; entonces `suave:true`), o `{dx,dy}`, cuánto se desplaza lo de
+ * debajo en píxeles de pantalla.
+ */
+function deRueda(e,pagina,raton){
   var dx=enPixeles(e.deltaX,e.deltaMode,pagina), dy=enPixeles(e.deltaY,e.deltaMode,pagina);
-  if(e.ctrlKey||e.metaKey){
+  var zoom=e.ctrlKey||e.metaKey;
+  if(!zoom&&raton){
+    // Mayúsculas: de lado (si el navegador no lo ha girado ya); Alt: en vertical.
+    if(e.shiftKey){ if(!dx){ dx=dy; dy=0; } return {dx:0-dx,dy:0-dy}; }
+    if(e.altKey) return {dx:0-dx,dy:0-dy};
+    if(!dy){ dy=dx; }
     var t=Math.max(-TOPE_ZOOM,Math.min(TOPE_ZOOM,dy));
-    return {zoom:Math.exp(-t*K_ZOOM)};
+    return {zoom:Math.exp(-t*K_ZOOM),suave:true};
   }
-  // Mayúsculas con una rueda que solo sabe ir arriba y abajo: de lado.
-  if(e.shiftKey&&!dx){ dx=dy; dy=0; }
+  if(zoom){
+    var t2=Math.max(-TOPE_ZOOM,Math.min(TOPE_ZOOM,dy));
+    return {zoom:Math.exp(-t2*K_ZOOM)};
+  }
   return {dx:0-dx,dy:0-dy};   // 0-d y no -d: sin «-0»
 }
 /**
@@ -82,16 +122,27 @@ function pellizco(a0,b0,a1,b1){
  */
 function conectar(caja,o){
   var pend={dx:0,dy:0,f:1,x:0,y:0}, cuadro=0;
+  // Lo que falta por acercar de la rueda del ratón, en logaritmo, y hacia dónde.
+  var resto=0, rx=0, ry=0;
   var raf=window.requestAnimationFrame?function(fn){return requestAnimationFrame(fn);}:function(fn){return setTimeout(fn,16);};
+  var reloj=typeof performance!=='undefined'&&performance.now?function(){return performance.now();}:function(){return Date.now();};
+  var clasificar=rafaga();
   function volcar(){
     cuadro=0;
     var p=pend; pend={dx:0,dy:0,f:1,x:p.x,y:p.y};
     if(p.dx||p.dy) o.mover(p.dx,p.dy);
     if(p.f!==1) o.ampliar(p.f,p.x,p.y);
+    if(resto){
+      var paso=Math.abs(resto)<0.002?resto:resto*SUAVE;
+      resto-=paso;
+      o.ampliar(Math.exp(paso),rx,ry);
+      if(resto) pedir();
+    }
   }
   function pedir(){ if(!cuadro) cuadro=raf(volcar); }
   function mover(dx,dy){ pend.dx+=dx; pend.dy+=dy; pedir(); }
   function ampliar(f,x,y){ if(!(f>0)||!isFinite(f)) return; pend.f*=f; pend.x=x; pend.y=y; pedir(); }
+  function ampliarSuave(f,x,y){ if(!(f>0)||!isFinite(f)) return; resto+=Math.log(f); rx=x; ry=y; pedir(); }
   function activo(){ return !o.activo||o.activo(); }
   function centro(){ var r=caja.getBoundingClientRect(); return {x:r.left+r.width/2, y:r.top+r.height/2}; }
   caja.style.touchAction='none';
@@ -103,8 +154,8 @@ function conectar(caja,o){
   caja.addEventListener('wheel',function(e){
     e.preventDefault();
     if(!activo()) return;
-    var r=deRueda(e,caja.clientHeight);
-    if(r.zoom!==undefined){ if(!enGesto) ampliar(r.zoom,e.clientX,e.clientY); }
+    var r=deRueda(e,caja.clientHeight,clasificar(e,reloj()));
+    if(r.zoom!==undefined){ if(!enGesto)(r.suave?ampliarSuave:ampliar)(r.zoom,e.clientX,e.clientY); }
     else mover(r.dx,r.dy);
   },{passive:false});
   caja.addEventListener('gesturestart',function(e){ e.preventDefault(); enGesto=true; escala=e.scale||1; },{passive:false});
@@ -149,6 +200,7 @@ function conectar(caja,o){
   }
   return {mover:mover, ampliar:ampliar};
 }
-return {LINEA:LINEA, K_ZOOM:K_ZOOM, TOPE_ZOOM:TOPE_ZOOM, SALTO:SALTO, enPixeles:enPixeles, deRueda:deRueda,
+return {LINEA:LINEA, K_ZOOM:K_ZOOM, TOPE_ZOOM:TOPE_ZOOM, SALTO:SALTO, RAFAGA:RAFAGA, MUESCA:MUESCA,
+  enPixeles:enPixeles, pareceRaton:pareceRaton, rafaga:rafaga, deRueda:deRueda,
   ampliarEn:ampliarEn, pellizco:pellizco, conectar:conectar};
 })();

@@ -3414,7 +3414,7 @@ cad-web-anotaciones = التعليقات التوضيحية
 cad-web-todas = الكل
 cad-web-ninguna = لا شيء
 cad-web-sin-soporte = لا يستطيع هذا المتصفح فك ضغط المخطط: افتحه بإصدار حديث من Edge أو Chrome أو Firefox أو Safari.
-cad-web-pista = العجلة أو إصبعان: تحريك · Ctrl+العجلة أو القرص: تكبير · نقر مزدوج: ملاءمة · F، B، L
+cad-web-pista = العجلة أو القرص: تكبير · إصبعان أو السحب: تحريك · نقر مزدوج: ملاءمة · F، B، L
 # El membrete de un plano impreso
 lamina-proyecto = المشروع
 lamina-lamina = اللوحة

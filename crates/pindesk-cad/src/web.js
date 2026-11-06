@@ -311,7 +311,8 @@ function zoom(f, mx, my){
   redibujar();
 }
 // Trackpad, ratón y dedos: los mismos gestos que el resto de páginas (`gestos_vista.js`).
-// Dos dedos en el trackpad o la rueda mueven, pellizcar o Ctrl+rueda acercan hacia el cursor.
+// Dos dedos en el trackpad o arrastrar mueven; la rueda del ratón o pellizcar acercan hacia
+// el cursor.
 GestosVista.conectar(lienzo, {
   dedos: true,
   mover: function(dx, dy){ vista.cx -= dx * vista.px; vista.cy += dy * vista.px; redibujar(); },

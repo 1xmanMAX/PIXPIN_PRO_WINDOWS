@@ -562,8 +562,8 @@ function soltar(e){
 caja.addEventListener('pointerup',soltar);
 caja.addEventListener('pointercancel',soltar);
 // **El trackpad**: dos dedos mueven el papel en cualquier dirección y pellizcar acerca; la
-// rueda del ratón mueve y con Ctrl acerca; Safari pellizca con sus `gesture*`. Ver
-// `gestos_vista.js`. Antes la rueda solo acercaba, y en un portátil no había forma de pasear.
+// rueda del ratón acerca hacia el cursor (con Mayúsculas o Alt, mueve); Safari pellizca con
+// sus `gesture*`. Ver `gestos_vista.js`, que distingue el ratón del trackpad.
 GestosVista.conectar(caja,{
   mover:function(dx,dy){ var k=aEscena(0,0).k; v.x-=dx*k; v.y-=dy*k; aplicar(); },
   ampliar:function(f,x,y){ zoom(1/f,x,y); }

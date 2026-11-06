@@ -3218,7 +3218,7 @@ cad-web-anotaciones = Annotations
 cad-web-todas = All
 cad-web-ninguna = None
 cad-web-sin-soporte = This browser cannot unpack the drawing: open it with a recent Edge, Chrome, Firefox or Safari.
-cad-web-pista = Wheel or two fingers: pan · Ctrl+wheel or pinch: zoom · Double click: fit · F, B, L
+cad-web-pista = Wheel or pinch: zoom · Two fingers or drag: pan · Double click: fit · F, B, L
 # El membrete de un plano impreso (plano_cad/imprimir.rs)
 lamina-proyecto = PROJECT
 lamina-lamina = SHEET

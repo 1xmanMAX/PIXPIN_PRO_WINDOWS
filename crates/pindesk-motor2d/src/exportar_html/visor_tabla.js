@@ -408,7 +408,8 @@ function losPunteros(){ return Array.from(punteros.values()); }
  *   el dedo pasea, como en el lienzo);
  * - con la mano: el ratón elige celdas arrastrando sobre ellas y pasea arrastrando fuera; el dedo
  *   pasea, toca para elegir, dos toques editan y mantener elige un rango;
- * - dos dedos amplían y pasean; la rueda pasea y con Ctrl amplía.
+ * - dos dedos amplían y pasean; la rueda del ratón amplía (con Mayúsculas o Alt, pasea) y
+ *   en el trackpad pasea, y pellizcar amplía.
  */
 caja.addEventListener('mousedown',function(e){ if(editando&&puedePonerRef())e.preventDefault(); });
 caja.addEventListener('pointerdown',function(e){

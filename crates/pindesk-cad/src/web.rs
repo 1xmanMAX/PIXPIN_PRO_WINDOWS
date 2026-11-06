@@ -170,7 +170,7 @@ impl Default for TextosWeb {
             todas: "Todas".into(),
             ninguna: "Ninguna".into(),
             sin_soporte: "Este navegador no sabe descomprimir el plano: ábrelo con Edge, Chrome, Firefox o Safari recientes.".into(),
-            pista: "Rueda o dos dedos: mover · Ctrl+rueda o pellizcar: acercar · Doble clic: ver todo · F, B, L"
+            pista: "Rueda o pellizcar: acercar · Dos dedos o arrastrar: mover · Doble clic: ver todo · F, B, L"
                 .into(),
         }
     }

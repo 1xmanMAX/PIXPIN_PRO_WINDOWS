@@ -54,15 +54,50 @@ test("deltaMode de lineas y de paginas se pasan a pixeles", () => {
   assert.deepEqual({ ...G.deRueda({ deltaX: 0, deltaY: 3, deltaMode: 1 }) }, { dx: 0, dy: -3 * G.LINEA });
 });
 
-test("la rueda del raton: vertical, con Mayusculas de lado, con Ctrl acerca", () => {
-  assert.deepEqual({ ...G.deRueda({ deltaX: 0, deltaY: 100, deltaMode: 0 }) }, { dx: 0, dy: -100 });
-  assert.deepEqual({ ...G.deRueda({ deltaX: 0, deltaY: 100, deltaMode: 0, shiftKey: true }) }, { dx: -100, dy: 0 });
+test("la rueda del raton acerca; con Mayusculas va de lado y con Alt en vertical", () => {
+  const z = G.deRueda({ deltaX: 0, deltaY: -100, deltaMode: 0 }, 0, true);
+  assert.equal(z.suave, true);
+  cerca(z.zoom, Math.exp(G.TOPE_ZOOM * G.K_ZOOM));
+  assert.ok(z.zoom > 1 && z.zoom < 1.3, "una muesca no da un salto");
+  assert.ok(G.deRueda({ deltaX: 0, deltaY: 3, deltaMode: 1 }, 0, true).zoom < 1);
+  assert.deepEqual({ ...G.deRueda({ deltaX: 0, deltaY: 100, deltaMode: 0, shiftKey: true }, 0, true) }, { dx: -100, dy: 0 });
   // Si el navegador ya lo dio de lado (macOS), no se cambia otra vez.
-  assert.deepEqual({ ...G.deRueda({ deltaX: 100, deltaY: 0, deltaMode: 0, shiftKey: true }) }, { dx: -100, dy: 0 });
-  // Ctrl+rueda acerca con tope: una muesca no da un salto.
-  const z = G.deRueda({ deltaX: 0, deltaY: -100, deltaMode: 0, ctrlKey: true }).zoom;
-  cerca(z, Math.exp(G.TOPE_ZOOM * G.K_ZOOM));
-  assert.ok(z > 1 && z < 1.3);
+  assert.deepEqual({ ...G.deRueda({ deltaX: 100, deltaY: 0, deltaMode: 0, shiftKey: true }, 0, true) }, { dx: -100, dy: 0 });
+  assert.deepEqual({ ...G.deRueda({ deltaX: 0, deltaY: 100, deltaMode: 0, altKey: true }, 0, true) }, { dx: 0, dy: -100 });
+  // Ctrl+rueda acerca con tope, sea raton o no.
+  const c = G.deRueda({ deltaX: 0, deltaY: -100, deltaMode: 0, ctrlKey: true }).zoom;
+  cerca(c, Math.exp(G.TOPE_ZOOM * G.K_ZOOM));
+  // Lo que no es raton (el trackpad) desplaza.
+  assert.deepEqual({ ...G.deRueda({ deltaX: 0, deltaY: 100, deltaMode: 0 }, 0, false) }, { dx: 0, dy: -100 });
+});
+
+test("raton o trackpad: por el aviso, y la rafaga no cambia de idea", () => {
+  for (const e of [
+    { deltaX: 0, deltaY: 100, deltaMode: 0 },
+    { deltaX: 0, deltaY: -120, deltaMode: 0 },
+    { deltaX: 0, deltaY: 53, deltaMode: 0 },
+    { deltaX: 0, deltaY: 66.66667, deltaMode: 0 },   // Windows al 150 %
+    { deltaX: 0, deltaY: 3, deltaMode: 1 },          // Firefox, lineas
+    { deltaX: 0, deltaY: 1, deltaMode: 2 },
+    { deltaX: 0, deltaY: 33, deltaMode: 0, wheelDeltaY: -120 },
+  ]) assert.equal(G.pareceRaton(e), true, JSON.stringify(e));
+  for (const e of [
+    { deltaX: 0, deltaY: 2.5, deltaMode: 0 },
+    { deltaX: 1, deltaY: 120, deltaMode: 0 },
+    { deltaX: 0, deltaY: 4, deltaMode: 0, wheelDeltaY: -12 },
+    { deltaX: 0, deltaY: 0, deltaMode: 0 },
+  ]) assert.equal(G.pareceRaton(e), false, JSON.stringify(e));
+  const r = G.rafaga();
+  // Trackpad que acelera: sigue siendo trackpad hasta que se para.
+  assert.equal(r({ deltaX: 0, deltaY: 3, deltaMode: 0 }, 0), false);
+  assert.equal(r({ deltaX: 0, deltaY: 90, deltaMode: 0 }, 50), false);
+  assert.equal(r({ deltaX: 0, deltaY: 120, deltaMode: 0 }, 50 + G.RAFAGA - 1), false);
+  assert.equal(r({ deltaX: 0, deltaY: 120, deltaMode: 0 }, 1000), true);
+  // Raton que gira despacio: sigue siendo raton.
+  assert.equal(r({ deltaX: 0, deltaY: 4, deltaMode: 0 }, 1100), true);
+  assert.equal(r({ deltaX: 0, deltaY: 4, deltaMode: 0 }, 2000), false);
+  // En lineas, ya es raton aunque la rafaga empezara como trackpad.
+  assert.equal(r({ deltaX: 0, deltaY: 1, deltaMode: 1 }, 2010), true);
 });
 
 test("el pellizco del trackpad (ctrlKey) es acercar, suave y simetrico", () => {
@@ -151,6 +186,32 @@ test("conectar: rueda no pasiva, todo en un fotograma, y la pagina no se mueve s
   assert.equal(hecho.length, 1);
   cerca(hecho[0][1], Math.exp(0.2));
   assert.deepEqual(hecho[0].slice(2), [50, 60]);
+});
+
+test("conectar: la rueda del raton acerca suave hacia el cursor, el trackpad mueve", () => {
+  const { G2, fotograma } = conVentana();
+  const caja = cajaFalsa();
+  const v = { x: 10, y: 20, z: 1 };
+  const movido = [];
+  G2.conectar(caja, {
+    mover: (dx, dy) => movido.push([dx, dy]),
+    ampliar: (f, x, y) => Object.assign(v, G2.ampliarEn(v, f, x, y, 0.2, 4)),
+  });
+  const p = { x: 120, y: 80 };
+  const mundo = { x: (p.x - v.x) / v.z, y: (p.y - v.y) / v.z };
+  assert.ok(caja.lanzar("wheel", { deltaX: 0, deltaY: -100, deltaMode: 0, clientX: p.x, clientY: p.y }));
+  fotograma();
+  assert.ok(v.z > 1 && v.z < Math.exp(0.25) - 1e-6, "la muesca se reparte en fotogramas");
+  for (let i = 0; i < 40; i++) fotograma();
+  cerca(v.z, Math.exp(0.25), 1e-9);
+  cerca(mundo.x * v.z + v.x, p.x, 1e-9);
+  cerca(mundo.y * v.z + v.y, p.y, 1e-9);
+  assert.equal(movido.length, 0);
+  // Con tope: muchas muescas no pasan de 4.
+  for (let i = 0; i < 30; i++) caja.lanzar("wheel", { deltaX: 0, deltaY: -100, deltaMode: 0, clientX: p.x, clientY: p.y });
+  for (let i = 0; i < 80; i++) fotograma();
+  assert.equal(v.z, 4);
+  cerca(mundo.x * v.z + v.x, p.x, 1e-9);
 });
 
 test("conectar: Safari pellizca con gesturechange, y en el iPad no cuenta doble", () => {

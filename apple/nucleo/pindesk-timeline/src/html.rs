@@ -381,6 +381,9 @@ footer { margin-top: 30px; color: #8e8e93; font-size: 12px; text-align: center; 
   display: flex; align-items: center; justify-content: center; overflow: hidden; }
 .historia[hidden] { display: none; }
 .h-fondo, .h-velo { position: absolute; inset: 0; }
+.h-fondo { will-change: transform; }
+.h-velo, .h-centro { transition: opacity .2s; }
+.historia.acercada .h-velo, .historia.acercada .h-centro { opacity: 0; }
 .h-velo { background: linear-gradient(180deg, rgba(0,0,0,.55) 0%, rgba(0,0,0,.3) 30%,
   rgba(0,0,0,.4) 60%, rgba(0,0,0,.78) 100%); }
 .h-velo.suave { background: linear-gradient(180deg, rgba(0,0,0,.25), rgba(0,0,0,0) 30%, rgba(0,0,0,.3)); }
@@ -564,6 +567,7 @@ const JS: &str = r##"
     var m = porId[lista[pos]];
     if (!m) { cerrar(); return; }
     parar();
+    sinZoom();
     var n = m.fotos.length;
     foto = Math.max(0, Math.min(foto, n - 1));
     var f = q(".h-fondo"), v = q(".h-velo");
@@ -591,7 +595,7 @@ const JS: &str = r##"
     pintar();
   }
   function cerrar() {
-    parar(); H.hidden = true; document.body.style.overflow = "";
+    parar(); sinZoom(); H.hidden = true; document.body.style.overflow = "";
     try { history.replaceState(null, "", location.pathname + location.search); } catch (e) {}
   }
   function siguiente() {
@@ -632,7 +636,7 @@ const JS: &str = r##"
   });
   document.addEventListener("keydown", function (e) {
     if (H.hidden) return;
-    if (e.key === "Escape") cerrar();
+    if (e.key === "Escape") { if (Z.z > 1) sinZoom(); else cerrar(); }
     else if (e.key === "ArrowRight") siguiente();
     else if (e.key === "ArrowLeft") anterior();
     else if (e.key === "ArrowDown" || e.key === "PageDown") momento(1);
@@ -640,7 +644,85 @@ const JS: &str = r##"
     else return;
     e.preventDefault();
   });
-  H.addEventListener("wheel", function (e) { e.preventDefault(); momento(e.deltaY > 0 ? 1 : -1); }, { passive: false });
+  // **El zoom de la foto**, como en el resto de paginas que exporta PinDesk
+  // (`gestos_vista.js` del lienzo): la rueda del raton y el pellizco acercan hacia el
+  // cursor; dos dedos en el trackpad mueven la foto acercada. Sin acercar no hay nada que
+  // mover, y dos dedos (o Mayusculas o Alt con la rueda) pasan de momento, uno por rafaga,
+  // como hacia antes la rueda; las flechas, RePag/AvPag y deslizar en la pantalla tambien.
+  // Esc quita el zoom antes de cerrar. Raton o trackpad lo dice el primer aviso de la rafaga
+  // (200 ms sin avisos la cierran): lineas o paginas, o |deltaY| >= 50 sin deltaX, o
+  // `wheelDeltaY` multiplo de 120, es raton.
+  var Z = { x: 0, y: 0, z: 1 }, ZMAX = 6, cuadroZ = 0, restoZ = 0, zx = 0, zy = 0, panX = 0, panY = 0;
+  var rafagaHasta = -Infinity, rafagaRaton = false, rafagaPaso = 0, rafagaHecha = false, enGesto = false, escala = 1;
+  function encajarZ() {
+    var W = H.clientWidth, A = H.clientHeight;
+    Z.z = Math.max(1, Math.min(ZMAX, Z.z));
+    Z.x = Math.min(0, Math.max(W * (1 - Z.z), Z.x));
+    Z.y = Math.min(0, Math.max(A * (1 - Z.z), Z.y));
+    var f = q(".h-fondo");
+    f.style.transformOrigin = "0 0";
+    f.style.transform = Z.z > 1 ? "translate(" + Z.x + "px," + Z.y + "px) scale(" + Z.z + ")" : "";
+    H.classList.toggle("acercada", Z.z > 1);
+  }
+  function sinZoom() { Z = { x: 0, y: 0, z: 1 }; restoZ = panX = panY = 0; encajarZ(); }
+  function ampliarZ(f, cx, cy) {
+    if (!(f > 0) || !isFinite(f)) return;
+    var r = H.getBoundingClientRect(), px = cx - r.left, py = cy - r.top;
+    var z = Math.max(1, Math.min(ZMAX, Z.z * f)), k = z / Z.z;
+    Z = { x: px - (px - Z.x) * k, y: py - (py - Z.y) * k, z: z };
+  }
+  function volcarZ() {
+    cuadroZ = 0;
+    Z.x += panX; Z.y += panY; panX = panY = 0;
+    if (restoZ) {
+      var paso = Math.abs(restoZ) < 0.002 ? restoZ : restoZ * 0.35;
+      restoZ -= paso;
+      ampliarZ(Math.exp(paso), zx, zy);
+      if (restoZ) pedirZ();
+    }
+    encajarZ();
+  }
+  function pedirZ() { if (!cuadroZ) cuadroZ = requestAnimationFrame(volcarZ); }
+  function pareceRaton(e) {
+    if (e.deltaMode) return true;
+    var dx = +e.deltaX || 0, dy = +e.deltaY || 0;
+    if (dx || !dy) return false;
+    if (Math.abs(dy) >= 50) return true;
+    var w = +e.wheelDeltaY || 0;
+    return dy === Math.round(dy) && w !== 0 && w % 120 === 0;
+  }
+  function tope(d) { return Math.max(-25, Math.min(25, d)); }
+  H.addEventListener("wheel", function (e) {
+    e.preventDefault();
+    var t = Date.now();
+    if (t > rafagaHasta) { rafagaRaton = pareceRaton(e); rafagaPaso = 0; rafagaHecha = false; }
+    else if (e.deltaMode) rafagaRaton = true;
+    rafagaHasta = t + 200;
+    var px = e.deltaMode === 1 ? 40 : e.deltaMode === 2 ? (H.clientHeight || 800) : 1;
+    var dx = (+e.deltaX || 0) * px, dy = (+e.deltaY || 0) * px;
+    if (e.ctrlKey || e.metaKey) {
+      if (!enGesto) { ampliarZ(Math.exp(-tope(dy) * 0.01), e.clientX, e.clientY); pedirZ(); }
+      return;
+    }
+    if (rafagaRaton && !e.shiftKey && !e.altKey) {
+      restoZ -= tope(dy || dx) * 0.01; zx = e.clientX; zy = e.clientY; pedirZ();
+      return;
+    }
+    if (rafagaRaton && e.shiftKey && !dx) { dx = dy; dy = 0; }
+    if (Z.z > 1) { panX -= dx; panY -= dy; pedirZ(); return; }
+    rafagaPaso += Math.abs(dy) >= Math.abs(dx) ? dy : dx;
+    if (!rafagaHecha && Math.abs(rafagaPaso) >= 60) { rafagaHecha = true; momento(rafagaPaso > 0 ? 1 : -1); }
+  }, { passive: false });
+  // Safari pellizca el trackpad con sus `gesture*`.
+  H.addEventListener("gesturestart", function (e) { e.preventDefault(); enGesto = true; escala = e.scale || 1; });
+  H.addEventListener("gesturechange", function (e) {
+    e.preventDefault();
+    var s = e.scale || 1;
+    ampliarZ(s / escala, e.clientX || H.clientWidth / 2, e.clientY || H.clientHeight / 2);
+    escala = s; pedirZ();
+  });
+  H.addEventListener("gestureend", function (e) { e.preventDefault(); enGesto = false; escala = 1; });
+  window.addEventListener("resize", function () { if (!H.hidden) encajarZ(); });
   var y0 = null;
   H.addEventListener("touchstart", function (e) { y0 = e.touches[0].clientY; }, { passive: true });
   H.addEventListener("touchend", function (e) {
@@ -736,6 +818,23 @@ mod pruebas {
             html.contains("break-inside: avoid"),
             "un momento no se parte al imprimir"
         );
+    }
+
+    #[test]
+    fn la_rueda_del_raton_acerca_la_foto_y_el_trackpad_la_mueve() {
+        // La rueda ya no pasa de momento sin mas: acerca, y no es pasiva (si lo fuera, el
+        // pellizco ampliaria la pagina entera).
+        assert!(!JS.contains("momento(e.deltaY > 0 ? 1 : -1)"));
+        assert!(
+            JS.contains("H.addEventListener(\"wheel\", function (e) {\n    e.preventDefault();")
+        );
+        assert!(JS.contains("}, { passive: false });"));
+        assert!(JS.contains("function pareceRaton(e)") && JS.contains("rafagaHasta = t + 200;"));
+        assert!(JS.contains("e.ctrlKey || e.metaKey") && JS.contains("gesturechange"));
+        // Pasar de momento sigue a mano: teclas, deslizar y dos dedos sin acercar.
+        assert!(JS.contains("momento(rafagaPaso > 0 ? 1 : -1)"));
+        assert!(JS.contains("e.key === \"PageDown\") momento(1)"));
+        assert!(JS.contains("if (Math.abs(dy) > 60) momento(dy < 0 ? 1 : -1);"));
     }
 
     #[test]
