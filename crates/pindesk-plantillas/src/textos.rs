@@ -114,7 +114,7 @@ impl Textos {
     /// Una lista separada por comas en el catalogo («Agua, Leer, …»).
     pub fn lista(&self, clave: &str) -> Vec<String> {
         self.t(clave)
-            .split(',')
+            .split([',', '،', '、'])
             .map(|s| s.trim().to_string())
             .filter(|s| !s.is_empty())
             .collect()

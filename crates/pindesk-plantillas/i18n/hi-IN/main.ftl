@@ -1,247 +1,245 @@
-# PinDesk Plantillas: UI strings (English, the reference together with es-ES).
-# Rules: docs/idiomas.md. Variables ({ $n }) are the same in every language.
+# PinDesk Plantillas: इंटरफ़ेस के पाठ (हिन्दी)
 
-## The product
-# The working name: the same in every language (see NOMBRE_PRODUCTO).
+## उत्पाद
 plt-producto = PinDesk Plantillas
 
-## The top bar
-plt-nuevo = New
-plt-abrir = Open
-plt-guardar = Save
-plt-guardar-como = Save as…
-plt-exportar = Export
+## ऊपर की पट्टी
+plt-nuevo = नया
+plt-abrir = खोलें
+plt-guardar = सहेजें
+plt-guardar-como = इस रूप में सहेजें…
+plt-exportar = निर्यात
 plt-exportar-pdf = PDF
 plt-exportar-png = PNG
 plt-exportar-svg = SVG
-plt-exportar-lienzo = Canvas (.excalidraw)
-plt-enviar-pindesk = Send to PinDesk
-plt-enviada = Sent: it is now in PinDesk Figures
-plt-galeria = Gallery
-plt-deshacer = Undo
-plt-rehacer = Redo
-plt-dia-noche = Day or night
-plt-cerrar = Close
+plt-exportar-lienzo = कैनवास (.excalidraw)
+plt-enviar-pindesk = PinDesk में भेजें
+plt-enviada = भेज दिया: अब यह PinDesk की आकृतियों में है
+plt-galeria = गैलरी
+plt-deshacer = पूर्ववत करें
+plt-rehacer = फिर से करें
+plt-dia-noche = दिन या रात
+plt-cerrar = बंद करें
 
-## The gallery
-plt-galeria-titulo = Start from a template
-plt-galeria-vacia = Blank
-plt-gal-mensual = Monthly calendar
-plt-gal-diario = Daily journal
-plt-gal-semanal = Weekly planner
-plt-gal-dia = Daily planner
-plt-gal-tareas = To-do list
-plt-gal-habitos = Habit tracker
-plt-gal-cornell = Cornell notes
-plt-gal-reunion = Meeting notes
-plt-gal-puntos = Dot grid notebook
+## गैलरी
+plt-galeria-titulo = किसी टेम्पलेट से शुरू करें
+plt-galeria-vacia = खाली
+plt-gal-mensual = मासिक कैलेंडर
+plt-gal-diario = डायरी
+plt-gal-semanal = साप्ताहिक प्लानर
+plt-gal-dia = दैनिक प्लानर
+plt-gal-tareas = कामों की सूची
+plt-gal-habitos = आदत ट्रैकर
+plt-gal-cornell = कॉर्नेल नोट्स
+plt-gal-reunion = बैठक का विवरण
+plt-gal-puntos = डॉट नोटबुक
 
-## Pages
+## पन्ने
 plt-paginas = { $n ->
-    [one] { $n } page
-   *[other] { $n } pages
+    [one] { $n } पन्ना
+   *[other] { $n } पन्ने
 }
-plt-pagina-de = Page { $n } of { $total }
-plt-anterior = Previous
-plt-siguiente = Next
-plt-zoom-encajar = Fit
+plt-pagina-de = पन्ना { $n } / { $total }
+plt-anterior = पिछला
+plt-siguiente = अगला
+plt-zoom-encajar = फ़िट करें
 
-## The panels
-plt-bloques = Blocks
-plt-arrastra = Drag onto the page
-plt-propiedades = Properties
-plt-documento = Document
-plt-sin-seleccion = Pick a block or drag one from the left
-plt-editar-texto = Type and press Enter
-plt-nombre = Name
-plt-sin-titulo = Untitled
-plt-papel = Paper
-plt-horizontal = Landscape
-plt-margenes = Margins (mm)
-plt-tema = Theme
-plt-idioma-fechas = Date language
-plt-repetir = One page per
-plt-desde = From
-plt-hasta = To
-plt-sin-finde = Skip weekends
-plt-duplicar = Duplicate
-plt-borrar = Delete
-plt-subir = Move up
-plt-bajar = Move down
-plt-envolver-fila = Wrap in a row
-plt-envolver-columna = Wrap in a column
+## पैनल
+plt-bloques = ब्लॉक
+plt-arrastra = पन्ने पर खींचें
+plt-propiedades = गुण
+plt-documento = दस्तावेज़
+plt-sin-seleccion = कोई ब्लॉक चुनें या बाईं ओर से एक खींचें
+plt-editar-texto = लिखें और Enter दबाएँ
+plt-nombre = नाम
+plt-sin-titulo = बिना शीर्षक
+plt-papel = कागज़
+plt-horizontal = आड़ा
+plt-margenes = हाशिए (मिमी)
+plt-tema = थीम
+plt-idioma-fechas = तारीख़ों की भाषा
+plt-repetir = हर पन्ना एक
+plt-desde = से
+plt-hasta = तक
+plt-sin-finde = सप्ताहांत छोड़ें
+plt-duplicar = प्रतिलिपि बनाएँ
+plt-borrar = हटाएँ
+plt-subir = ऊपर ले जाएँ
+plt-bajar = नीचे ले जाएँ
+plt-envolver-fila = एक पंक्ति में
+plt-envolver-columna = एक कॉलम में
 
-## Palette groups
-plt-grupo-estructura = Layout
-plt-grupo-texto = Text and notes
-plt-grupo-listas = Lists and tables
-plt-grupo-fechas = Dates and calendars
-plt-grupo-especiales = Specials
+## पैलेट के समूह
+plt-grupo-estructura = ढाँचा
+plt-grupo-texto = पाठ और नोट्स
+plt-grupo-listas = सूचियाँ और तालिकाएँ
+plt-grupo-fechas = तारीख़ें और कैलेंडर
+plt-grupo-especiales = ख़ास
 
-## Blocks
-plt-pieza-fila = Row
-plt-pieza-columna = Column
-plt-pieza-rejilla = Grid
-plt-pieza-seccion = Section
-plt-pieza-pila = Layers
-plt-pieza-encabezado = Heading
-plt-pieza-texto = Text
-plt-pieza-notas = Notes area
-plt-pieza-lineas = Ruled lines
-plt-pieza-puntos = Dots
-plt-pieza-cuadricula = Grid paper
-plt-pieza-divisor = Divider
-plt-pieza-espacio = Spacer
-plt-pieza-imagen = Image
-plt-pieza-vinetas = Bullets
-plt-pieza-casillas = Checkboxes
-plt-pieza-numerada = Numbered list
-plt-pieza-tabla = Table
-plt-pieza-campo = Date field
-plt-pieza-campo_fecha = Date
-plt-pieza-campo_dia_semana = Weekday
-plt-pieza-campo_semana = Week number
-plt-pieza-campo_mes = Month
-plt-pieza-campo_pagina = Page number
-plt-pieza-calendario_mes = Month calendar
-plt-pieza-calendario_mini = Mini calendar
-plt-pieza-calendario_semana = Week
-plt-pieza-horario = Schedule
-plt-pieza-habitos = Habits
-plt-pieza-animo = Mood
-plt-pieza-prioridades = Priorities
-plt-pieza-cornell = Cornell notes
-plt-pieza-reunion = Meeting
+## ब्लॉक
+plt-pieza-fila = पंक्ति
+plt-pieza-columna = कॉलम
+plt-pieza-rejilla = ग्रिड
+plt-pieza-seccion = खंड
+plt-pieza-pila = परतें
+plt-pieza-encabezado = शीर्षक
+plt-pieza-texto = पाठ
+plt-pieza-notas = नोट्स का स्थान
+plt-pieza-lineas = लाइनें
+plt-pieza-puntos = बिंदु
+plt-pieza-cuadricula = ग्रिड कागज़
+plt-pieza-divisor = विभाजक
+plt-pieza-espacio = खाली जगह
+plt-pieza-imagen = चित्र
+plt-pieza-vinetas = बुलेट सूची
+plt-pieza-casillas = चेकबॉक्स
+plt-pieza-numerada = क्रमांकित सूची
+plt-pieza-tabla = तालिका
+plt-pieza-campo = तारीख़ फ़ील्ड
+plt-pieza-campo_fecha = तारीख़
+plt-pieza-campo_dia_semana = सप्ताह का दिन
+plt-pieza-campo_semana = सप्ताह संख्या
+plt-pieza-campo_mes = महीना
+plt-pieza-campo_pagina = पन्ना संख्या
+plt-pieza-calendario_mes = महीने का कैलेंडर
+plt-pieza-calendario_mini = छोटा कैलेंडर
+plt-pieza-calendario_semana = सप्ताह
+plt-pieza-horario = समय-सारणी
+plt-pieza-habitos = आदतें
+plt-pieza-animo = मनोदशा
+plt-pieza-prioridades = प्राथमिकताएँ
+plt-pieza-cornell = कॉर्नेल नोट्स
+plt-pieza-reunion = बैठक
 
-## Properties
-plt-prop-tam = Size
-plt-prop-tam_mm = Millimetres
-plt-prop-tam_fr = Parts
-plt-prop-hueco = Gap
-plt-prop-columnas = Columns
-plt-prop-titulo = Title
-plt-prop-recuadro = Border
-plt-prop-texto = Text
-plt-prop-nivel = Level
-plt-prop-alineacion = Alignment
-plt-prop-puntos = Font size
-plt-prop-pauta = Ruling
-plt-prop-paso = Step
-plt-prop-items = Items
-plt-prop-vacias = Empty lines
-plt-prop-filas = Rows
-plt-prop-cabeceras = Headers
-plt-prop-trazo = Stroke
-plt-prop-etiqueta = Label
-plt-prop-campo = Value
-plt-prop-formato = Format
-plt-prop-antes = Before
-plt-prop-despues = After
-plt-prop-negrita = Bold
-plt-prop-mes = Fixed month (YYYY-MM)
-plt-prop-mini = Small
-plt-prop-fin_de_semana = Include weekend
-plt-prop-desde = From
-plt-prop-hasta = Until
-plt-prop-dias = Days
-plt-prop-habitos = Habits
-plt-prop-niveles = Levels
-plt-prop-etiquetas = Labels
+## गुण
+plt-prop-tam = आकार
+plt-prop-tam_mm = मिलीमीटर
+plt-prop-tam_fr = हिस्से
+plt-prop-hueco = अंतर
+plt-prop-columnas = कॉलम
+plt-prop-titulo = शीर्षक
+plt-prop-recuadro = किनारा
+plt-prop-texto = पाठ
+plt-prop-nivel = स्तर
+plt-prop-alineacion = संरेखण
+plt-prop-puntos = अक्षर का आकार
+plt-prop-pauta = रेखांकन
+plt-prop-paso = अंतराल
+plt-prop-items = आइटम
+plt-prop-vacias = खाली पंक्तियाँ
+plt-prop-filas = पंक्तियाँ
+plt-prop-cabeceras = शीर्ष पंक्ति
+plt-prop-trazo = रेखा
+plt-prop-etiqueta = लेबल
+plt-prop-campo = मान
+plt-prop-formato = प्रारूप
+plt-prop-antes = पहले
+plt-prop-despues = बाद में
+plt-prop-negrita = मोटा
+plt-prop-mes = तय महीना (YYYY-MM)
+plt-prop-mini = छोटा
+plt-prop-fin_de_semana = सप्ताहांत के साथ
+plt-prop-desde = शुरुआत का समय
+plt-prop-hasta = अंत का समय
+plt-prop-dias = दिन
+plt-prop-habitos = आदतें
+plt-prop-niveles = स्तर
+plt-prop-etiquetas = लेबल
 
-## Options
-plt-opcion-auto = Automatic
-plt-opcion-mm = Fixed
-plt-opcion-fr = Share
-plt-opcion-izquierda = Left
-plt-opcion-centro = Centre
-plt-opcion-derecha = Right
-plt-opcion-rayado = Lines
-plt-opcion-puntos = Dots
-plt-opcion-cuadricula = Grid
-plt-opcion-blanco = Blank
-plt-opcion-continuo = Solid
-plt-opcion-discontinuo = Dashed
-plt-opcion-punteado = Dotted
-plt-opcion-acento = Accent
-plt-opcion-fecha = Date
-plt-opcion-dia = Day
-plt-opcion-dia_semana = Weekday
-plt-opcion-semana = Week
-plt-opcion-mes = Month
-plt-opcion-ano = Year
-plt-opcion-pagina = Page
-plt-opcion-corto = Short
-plt-opcion-largo = Long
-plt-opcion-completo = Full
+## विकल्प
+plt-opcion-auto = अपने-आप
+plt-opcion-mm = तय
+plt-opcion-fr = हिस्सा
+plt-opcion-izquierda = बाएँ
+plt-opcion-centro = बीच में
+plt-opcion-derecha = दाएँ
+plt-opcion-rayado = लाइनें
+plt-opcion-puntos = बिंदु
+plt-opcion-cuadricula = ग्रिड
+plt-opcion-blanco = खाली
+plt-opcion-continuo = ठोस
+plt-opcion-discontinuo = डैश
+plt-opcion-punteado = बिंदीदार
+plt-opcion-acento = उभार
+plt-opcion-fecha = तारीख़
+plt-opcion-dia = दिन
+plt-opcion-dia_semana = सप्ताह का दिन
+plt-opcion-semana = सप्ताह
+plt-opcion-mes = महीना
+plt-opcion-ano = वर्ष
+plt-opcion-pagina = पन्ना
+plt-opcion-corto = छोटा
+plt-opcion-largo = लंबा
+plt-opcion-completo = पूरा
 plt-opcion-iso = ISO
-plt-opcion-numero = Number
-plt-opcion-abreviado = Abbreviated
-plt-opcion-letra = Initial
+plt-opcion-numero = संख्या
+plt-opcion-abreviado = संक्षिप्त
+plt-opcion-letra = पहला अक्षर
 
-## Paper, themes and repetition
+## कागज़, थीम और दोहराव
 plt-papel-a4 = A4
 plt-papel-a5 = A5
-plt-papel-carta = Letter
-plt-papel-tableta = Tablet
-plt-papel-pantalla = Screen 16:9
-plt-papel-medida = Custom
-plt-tema-planificacion = Planning
-plt-tema-academico = Academic
-plt-tema-creativo = Creative
-plt-tema-diario = Journal
-plt-tema-minimo = Minimal
-plt-tema-noche = Night
-plt-tema-propio = Custom
-plt-cada-ninguna = Just one
-plt-cada-dia = Day
-plt-cada-semana = Week
-plt-cada-mes = Month
+plt-papel-carta = लेटर
+plt-papel-tableta = टैबलेट
+plt-papel-pantalla = स्क्रीन 16:9
+plt-papel-medida = अपना आकार
+plt-tema-planificacion = योजना
+plt-tema-academico = पढ़ाई
+plt-tema-creativo = रचनात्मक
+plt-tema-diario = डायरी
+plt-tema-minimo = सादा
+plt-tema-noche = रात
+plt-tema-propio = अपनी
+plt-cada-ninguna = केवल एक
+plt-cada-dia = दिन
+plt-cada-semana = सप्ताह
+plt-cada-mes = महीना
 
-## AI
-plt-ia-describir = Describe it
-plt-ia-pista = For example: weekly planner with a 7 to 22 schedule, a to-do list and habits
-plt-ia-crear = Create
-plt-ia-pensando = Thinking…
-plt-ia-vista-previa = AI preview
-plt-ia-aplicar = Apply
-plt-ia-descartar = Discard
-plt-ia-ajustar = Adjust the selection
-plt-ia-ajustar-pista = For example: more rows, put it in two columns
-plt-ia-sugerir = Suggest a fill
-plt-ia-sin-clave = No AI key: made without a model. Add your Claude or DeepSeek key in PinDesk Settings.
-plt-ia-error = The AI could not do it: { $motivo }
+## एआई
+plt-ia-describir = बताइए
+plt-ia-pista = उदाहरण: 7 से 22 बजे की समय-सारणी, कामों की सूची और आदतों वाला साप्ताहिक प्लानर
+plt-ia-crear = बनाएँ
+plt-ia-pensando = सोच रहा है…
+plt-ia-vista-previa = एआई का पूर्वावलोकन
+plt-ia-aplicar = लागू करें
+plt-ia-descartar = छोड़ें
+plt-ia-ajustar = चुने हुए को बदलें
+plt-ia-ajustar-pista = उदाहरण: और पंक्तियाँ, दो कॉलम में करें
+plt-ia-sugerir = सामग्री सुझाएँ
+plt-ia-sin-clave = एआई कुंजी नहीं है: बिना मॉडल के बनाया गया। PinDesk की सेटिंग्स में अपनी Claude या DeepSeek कुंजी डालें।
+plt-ia-error = एआई नहीं कर सका: { $motivo }
 plt-ia-avisos = { $n ->
-    [one] { $n } thing in the answer was fixed
-   *[other] { $n } things in the answer were fixed
+    [one] उत्तर में { $n } चीज़ ठीक की गई
+   *[other] उत्तर में { $n } चीज़ें ठीक की गईं
 }
 
-## Notices
-plt-guardado = Saved
-plt-exportado = Exported: { $ruta }
-plt-error-abrir = Could not open { $ruta }
-plt-error-guardar = Could not save: { $motivo }
-plt-cambios-sin-guardar = There are unsaved changes. Save them first?
-plt-filtro = PinDesk template
+## सूचनाएँ
+plt-guardado = सहेजा गया
+plt-exportado = निर्यात हुआ: { $ruta }
+plt-error-abrir = { $ruta } नहीं खुल सका
+plt-error-guardar = सहेजा नहीं जा सका: { $motivo }
+plt-cambios-sin-guardar = कुछ बदलाव सहेजे नहीं गए हैं। पहले सहेजें?
+plt-filtro = PinDesk टेम्पलेट
 
-## What a new block contains
-plt-def-seccion = Section
-plt-def-titulo = Title
-plt-def-texto = Write here
-plt-def-notas = Notes
-plt-def-imagen = Image
-plt-def-habitos = Water, Read, Exercise, Sleep 8 h
-plt-def-habitos-mas = Meditate, No screens, Walk, Fruit
-plt-def-animo = How do I feel?
-plt-def-prioridades = High, Medium, Low
-plt-def-prioridades-titulo = Priorities
-plt-def-cornell = Cues, Notes, Summary
-plt-def-reunion = Meeting
-plt-def-reunion-rotulos = Date, Attendees, Agenda, Decisions, Action items
-plt-def-tareas = Tasks
-plt-def-metas = Goals
-plt-def-gratitud = I am grateful for
-plt-def-hoy = Today
-plt-def-manana = For tomorrow
-plt-def-semana = Week
-plt-def-importante = Important
-plt-def-cuando = When I can
+## नए ब्लॉक में क्या होता है
+plt-def-seccion = खंड
+plt-def-titulo = शीर्षक
+plt-def-texto = यहाँ लिखें
+plt-def-notas = नोट्स
+plt-def-imagen = चित्र
+plt-def-habitos = पानी, पढ़ना, व्यायाम, 8 घंटे नींद
+plt-def-habitos-mas = ध्यान, स्क्रीन नहीं, सैर, फल
+plt-def-animo = मैं कैसा महसूस कर रहा हूँ?
+plt-def-prioridades = ऊँची, मध्यम, नीची
+plt-def-prioridades-titulo = प्राथमिकताएँ
+plt-def-cornell = संकेत, नोट्स, सारांश
+plt-def-reunion = बैठक
+plt-def-reunion-rotulos = तारीख़, उपस्थित, कार्यसूची, निर्णय, काम
+plt-def-tareas = काम
+plt-def-metas = लक्ष्य
+plt-def-gratitud = मैं आभारी हूँ
+plt-def-hoy = आज
+plt-def-manana = कल के लिए
+plt-def-semana = सप्ताह
+plt-def-importante = ज़रूरी
+plt-def-cuando = जब समय मिले

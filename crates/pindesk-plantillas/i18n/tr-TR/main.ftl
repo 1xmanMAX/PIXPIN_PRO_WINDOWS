@@ -1,247 +1,239 @@
-# PinDesk Plantillas: UI strings (English, the reference together with es-ES).
-# Rules: docs/idiomas.md. Variables ({ $n }) are the same in every language.
+# PinDesk Plantillas: arayüz metinleri (Türkçe).
 
-## The product
-# The working name: the same in every language (see NOMBRE_PRODUCTO).
+## Ürün
 plt-producto = PinDesk Plantillas
 
-## The top bar
-plt-nuevo = New
-plt-abrir = Open
-plt-guardar = Save
-plt-guardar-como = Save as…
-plt-exportar = Export
+## Üst çubuk
+plt-nuevo = Yeni
+plt-abrir = Aç
+plt-guardar = Kaydet
+plt-guardar-como = Farklı kaydet…
+plt-exportar = Dışa aktar
 plt-exportar-pdf = PDF
 plt-exportar-png = PNG
 plt-exportar-svg = SVG
-plt-exportar-lienzo = Canvas (.excalidraw)
-plt-enviar-pindesk = Send to PinDesk
-plt-enviada = Sent: it is now in PinDesk Figures
-plt-galeria = Gallery
-plt-deshacer = Undo
-plt-rehacer = Redo
-plt-dia-noche = Day or night
-plt-cerrar = Close
+plt-exportar-lienzo = Tuval (.excalidraw)
+plt-enviar-pindesk = PinDesk'e gönder
+plt-enviada = Gönderildi: artık PinDesk Şekiller'de
+plt-galeria = Galeri
+plt-deshacer = Geri al
+plt-rehacer = Yinele
+plt-dia-noche = Gündüz veya gece
+plt-cerrar = Kapat
 
-## The gallery
-plt-galeria-titulo = Start from a template
-plt-galeria-vacia = Blank
-plt-gal-mensual = Monthly calendar
-plt-gal-diario = Daily journal
-plt-gal-semanal = Weekly planner
-plt-gal-dia = Daily planner
-plt-gal-tareas = To-do list
-plt-gal-habitos = Habit tracker
-plt-gal-cornell = Cornell notes
-plt-gal-reunion = Meeting notes
-plt-gal-puntos = Dot grid notebook
+## Galeri
+plt-galeria-titulo = Bir şablonla başla
+plt-galeria-vacia = Boş
+plt-gal-mensual = Aylık takvim
+plt-gal-diario = Günlük
+plt-gal-semanal = Haftalık planlayıcı
+plt-gal-dia = Günlük planlayıcı
+plt-gal-tareas = Yapılacaklar listesi
+plt-gal-habitos = Alışkanlık takibi
+plt-gal-cornell = Cornell notları
+plt-gal-reunion = Toplantı tutanağı
+plt-gal-puntos = Noktalı defter
 
-## Pages
-plt-paginas = { $n ->
-    [one] { $n } page
-   *[other] { $n } pages
-}
-plt-pagina-de = Page { $n } of { $total }
-plt-anterior = Previous
-plt-siguiente = Next
-plt-zoom-encajar = Fit
+## Sayfalar
+plt-paginas = { $n } sayfa
+plt-pagina-de = Sayfa { $n } / { $total }
+plt-anterior = Önceki
+plt-siguiente = Sonraki
+plt-zoom-encajar = Sığdır
 
-## The panels
-plt-bloques = Blocks
-plt-arrastra = Drag onto the page
-plt-propiedades = Properties
-plt-documento = Document
-plt-sin-seleccion = Pick a block or drag one from the left
-plt-editar-texto = Type and press Enter
-plt-nombre = Name
-plt-sin-titulo = Untitled
-plt-papel = Paper
-plt-horizontal = Landscape
-plt-margenes = Margins (mm)
-plt-tema = Theme
-plt-idioma-fechas = Date language
-plt-repetir = One page per
-plt-desde = From
-plt-hasta = To
-plt-sin-finde = Skip weekends
-plt-duplicar = Duplicate
-plt-borrar = Delete
-plt-subir = Move up
-plt-bajar = Move down
-plt-envolver-fila = Wrap in a row
-plt-envolver-columna = Wrap in a column
+## Paneller
+plt-bloques = Bloklar
+plt-arrastra = Sayfaya sürükleyin
+plt-propiedades = Özellikler
+plt-documento = Belge
+plt-sin-seleccion = Bir blok seçin ya da soldan birini sürükleyin
+plt-editar-texto = Yazın ve Enter'a basın
+plt-nombre = Ad
+plt-sin-titulo = Adsız
+plt-papel = Kâğıt
+plt-horizontal = Yatay
+plt-margenes = Kenar boşlukları (mm)
+plt-tema = Tema
+plt-idioma-fechas = Tarih dili
+plt-repetir = Her sayfa bir
+plt-desde = Başlangıç
+plt-hasta = Bitiş
+plt-sin-finde = Hafta sonları hariç
+plt-duplicar = Çoğalt
+plt-borrar = Sil
+plt-subir = Yukarı taşı
+plt-bajar = Aşağı taşı
+plt-envolver-fila = Bir satıra koy
+plt-envolver-columna = Bir sütuna koy
 
-## Palette groups
-plt-grupo-estructura = Layout
-plt-grupo-texto = Text and notes
-plt-grupo-listas = Lists and tables
-plt-grupo-fechas = Dates and calendars
-plt-grupo-especiales = Specials
+## Paletin grupları
+plt-grupo-estructura = Yapı
+plt-grupo-texto = Metin ve notlar
+plt-grupo-listas = Listeler ve tablolar
+plt-grupo-fechas = Tarihler ve takvimler
+plt-grupo-especiales = Özel
 
-## Blocks
-plt-pieza-fila = Row
-plt-pieza-columna = Column
-plt-pieza-rejilla = Grid
-plt-pieza-seccion = Section
-plt-pieza-pila = Layers
-plt-pieza-encabezado = Heading
-plt-pieza-texto = Text
-plt-pieza-notas = Notes area
-plt-pieza-lineas = Ruled lines
-plt-pieza-puntos = Dots
-plt-pieza-cuadricula = Grid paper
-plt-pieza-divisor = Divider
-plt-pieza-espacio = Spacer
-plt-pieza-imagen = Image
-plt-pieza-vinetas = Bullets
-plt-pieza-casillas = Checkboxes
-plt-pieza-numerada = Numbered list
-plt-pieza-tabla = Table
-plt-pieza-campo = Date field
-plt-pieza-campo_fecha = Date
-plt-pieza-campo_dia_semana = Weekday
-plt-pieza-campo_semana = Week number
-plt-pieza-campo_mes = Month
-plt-pieza-campo_pagina = Page number
-plt-pieza-calendario_mes = Month calendar
-plt-pieza-calendario_mini = Mini calendar
-plt-pieza-calendario_semana = Week
-plt-pieza-horario = Schedule
-plt-pieza-habitos = Habits
-plt-pieza-animo = Mood
-plt-pieza-prioridades = Priorities
-plt-pieza-cornell = Cornell notes
-plt-pieza-reunion = Meeting
+## Bloklar
+plt-pieza-fila = Satır
+plt-pieza-columna = Sütun
+plt-pieza-rejilla = Izgara
+plt-pieza-seccion = Bölüm
+plt-pieza-pila = Katmanlar
+plt-pieza-encabezado = Başlık
+plt-pieza-texto = Metin
+plt-pieza-notas = Not alanı
+plt-pieza-lineas = Çizgiler
+plt-pieza-puntos = Noktalar
+plt-pieza-cuadricula = Kareli
+plt-pieza-divisor = Ayırıcı
+plt-pieza-espacio = Boşluk
+plt-pieza-imagen = Görsel
+plt-pieza-vinetas = Madde işaretleri
+plt-pieza-casillas = Onay kutuları
+plt-pieza-numerada = Numaralı liste
+plt-pieza-tabla = Tablo
+plt-pieza-campo = Tarih alanı
+plt-pieza-campo_fecha = Tarih
+plt-pieza-campo_dia_semana = Haftanın günü
+plt-pieza-campo_semana = Hafta numarası
+plt-pieza-campo_mes = Ay
+plt-pieza-campo_pagina = Sayfa numarası
+plt-pieza-calendario_mes = Ay takvimi
+plt-pieza-calendario_mini = Mini takvim
+plt-pieza-calendario_semana = Hafta
+plt-pieza-horario = Saat çizelgesi
+plt-pieza-habitos = Alışkanlıklar
+plt-pieza-animo = Ruh hâli
+plt-pieza-prioridades = Öncelikler
+plt-pieza-cornell = Cornell notları
+plt-pieza-reunion = Toplantı
 
-## Properties
-plt-prop-tam = Size
-plt-prop-tam_mm = Millimetres
-plt-prop-tam_fr = Parts
-plt-prop-hueco = Gap
-plt-prop-columnas = Columns
-plt-prop-titulo = Title
-plt-prop-recuadro = Border
-plt-prop-texto = Text
-plt-prop-nivel = Level
-plt-prop-alineacion = Alignment
-plt-prop-puntos = Font size
-plt-prop-pauta = Ruling
-plt-prop-paso = Step
-plt-prop-items = Items
-plt-prop-vacias = Empty lines
-plt-prop-filas = Rows
-plt-prop-cabeceras = Headers
-plt-prop-trazo = Stroke
-plt-prop-etiqueta = Label
-plt-prop-campo = Value
-plt-prop-formato = Format
-plt-prop-antes = Before
-plt-prop-despues = After
-plt-prop-negrita = Bold
-plt-prop-mes = Fixed month (YYYY-MM)
-plt-prop-mini = Small
-plt-prop-fin_de_semana = Include weekend
-plt-prop-desde = From
-plt-prop-hasta = Until
-plt-prop-dias = Days
-plt-prop-habitos = Habits
-plt-prop-niveles = Levels
-plt-prop-etiquetas = Labels
+## Özellikler
+plt-prop-tam = Boyut
+plt-prop-tam_mm = Milimetre
+plt-prop-tam_fr = Pay
+plt-prop-hueco = Aralık
+plt-prop-columnas = Sütunlar
+plt-prop-titulo = Başlık
+plt-prop-recuadro = Çerçeve
+plt-prop-texto = Metin
+plt-prop-nivel = Düzey
+plt-prop-alineacion = Hizalama
+plt-prop-puntos = Yazı boyutu
+plt-prop-pauta = Çizgi türü
+plt-prop-paso = Adım
+plt-prop-items = Öğeler
+plt-prop-vacias = Boş satırlar
+plt-prop-filas = Satırlar
+plt-prop-cabeceras = Başlıklar
+plt-prop-trazo = Çizgi
+plt-prop-etiqueta = Etiket
+plt-prop-campo = Değer
+plt-prop-formato = Biçim
+plt-prop-antes = Önce
+plt-prop-despues = Sonra
+plt-prop-negrita = Kalın
+plt-prop-mes = Sabit ay (YYYY-AA)
+plt-prop-mini = Küçük
+plt-prop-fin_de_semana = Hafta sonu dahil
+plt-prop-desde = Başlangıç saati
+plt-prop-hasta = Bitiş saati
+plt-prop-dias = Günler
+plt-prop-habitos = Alışkanlıklar
+plt-prop-niveles = Düzeyler
+plt-prop-etiquetas = Etiketler
 
-## Options
-plt-opcion-auto = Automatic
-plt-opcion-mm = Fixed
-plt-opcion-fr = Share
-plt-opcion-izquierda = Left
-plt-opcion-centro = Centre
-plt-opcion-derecha = Right
-plt-opcion-rayado = Lines
-plt-opcion-puntos = Dots
-plt-opcion-cuadricula = Grid
-plt-opcion-blanco = Blank
-plt-opcion-continuo = Solid
-plt-opcion-discontinuo = Dashed
-plt-opcion-punteado = Dotted
-plt-opcion-acento = Accent
-plt-opcion-fecha = Date
-plt-opcion-dia = Day
-plt-opcion-dia_semana = Weekday
-plt-opcion-semana = Week
-plt-opcion-mes = Month
-plt-opcion-ano = Year
-plt-opcion-pagina = Page
-plt-opcion-corto = Short
-plt-opcion-largo = Long
-plt-opcion-completo = Full
+## Seçenekler
+plt-opcion-auto = Otomatik
+plt-opcion-mm = Sabit
+plt-opcion-fr = Pay
+plt-opcion-izquierda = Sol
+plt-opcion-centro = Orta
+plt-opcion-derecha = Sağ
+plt-opcion-rayado = Çizgili
+plt-opcion-puntos = Noktalı
+plt-opcion-cuadricula = Kareli
+plt-opcion-blanco = Boş
+plt-opcion-continuo = Düz
+plt-opcion-discontinuo = Kesikli
+plt-opcion-punteado = Noktalı çizgi
+plt-opcion-acento = Vurgu
+plt-opcion-fecha = Tarih
+plt-opcion-dia = Gün
+plt-opcion-dia_semana = Haftanın günü
+plt-opcion-semana = Hafta
+plt-opcion-mes = Ay
+plt-opcion-ano = Yıl
+plt-opcion-pagina = Sayfa
+plt-opcion-corto = Kısa
+plt-opcion-largo = Uzun
+plt-opcion-completo = Tam
 plt-opcion-iso = ISO
-plt-opcion-numero = Number
-plt-opcion-abreviado = Abbreviated
-plt-opcion-letra = Initial
+plt-opcion-numero = Sayı
+plt-opcion-abreviado = Kısaltılmış
+plt-opcion-letra = Baş harf
 
-## Paper, themes and repetition
+## Kâğıt, temalar ve tekrar
 plt-papel-a4 = A4
 plt-papel-a5 = A5
 plt-papel-carta = Letter
 plt-papel-tableta = Tablet
-plt-papel-pantalla = Screen 16:9
-plt-papel-medida = Custom
-plt-tema-planificacion = Planning
-plt-tema-academico = Academic
-plt-tema-creativo = Creative
-plt-tema-diario = Journal
-plt-tema-minimo = Minimal
-plt-tema-noche = Night
-plt-tema-propio = Custom
-plt-cada-ninguna = Just one
-plt-cada-dia = Day
-plt-cada-semana = Week
-plt-cada-mes = Month
+plt-papel-pantalla = Ekran 16:9
+plt-papel-medida = Özel
+plt-tema-planificacion = Planlama
+plt-tema-academico = Ders
+plt-tema-creativo = Yaratıcı
+plt-tema-diario = Günlük
+plt-tema-minimo = Sade
+plt-tema-noche = Gece
+plt-tema-propio = Özel
+plt-cada-ninguna = Yalnızca bir
+plt-cada-dia = Gün
+plt-cada-semana = Hafta
+plt-cada-mes = Ay
 
-## AI
-plt-ia-describir = Describe it
-plt-ia-pista = For example: weekly planner with a 7 to 22 schedule, a to-do list and habits
-plt-ia-crear = Create
-plt-ia-pensando = Thinking…
-plt-ia-vista-previa = AI preview
-plt-ia-aplicar = Apply
-plt-ia-descartar = Discard
-plt-ia-ajustar = Adjust the selection
-plt-ia-ajustar-pista = For example: more rows, put it in two columns
-plt-ia-sugerir = Suggest a fill
-plt-ia-sin-clave = No AI key: made without a model. Add your Claude or DeepSeek key in PinDesk Settings.
-plt-ia-error = The AI could not do it: { $motivo }
-plt-ia-avisos = { $n ->
-    [one] { $n } thing in the answer was fixed
-   *[other] { $n } things in the answer were fixed
-}
+## Yapay zekâ
+plt-ia-describir = Anlat
+plt-ia-pista = Örneğin: 7'den 22'ye saat çizelgeli, yapılacaklar listeli ve alışkanlıklı haftalık planlayıcı
+plt-ia-crear = Oluştur
+plt-ia-pensando = Düşünüyor…
+plt-ia-vista-previa = Yapay zekâ önizlemesi
+plt-ia-aplicar = Uygula
+plt-ia-descartar = Vazgeç
+plt-ia-ajustar = Seçimi düzenle
+plt-ia-ajustar-pista = Örneğin: daha fazla satır, iki sütuna böl
+plt-ia-sugerir = İçerik öner
+plt-ia-sin-clave = Yapay zekâ anahtarı yok: model olmadan yapıldı. Claude veya DeepSeek anahtarınızı PinDesk Ayarları'na ekleyin.
+plt-ia-error = Yapay zekâ yapamadı: { $motivo }
+plt-ia-avisos = Yanıttaki { $n } şey düzeltildi
 
-## Notices
-plt-guardado = Saved
-plt-exportado = Exported: { $ruta }
-plt-error-abrir = Could not open { $ruta }
-plt-error-guardar = Could not save: { $motivo }
-plt-cambios-sin-guardar = There are unsaved changes. Save them first?
-plt-filtro = PinDesk template
+## Bildirimler
+plt-guardado = Kaydedildi
+plt-exportado = Dışa aktarıldı: { $ruta }
+plt-error-abrir = { $ruta } açılamadı
+plt-error-guardar = Kaydedilemedi: { $motivo }
+plt-cambios-sin-guardar = Kaydedilmemiş değişiklikler var. Önce kaydedilsin mi?
+plt-filtro = PinDesk şablonu
 
-## What a new block contains
-plt-def-seccion = Section
-plt-def-titulo = Title
-plt-def-texto = Write here
-plt-def-notas = Notes
-plt-def-imagen = Image
-plt-def-habitos = Water, Read, Exercise, Sleep 8 h
-plt-def-habitos-mas = Meditate, No screens, Walk, Fruit
-plt-def-animo = How do I feel?
-plt-def-prioridades = High, Medium, Low
-plt-def-prioridades-titulo = Priorities
-plt-def-cornell = Cues, Notes, Summary
-plt-def-reunion = Meeting
-plt-def-reunion-rotulos = Date, Attendees, Agenda, Decisions, Action items
-plt-def-tareas = Tasks
-plt-def-metas = Goals
-plt-def-gratitud = I am grateful for
-plt-def-hoy = Today
-plt-def-manana = For tomorrow
-plt-def-semana = Week
-plt-def-importante = Important
-plt-def-cuando = When I can
+## Yeni bir bloğun içeriği
+plt-def-seccion = Bölüm
+plt-def-titulo = Başlık
+plt-def-texto = Buraya yazın
+plt-def-notas = Notlar
+plt-def-imagen = Görsel
+plt-def-habitos = Su, Okuma, Egzersiz, 8 saat uyku
+plt-def-habitos-mas = Meditasyon, Ekransız, Yürüyüş, Meyve
+plt-def-animo = Nasıl hissediyorum?
+plt-def-prioridades = Yüksek, Orta, Düşük
+plt-def-prioridades-titulo = Öncelikler
+plt-def-cornell = İpuçları, Notlar, Özet
+plt-def-reunion = Toplantı
+plt-def-reunion-rotulos = Tarih, Katılımcılar, Gündem, Kararlar, Görevler
+plt-def-tareas = Görevler
+plt-def-metas = Hedefler
+plt-def-gratitud = Minnettar olduğum şeyler
+plt-def-hoy = Bugün
+plt-def-manana = Yarın için
+plt-def-semana = Hafta
+plt-def-importante = Önemli
+plt-def-cuando = Fırsat buldukça

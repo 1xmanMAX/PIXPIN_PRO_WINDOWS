@@ -1,247 +1,250 @@
-# PinDesk Plantillas: UI strings (English, the reference together with es-ES).
-# Rules: docs/idiomas.md. Variables ({ $n }) are the same in every language.
+# PinDesk Plantillas: نصوص الواجهة (العربية)
 
-## The product
-# The working name: the same in every language (see NOMBRE_PRODUCTO).
+## المنتج
 plt-producto = PinDesk Plantillas
 
-## The top bar
-plt-nuevo = New
-plt-abrir = Open
-plt-guardar = Save
-plt-guardar-como = Save as…
-plt-exportar = Export
+## الشريط العلوي
+plt-nuevo = جديد
+plt-abrir = فتح
+plt-guardar = حفظ
+plt-guardar-como = حفظ باسم…
+plt-exportar = تصدير
 plt-exportar-pdf = PDF
 plt-exportar-png = PNG
 plt-exportar-svg = SVG
-plt-exportar-lienzo = Canvas (.excalidraw)
-plt-enviar-pindesk = Send to PinDesk
-plt-enviada = Sent: it is now in PinDesk Figures
-plt-galeria = Gallery
-plt-deshacer = Undo
-plt-rehacer = Redo
-plt-dia-noche = Day or night
-plt-cerrar = Close
+plt-exportar-lienzo = لوحة (.excalidraw)
+plt-enviar-pindesk = إرسال إلى PinDesk
+plt-enviada = تم الإرسال: أصبح في أشكال PinDesk
+plt-galeria = المعرض
+plt-deshacer = تراجع
+plt-rehacer = إعادة
+plt-dia-noche = نهار أو ليل
+plt-cerrar = إغلاق
 
-## The gallery
-plt-galeria-titulo = Start from a template
-plt-galeria-vacia = Blank
-plt-gal-mensual = Monthly calendar
-plt-gal-diario = Daily journal
-plt-gal-semanal = Weekly planner
-plt-gal-dia = Daily planner
-plt-gal-tareas = To-do list
-plt-gal-habitos = Habit tracker
-plt-gal-cornell = Cornell notes
-plt-gal-reunion = Meeting notes
-plt-gal-puntos = Dot grid notebook
+## المعرض
+plt-galeria-titulo = ابدأ من قالب
+plt-galeria-vacia = فارغ
+plt-gal-mensual = تقويم شهري
+plt-gal-diario = مذكرات يومية
+plt-gal-semanal = مخطط أسبوعي
+plt-gal-dia = مخطط اليوم
+plt-gal-tareas = قائمة المهام
+plt-gal-habitos = متابعة العادات
+plt-gal-cornell = ملاحظات كورنيل
+plt-gal-reunion = محضر اجتماع
+plt-gal-puntos = دفتر منقط
 
-## Pages
+## الصفحات
 plt-paginas = { $n ->
-    [one] { $n } page
-   *[other] { $n } pages
+    [zero] لا صفحات
+    [one] صفحة واحدة
+    [two] صفحتان
+    [few] { $n } صفحات
+   *[other] { $n } صفحة
 }
-plt-pagina-de = Page { $n } of { $total }
-plt-anterior = Previous
-plt-siguiente = Next
-plt-zoom-encajar = Fit
+plt-pagina-de = الصفحة { $n } من { $total }
+plt-anterior = السابقة
+plt-siguiente = التالية
+plt-zoom-encajar = ملاءمة
 
-## The panels
-plt-bloques = Blocks
-plt-arrastra = Drag onto the page
-plt-propiedades = Properties
-plt-documento = Document
-plt-sin-seleccion = Pick a block or drag one from the left
-plt-editar-texto = Type and press Enter
-plt-nombre = Name
-plt-sin-titulo = Untitled
-plt-papel = Paper
-plt-horizontal = Landscape
-plt-margenes = Margins (mm)
-plt-tema = Theme
-plt-idioma-fechas = Date language
-plt-repetir = One page per
-plt-desde = From
-plt-hasta = To
-plt-sin-finde = Skip weekends
-plt-duplicar = Duplicate
-plt-borrar = Delete
-plt-subir = Move up
-plt-bajar = Move down
-plt-envolver-fila = Wrap in a row
-plt-envolver-columna = Wrap in a column
+## اللوحات
+plt-bloques = الكتل
+plt-arrastra = اسحب إلى الصفحة
+plt-propiedades = الخصائص
+plt-documento = المستند
+plt-sin-seleccion = اختر كتلة أو اسحب واحدة من اليسار
+plt-editar-texto = اكتب ثم اضغط Enter
+plt-nombre = الاسم
+plt-sin-titulo = بلا عنوان
+plt-papel = الورق
+plt-horizontal = أفقي
+plt-margenes = الهوامش (مم)
+plt-tema = السمة
+plt-idioma-fechas = لغة التواريخ
+plt-repetir = صفحة لكل
+plt-desde = من
+plt-hasta = إلى
+plt-sin-finde = بدون عطلة نهاية الأسبوع
+plt-duplicar = تكرار
+plt-borrar = حذف
+plt-subir = لأعلى
+plt-bajar = لأسفل
+plt-envolver-fila = في صف
+plt-envolver-columna = في عمود
 
-## Palette groups
-plt-grupo-estructura = Layout
-plt-grupo-texto = Text and notes
-plt-grupo-listas = Lists and tables
-plt-grupo-fechas = Dates and calendars
-plt-grupo-especiales = Specials
+## مجموعات اللوحة
+plt-grupo-estructura = البنية
+plt-grupo-texto = النص والملاحظات
+plt-grupo-listas = القوائم والجداول
+plt-grupo-fechas = التواريخ والتقاويم
+plt-grupo-especiales = خاصة
 
-## Blocks
-plt-pieza-fila = Row
-plt-pieza-columna = Column
-plt-pieza-rejilla = Grid
-plt-pieza-seccion = Section
-plt-pieza-pila = Layers
-plt-pieza-encabezado = Heading
-plt-pieza-texto = Text
-plt-pieza-notas = Notes area
-plt-pieza-lineas = Ruled lines
-plt-pieza-puntos = Dots
-plt-pieza-cuadricula = Grid paper
-plt-pieza-divisor = Divider
-plt-pieza-espacio = Spacer
-plt-pieza-imagen = Image
-plt-pieza-vinetas = Bullets
-plt-pieza-casillas = Checkboxes
-plt-pieza-numerada = Numbered list
-plt-pieza-tabla = Table
-plt-pieza-campo = Date field
-plt-pieza-campo_fecha = Date
-plt-pieza-campo_dia_semana = Weekday
-plt-pieza-campo_semana = Week number
-plt-pieza-campo_mes = Month
-plt-pieza-campo_pagina = Page number
-plt-pieza-calendario_mes = Month calendar
-plt-pieza-calendario_mini = Mini calendar
-plt-pieza-calendario_semana = Week
-plt-pieza-horario = Schedule
-plt-pieza-habitos = Habits
-plt-pieza-animo = Mood
-plt-pieza-prioridades = Priorities
-plt-pieza-cornell = Cornell notes
-plt-pieza-reunion = Meeting
+## الكتل
+plt-pieza-fila = صف
+plt-pieza-columna = عمود
+plt-pieza-rejilla = شبكة
+plt-pieza-seccion = قسم
+plt-pieza-pila = طبقات
+plt-pieza-encabezado = عنوان
+plt-pieza-texto = نص
+plt-pieza-notas = منطقة ملاحظات
+plt-pieza-lineas = أسطر
+plt-pieza-puntos = نقاط
+plt-pieza-cuadricula = مربعات
+plt-pieza-divisor = فاصل
+plt-pieza-espacio = مسافة
+plt-pieza-imagen = صورة
+plt-pieza-vinetas = قائمة نقطية
+plt-pieza-casillas = خانات اختيار
+plt-pieza-numerada = قائمة مرقمة
+plt-pieza-tabla = جدول
+plt-pieza-campo = حقل تاريخ
+plt-pieza-campo_fecha = التاريخ
+plt-pieza-campo_dia_semana = يوم الأسبوع
+plt-pieza-campo_semana = رقم الأسبوع
+plt-pieza-campo_mes = الشهر
+plt-pieza-campo_pagina = رقم الصفحة
+plt-pieza-calendario_mes = تقويم الشهر
+plt-pieza-calendario_mini = تقويم صغير
+plt-pieza-calendario_semana = الأسبوع
+plt-pieza-horario = جدول الساعات
+plt-pieza-habitos = العادات
+plt-pieza-animo = المزاج
+plt-pieza-prioridades = الأولويات
+plt-pieza-cornell = ملاحظات كورنيل
+plt-pieza-reunion = اجتماع
 
-## Properties
-plt-prop-tam = Size
-plt-prop-tam_mm = Millimetres
-plt-prop-tam_fr = Parts
-plt-prop-hueco = Gap
-plt-prop-columnas = Columns
-plt-prop-titulo = Title
-plt-prop-recuadro = Border
-plt-prop-texto = Text
-plt-prop-nivel = Level
-plt-prop-alineacion = Alignment
-plt-prop-puntos = Font size
-plt-prop-pauta = Ruling
-plt-prop-paso = Step
-plt-prop-items = Items
-plt-prop-vacias = Empty lines
-plt-prop-filas = Rows
-plt-prop-cabeceras = Headers
-plt-prop-trazo = Stroke
-plt-prop-etiqueta = Label
-plt-prop-campo = Value
-plt-prop-formato = Format
-plt-prop-antes = Before
-plt-prop-despues = After
-plt-prop-negrita = Bold
-plt-prop-mes = Fixed month (YYYY-MM)
-plt-prop-mini = Small
-plt-prop-fin_de_semana = Include weekend
-plt-prop-desde = From
-plt-prop-hasta = Until
-plt-prop-dias = Days
-plt-prop-habitos = Habits
-plt-prop-niveles = Levels
-plt-prop-etiquetas = Labels
+## الخصائص
+plt-prop-tam = الحجم
+plt-prop-tam_mm = مليمترات
+plt-prop-tam_fr = أجزاء
+plt-prop-hueco = التباعد
+plt-prop-columnas = الأعمدة
+plt-prop-titulo = العنوان
+plt-prop-recuadro = إطار
+plt-prop-texto = النص
+plt-prop-nivel = المستوى
+plt-prop-alineacion = المحاذاة
+plt-prop-puntos = حجم الخط
+plt-prop-pauta = التسطير
+plt-prop-paso = الخطوة
+plt-prop-items = العناصر
+plt-prop-vacias = أسطر فارغة
+plt-prop-filas = الصفوف
+plt-prop-cabeceras = الرؤوس
+plt-prop-trazo = الخط
+plt-prop-etiqueta = التسمية
+plt-prop-campo = القيمة
+plt-prop-formato = التنسيق
+plt-prop-antes = قبل
+plt-prop-despues = بعد
+plt-prop-negrita = عريض
+plt-prop-mes = شهر ثابت (YYYY-MM)
+plt-prop-mini = صغير
+plt-prop-fin_de_semana = مع عطلة نهاية الأسبوع
+plt-prop-desde = من الساعة
+plt-prop-hasta = حتى الساعة
+plt-prop-dias = الأيام
+plt-prop-habitos = العادات
+plt-prop-niveles = المستويات
+plt-prop-etiquetas = التسميات
 
-## Options
-plt-opcion-auto = Automatic
-plt-opcion-mm = Fixed
-plt-opcion-fr = Share
-plt-opcion-izquierda = Left
-plt-opcion-centro = Centre
-plt-opcion-derecha = Right
-plt-opcion-rayado = Lines
-plt-opcion-puntos = Dots
-plt-opcion-cuadricula = Grid
-plt-opcion-blanco = Blank
-plt-opcion-continuo = Solid
-plt-opcion-discontinuo = Dashed
-plt-opcion-punteado = Dotted
-plt-opcion-acento = Accent
-plt-opcion-fecha = Date
-plt-opcion-dia = Day
-plt-opcion-dia_semana = Weekday
-plt-opcion-semana = Week
-plt-opcion-mes = Month
-plt-opcion-ano = Year
-plt-opcion-pagina = Page
-plt-opcion-corto = Short
-plt-opcion-largo = Long
-plt-opcion-completo = Full
+## الخيارات
+plt-opcion-auto = تلقائي
+plt-opcion-mm = ثابت
+plt-opcion-fr = نسبة
+plt-opcion-izquierda = يسار
+plt-opcion-centro = وسط
+plt-opcion-derecha = يمين
+plt-opcion-rayado = أسطر
+plt-opcion-puntos = نقاط
+plt-opcion-cuadricula = مربعات
+plt-opcion-blanco = فارغ
+plt-opcion-continuo = متصل
+plt-opcion-discontinuo = متقطع
+plt-opcion-punteado = منقط
+plt-opcion-acento = مميز
+plt-opcion-fecha = التاريخ
+plt-opcion-dia = اليوم
+plt-opcion-dia_semana = يوم الأسبوع
+plt-opcion-semana = الأسبوع
+plt-opcion-mes = الشهر
+plt-opcion-ano = السنة
+plt-opcion-pagina = الصفحة
+plt-opcion-corto = قصير
+plt-opcion-largo = طويل
+plt-opcion-completo = كامل
 plt-opcion-iso = ISO
-plt-opcion-numero = Number
-plt-opcion-abreviado = Abbreviated
-plt-opcion-letra = Initial
+plt-opcion-numero = رقم
+plt-opcion-abreviado = مختصر
+plt-opcion-letra = الحرف الأول
 
-## Paper, themes and repetition
+## الورق والسمات والتكرار
 plt-papel-a4 = A4
 plt-papel-a5 = A5
 plt-papel-carta = Letter
-plt-papel-tableta = Tablet
-plt-papel-pantalla = Screen 16:9
-plt-papel-medida = Custom
-plt-tema-planificacion = Planning
-plt-tema-academico = Academic
-plt-tema-creativo = Creative
-plt-tema-diario = Journal
-plt-tema-minimo = Minimal
-plt-tema-noche = Night
-plt-tema-propio = Custom
-plt-cada-ninguna = Just one
-plt-cada-dia = Day
-plt-cada-semana = Week
-plt-cada-mes = Month
+plt-papel-tableta = جهاز لوحي
+plt-papel-pantalla = شاشة 16:9
+plt-papel-medida = مخصص
+plt-tema-planificacion = تخطيط
+plt-tema-academico = دراسة
+plt-tema-creativo = إبداعي
+plt-tema-diario = مذكرات
+plt-tema-minimo = بسيط
+plt-tema-noche = ليل
+plt-tema-propio = مخصصة
+plt-cada-ninguna = صفحة واحدة فقط
+plt-cada-dia = يوم
+plt-cada-semana = أسبوع
+plt-cada-mes = شهر
 
-## AI
-plt-ia-describir = Describe it
-plt-ia-pista = For example: weekly planner with a 7 to 22 schedule, a to-do list and habits
-plt-ia-crear = Create
-plt-ia-pensando = Thinking…
-plt-ia-vista-previa = AI preview
-plt-ia-aplicar = Apply
-plt-ia-descartar = Discard
-plt-ia-ajustar = Adjust the selection
-plt-ia-ajustar-pista = For example: more rows, put it in two columns
-plt-ia-sugerir = Suggest a fill
-plt-ia-sin-clave = No AI key: made without a model. Add your Claude or DeepSeek key in PinDesk Settings.
-plt-ia-error = The AI could not do it: { $motivo }
+## الذكاء الاصطناعي
+plt-ia-describir = صِفه
+plt-ia-pista = مثال: مخطط أسبوعي بجدول من 7 إلى 22 وقائمة مهام وعادات
+plt-ia-crear = إنشاء
+plt-ia-pensando = يفكر…
+plt-ia-vista-previa = معاينة الذكاء الاصطناعي
+plt-ia-aplicar = تطبيق
+plt-ia-descartar = تجاهل
+plt-ia-ajustar = تعديل المحدد
+plt-ia-ajustar-pista = مثال: صفوف أكثر، اجعله في عمودين
+plt-ia-sugerir = اقتراح محتوى
+plt-ia-sin-clave = لا يوجد مفتاح ذكاء اصطناعي: صُنع دون نموذج. أضف مفتاح Claude أو DeepSeek في إعدادات PinDesk.
+plt-ia-error = تعذّر على الذكاء الاصطناعي: { $motivo }
 plt-ia-avisos = { $n ->
-    [one] { $n } thing in the answer was fixed
-   *[other] { $n } things in the answer were fixed
+    [one] تم إصلاح شيء واحد في الرد
+    [two] تم إصلاح شيئين في الرد
+    [few] تم إصلاح { $n } أشياء في الرد
+   *[other] تم إصلاح { $n } شيئًا في الرد
 }
 
-## Notices
-plt-guardado = Saved
-plt-exportado = Exported: { $ruta }
-plt-error-abrir = Could not open { $ruta }
-plt-error-guardar = Could not save: { $motivo }
-plt-cambios-sin-guardar = There are unsaved changes. Save them first?
-plt-filtro = PinDesk template
+## التنبيهات
+plt-guardado = تم الحفظ
+plt-exportado = تم التصدير: { $ruta }
+plt-error-abrir = تعذّر فتح { $ruta }
+plt-error-guardar = تعذّر الحفظ: { $motivo }
+plt-cambios-sin-guardar = هناك تغييرات غير محفوظة. هل تحفظها أولًا؟
+plt-filtro = قالب PinDesk
 
-## What a new block contains
-plt-def-seccion = Section
-plt-def-titulo = Title
-plt-def-texto = Write here
-plt-def-notas = Notes
-plt-def-imagen = Image
-plt-def-habitos = Water, Read, Exercise, Sleep 8 h
-plt-def-habitos-mas = Meditate, No screens, Walk, Fruit
-plt-def-animo = How do I feel?
-plt-def-prioridades = High, Medium, Low
-plt-def-prioridades-titulo = Priorities
-plt-def-cornell = Cues, Notes, Summary
-plt-def-reunion = Meeting
-plt-def-reunion-rotulos = Date, Attendees, Agenda, Decisions, Action items
-plt-def-tareas = Tasks
-plt-def-metas = Goals
-plt-def-gratitud = I am grateful for
-plt-def-hoy = Today
-plt-def-manana = For tomorrow
-plt-def-semana = Week
-plt-def-importante = Important
-plt-def-cuando = When I can
+## محتوى الكتلة الجديدة
+plt-def-seccion = قسم
+plt-def-titulo = العنوان
+plt-def-texto = اكتب هنا
+plt-def-notas = ملاحظات
+plt-def-imagen = صورة
+plt-def-habitos = الماء، القراءة، الرياضة، نوم 8 ساعات
+plt-def-habitos-mas = تأمل، بلا شاشات، مشي، فاكهة
+plt-def-animo = كيف أشعر؟
+plt-def-prioridades = عالية، متوسطة، منخفضة
+plt-def-prioridades-titulo = الأولويات
+plt-def-cornell = الإشارات، الملاحظات، الخلاصة
+plt-def-reunion = اجتماع
+plt-def-reunion-rotulos = التاريخ، الحضور، جدول الأعمال، القرارات، المهام
+plt-def-tareas = المهام
+plt-def-metas = الأهداف
+plt-def-gratitud = أنا ممتن لـ
+plt-def-hoy = اليوم
+plt-def-manana = للغد
+plt-def-semana = الأسبوع
+plt-def-importante = مهم
+plt-def-cuando = عندما أستطيع

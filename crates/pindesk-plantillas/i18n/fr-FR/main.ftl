@@ -1,247 +1,245 @@
-# PinDesk Plantillas: UI strings (English, the reference together with es-ES).
-# Rules: docs/idiomas.md. Variables ({ $n }) are the same in every language.
+# PinDesk Plantillas : textes de l’interface (français).
 
-## The product
-# The working name: the same in every language (see NOMBRE_PRODUCTO).
+## Le produit
 plt-producto = PinDesk Plantillas
 
-## The top bar
-plt-nuevo = New
-plt-abrir = Open
-plt-guardar = Save
-plt-guardar-como = Save as…
-plt-exportar = Export
+## La barre du haut
+plt-nuevo = Nouveau
+plt-abrir = Ouvrir
+plt-guardar = Enregistrer
+plt-guardar-como = Enregistrer sous…
+plt-exportar = Exporter
 plt-exportar-pdf = PDF
 plt-exportar-png = PNG
 plt-exportar-svg = SVG
-plt-exportar-lienzo = Canvas (.excalidraw)
-plt-enviar-pindesk = Send to PinDesk
-plt-enviada = Sent: it is now in PinDesk Figures
-plt-galeria = Gallery
-plt-deshacer = Undo
-plt-rehacer = Redo
-plt-dia-noche = Day or night
-plt-cerrar = Close
+plt-exportar-lienzo = Canevas (.excalidraw)
+plt-enviar-pindesk = Envoyer à PinDesk
+plt-enviada = Envoyé : il est maintenant dans les Figures de PinDesk
+plt-galeria = Galerie
+plt-deshacer = Annuler
+plt-rehacer = Rétablir
+plt-dia-noche = Jour ou nuit
+plt-cerrar = Fermer
 
-## The gallery
-plt-galeria-titulo = Start from a template
-plt-galeria-vacia = Blank
-plt-gal-mensual = Monthly calendar
-plt-gal-diario = Daily journal
-plt-gal-semanal = Weekly planner
-plt-gal-dia = Daily planner
-plt-gal-tareas = To-do list
-plt-gal-habitos = Habit tracker
-plt-gal-cornell = Cornell notes
-plt-gal-reunion = Meeting notes
-plt-gal-puntos = Dot grid notebook
+## La galerie
+plt-galeria-titulo = Commencer avec un modèle
+plt-galeria-vacia = Vierge
+plt-gal-mensual = Calendrier mensuel
+plt-gal-diario = Journal
+plt-gal-semanal = Agenda hebdomadaire
+plt-gal-dia = Agenda du jour
+plt-gal-tareas = Liste de tâches
+plt-gal-habitos = Suivi des habitudes
+plt-gal-cornell = Notes Cornell
+plt-gal-reunion = Compte rendu de réunion
+plt-gal-puntos = Carnet à points
 
-## Pages
+## Les pages
 plt-paginas = { $n ->
     [one] { $n } page
    *[other] { $n } pages
 }
-plt-pagina-de = Page { $n } of { $total }
-plt-anterior = Previous
-plt-siguiente = Next
-plt-zoom-encajar = Fit
+plt-pagina-de = Page { $n } sur { $total }
+plt-anterior = Précédente
+plt-siguiente = Suivante
+plt-zoom-encajar = Ajuster
 
-## The panels
-plt-bloques = Blocks
-plt-arrastra = Drag onto the page
-plt-propiedades = Properties
+## Les panneaux
+plt-bloques = Blocs
+plt-arrastra = Glissez sur la page
+plt-propiedades = Propriétés
 plt-documento = Document
-plt-sin-seleccion = Pick a block or drag one from the left
-plt-editar-texto = Type and press Enter
-plt-nombre = Name
-plt-sin-titulo = Untitled
-plt-papel = Paper
-plt-horizontal = Landscape
-plt-margenes = Margins (mm)
-plt-tema = Theme
-plt-idioma-fechas = Date language
-plt-repetir = One page per
-plt-desde = From
-plt-hasta = To
-plt-sin-finde = Skip weekends
-plt-duplicar = Duplicate
-plt-borrar = Delete
-plt-subir = Move up
-plt-bajar = Move down
-plt-envolver-fila = Wrap in a row
-plt-envolver-columna = Wrap in a column
+plt-sin-seleccion = Choisissez un bloc ou glissez-en un depuis la gauche
+plt-editar-texto = Tapez et appuyez sur Entrée
+plt-nombre = Nom
+plt-sin-titulo = Sans titre
+plt-papel = Papier
+plt-horizontal = Paysage
+plt-margenes = Marges (mm)
+plt-tema = Thème
+plt-idioma-fechas = Langue des dates
+plt-repetir = Une page par
+plt-desde = Du
+plt-hasta = Au
+plt-sin-finde = Sans week-ends
+plt-duplicar = Dupliquer
+plt-borrar = Supprimer
+plt-subir = Monter
+plt-bajar = Descendre
+plt-envolver-fila = Dans une ligne
+plt-envolver-columna = Dans une colonne
 
-## Palette groups
-plt-grupo-estructura = Layout
-plt-grupo-texto = Text and notes
-plt-grupo-listas = Lists and tables
-plt-grupo-fechas = Dates and calendars
-plt-grupo-especiales = Specials
+## Les groupes de la palette
+plt-grupo-estructura = Structure
+plt-grupo-texto = Texte et notes
+plt-grupo-listas = Listes et tableaux
+plt-grupo-fechas = Dates et calendriers
+plt-grupo-especiales = Spéciaux
 
-## Blocks
-plt-pieza-fila = Row
-plt-pieza-columna = Column
-plt-pieza-rejilla = Grid
+## Les blocs
+plt-pieza-fila = Ligne
+plt-pieza-columna = Colonne
+plt-pieza-rejilla = Grille
 plt-pieza-seccion = Section
-plt-pieza-pila = Layers
-plt-pieza-encabezado = Heading
-plt-pieza-texto = Text
-plt-pieza-notas = Notes area
-plt-pieza-lineas = Ruled lines
-plt-pieza-puntos = Dots
-plt-pieza-cuadricula = Grid paper
-plt-pieza-divisor = Divider
-plt-pieza-espacio = Spacer
+plt-pieza-pila = Calques
+plt-pieza-encabezado = Titre
+plt-pieza-texto = Texte
+plt-pieza-notas = Zone de notes
+plt-pieza-lineas = Lignes
+plt-pieza-puntos = Points
+plt-pieza-cuadricula = Quadrillage
+plt-pieza-divisor = Séparateur
+plt-pieza-espacio = Espace
 plt-pieza-imagen = Image
-plt-pieza-vinetas = Bullets
-plt-pieza-casillas = Checkboxes
-plt-pieza-numerada = Numbered list
-plt-pieza-tabla = Table
-plt-pieza-campo = Date field
+plt-pieza-vinetas = Puces
+plt-pieza-casillas = Cases à cocher
+plt-pieza-numerada = Liste numérotée
+plt-pieza-tabla = Tableau
+plt-pieza-campo = Champ de date
 plt-pieza-campo_fecha = Date
-plt-pieza-campo_dia_semana = Weekday
-plt-pieza-campo_semana = Week number
-plt-pieza-campo_mes = Month
-plt-pieza-campo_pagina = Page number
-plt-pieza-calendario_mes = Month calendar
-plt-pieza-calendario_mini = Mini calendar
-plt-pieza-calendario_semana = Week
-plt-pieza-horario = Schedule
-plt-pieza-habitos = Habits
-plt-pieza-animo = Mood
-plt-pieza-prioridades = Priorities
-plt-pieza-cornell = Cornell notes
-plt-pieza-reunion = Meeting
+plt-pieza-campo_dia_semana = Jour de la semaine
+plt-pieza-campo_semana = Numéro de semaine
+plt-pieza-campo_mes = Mois
+plt-pieza-campo_pagina = Numéro de page
+plt-pieza-calendario_mes = Calendrier du mois
+plt-pieza-calendario_mini = Mini-calendrier
+plt-pieza-calendario_semana = Semaine
+plt-pieza-horario = Emploi du temps
+plt-pieza-habitos = Habitudes
+plt-pieza-animo = Humeur
+plt-pieza-prioridades = Priorités
+plt-pieza-cornell = Notes Cornell
+plt-pieza-reunion = Réunion
 
-## Properties
-plt-prop-tam = Size
-plt-prop-tam_mm = Millimetres
+## Les propriétés
+plt-prop-tam = Taille
+plt-prop-tam_mm = Millimètres
 plt-prop-tam_fr = Parts
-plt-prop-hueco = Gap
-plt-prop-columnas = Columns
-plt-prop-titulo = Title
-plt-prop-recuadro = Border
-plt-prop-texto = Text
-plt-prop-nivel = Level
-plt-prop-alineacion = Alignment
-plt-prop-puntos = Font size
-plt-prop-pauta = Ruling
-plt-prop-paso = Step
-plt-prop-items = Items
-plt-prop-vacias = Empty lines
-plt-prop-filas = Rows
-plt-prop-cabeceras = Headers
-plt-prop-trazo = Stroke
-plt-prop-etiqueta = Label
-plt-prop-campo = Value
+plt-prop-hueco = Espacement
+plt-prop-columnas = Colonnes
+plt-prop-titulo = Titre
+plt-prop-recuadro = Cadre
+plt-prop-texto = Texte
+plt-prop-nivel = Niveau
+plt-prop-alineacion = Alignement
+plt-prop-puntos = Taille du texte
+plt-prop-pauta = Réglure
+plt-prop-paso = Pas
+plt-prop-items = Éléments
+plt-prop-vacias = Lignes vides
+plt-prop-filas = Lignes
+plt-prop-cabeceras = En-têtes
+plt-prop-trazo = Trait
+plt-prop-etiqueta = Étiquette
+plt-prop-campo = Donnée
 plt-prop-formato = Format
-plt-prop-antes = Before
-plt-prop-despues = After
-plt-prop-negrita = Bold
-plt-prop-mes = Fixed month (YYYY-MM)
-plt-prop-mini = Small
-plt-prop-fin_de_semana = Include weekend
-plt-prop-desde = From
-plt-prop-hasta = Until
-plt-prop-dias = Days
-plt-prop-habitos = Habits
-plt-prop-niveles = Levels
-plt-prop-etiquetas = Labels
+plt-prop-antes = Avant
+plt-prop-despues = Après
+plt-prop-negrita = Gras
+plt-prop-mes = Mois fixe (AAAA-MM)
+plt-prop-mini = Petit
+plt-prop-fin_de_semana = Avec le week-end
+plt-prop-desde = À partir de
+plt-prop-hasta = Jusqu’à
+plt-prop-dias = Jours
+plt-prop-habitos = Habitudes
+plt-prop-niveles = Niveaux
+plt-prop-etiquetas = Libellés
 
-## Options
-plt-opcion-auto = Automatic
-plt-opcion-mm = Fixed
-plt-opcion-fr = Share
-plt-opcion-izquierda = Left
+## Les options
+plt-opcion-auto = Automatique
+plt-opcion-mm = Fixe
+plt-opcion-fr = Partage
+plt-opcion-izquierda = Gauche
 plt-opcion-centro = Centre
-plt-opcion-derecha = Right
-plt-opcion-rayado = Lines
-plt-opcion-puntos = Dots
-plt-opcion-cuadricula = Grid
-plt-opcion-blanco = Blank
-plt-opcion-continuo = Solid
-plt-opcion-discontinuo = Dashed
-plt-opcion-punteado = Dotted
+plt-opcion-derecha = Droite
+plt-opcion-rayado = Lignes
+plt-opcion-puntos = Points
+plt-opcion-cuadricula = Quadrillage
+plt-opcion-blanco = Vierge
+plt-opcion-continuo = Continu
+plt-opcion-discontinuo = Tirets
+plt-opcion-punteado = Pointillé
 plt-opcion-acento = Accent
 plt-opcion-fecha = Date
-plt-opcion-dia = Day
-plt-opcion-dia_semana = Weekday
-plt-opcion-semana = Week
-plt-opcion-mes = Month
-plt-opcion-ano = Year
+plt-opcion-dia = Jour
+plt-opcion-dia_semana = Jour de la semaine
+plt-opcion-semana = Semaine
+plt-opcion-mes = Mois
+plt-opcion-ano = Année
 plt-opcion-pagina = Page
-plt-opcion-corto = Short
+plt-opcion-corto = Court
 plt-opcion-largo = Long
-plt-opcion-completo = Full
+plt-opcion-completo = Complet
 plt-opcion-iso = ISO
-plt-opcion-numero = Number
-plt-opcion-abreviado = Abbreviated
-plt-opcion-letra = Initial
+plt-opcion-numero = Nombre
+plt-opcion-abreviado = Abrégé
+plt-opcion-letra = Initiale
 
-## Paper, themes and repetition
+## Le papier, les thèmes et la répétition
 plt-papel-a4 = A4
 plt-papel-a5 = A5
-plt-papel-carta = Letter
-plt-papel-tableta = Tablet
-plt-papel-pantalla = Screen 16:9
-plt-papel-medida = Custom
-plt-tema-planificacion = Planning
-plt-tema-academico = Academic
-plt-tema-creativo = Creative
+plt-papel-carta = Lettre US
+plt-papel-tableta = Tablette
+plt-papel-pantalla = Écran 16:9
+plt-papel-medida = Personnalisé
+plt-tema-planificacion = Planification
+plt-tema-academico = Études
+plt-tema-creativo = Créatif
 plt-tema-diario = Journal
 plt-tema-minimo = Minimal
-plt-tema-noche = Night
-plt-tema-propio = Custom
-plt-cada-ninguna = Just one
-plt-cada-dia = Day
-plt-cada-semana = Week
-plt-cada-mes = Month
+plt-tema-noche = Nuit
+plt-tema-propio = Personnalisé
+plt-cada-ninguna = Une seule
+plt-cada-dia = Jour
+plt-cada-semana = Semaine
+plt-cada-mes = Mois
 
-## AI
-plt-ia-describir = Describe it
-plt-ia-pista = For example: weekly planner with a 7 to 22 schedule, a to-do list and habits
-plt-ia-crear = Create
-plt-ia-pensando = Thinking…
-plt-ia-vista-previa = AI preview
-plt-ia-aplicar = Apply
-plt-ia-descartar = Discard
-plt-ia-ajustar = Adjust the selection
-plt-ia-ajustar-pista = For example: more rows, put it in two columns
-plt-ia-sugerir = Suggest a fill
-plt-ia-sin-clave = No AI key: made without a model. Add your Claude or DeepSeek key in PinDesk Settings.
-plt-ia-error = The AI could not do it: { $motivo }
+## L’IA
+plt-ia-describir = Décrivez-le
+plt-ia-pista = Par exemple : agenda hebdomadaire avec horaires de 7 h à 22 h, liste de tâches et habitudes
+plt-ia-crear = Créer
+plt-ia-pensando = Réflexion…
+plt-ia-vista-previa = Aperçu de l’IA
+plt-ia-aplicar = Appliquer
+plt-ia-descartar = Ignorer
+plt-ia-ajustar = Ajuster la sélection
+plt-ia-ajustar-pista = Par exemple : plus de lignes, mets-le sur deux colonnes
+plt-ia-sugerir = Suggérer un contenu
+plt-ia-sin-clave = Pas de clé d’IA : fait sans modèle. Ajoutez votre clé Claude ou DeepSeek dans les Réglages de PinDesk.
+plt-ia-error = L’IA n’a pas pu : { $motivo }
 plt-ia-avisos = { $n ->
-    [one] { $n } thing in the answer was fixed
-   *[other] { $n } things in the answer were fixed
+    [one] { $n } élément de la réponse a été corrigé
+   *[other] { $n } éléments de la réponse ont été corrigés
 }
 
-## Notices
-plt-guardado = Saved
-plt-exportado = Exported: { $ruta }
-plt-error-abrir = Could not open { $ruta }
-plt-error-guardar = Could not save: { $motivo }
-plt-cambios-sin-guardar = There are unsaved changes. Save them first?
-plt-filtro = PinDesk template
+## Avis
+plt-guardado = Enregistré
+plt-exportado = Exporté : { $ruta }
+plt-error-abrir = Impossible d’ouvrir { $ruta }
+plt-error-guardar = Impossible d’enregistrer : { $motivo }
+plt-cambios-sin-guardar = Des modifications ne sont pas enregistrées. Les enregistrer d’abord ?
+plt-filtro = Modèle PinDesk
 
-## What a new block contains
+## Le contenu d’un nouveau bloc
 plt-def-seccion = Section
-plt-def-titulo = Title
-plt-def-texto = Write here
+plt-def-titulo = Titre
+plt-def-texto = Écrivez ici
 plt-def-notas = Notes
 plt-def-imagen = Image
-plt-def-habitos = Water, Read, Exercise, Sleep 8 h
-plt-def-habitos-mas = Meditate, No screens, Walk, Fruit
-plt-def-animo = How do I feel?
-plt-def-prioridades = High, Medium, Low
-plt-def-prioridades-titulo = Priorities
-plt-def-cornell = Cues, Notes, Summary
-plt-def-reunion = Meeting
-plt-def-reunion-rotulos = Date, Attendees, Agenda, Decisions, Action items
-plt-def-tareas = Tasks
-plt-def-metas = Goals
-plt-def-gratitud = I am grateful for
-plt-def-hoy = Today
-plt-def-manana = For tomorrow
-plt-def-semana = Week
+plt-def-habitos = Eau, Lecture, Sport, Dormir 8 h
+plt-def-habitos-mas = Méditer, Sans écrans, Marche, Fruits
+plt-def-animo = Comment je me sens ?
+plt-def-prioridades = Haute, Moyenne, Basse
+plt-def-prioridades-titulo = Priorités
+plt-def-cornell = Mots-clés, Notes, Résumé
+plt-def-reunion = Réunion
+plt-def-reunion-rotulos = Date, Participants, Ordre du jour, Décisions, Actions
+plt-def-tareas = Tâches
+plt-def-metas = Objectifs
+plt-def-gratitud = Je suis reconnaissant pour
+plt-def-hoy = Aujourd’hui
+plt-def-manana = Pour demain
+plt-def-semana = Semaine
 plt-def-importante = Important
-plt-def-cuando = When I can
+plt-def-cuando = Quand je peux

@@ -1,247 +1,247 @@
-# PinDesk Plantillas: UI strings (English, the reference together with es-ES).
-# Rules: docs/idiomas.md. Variables ({ $n }) are the same in every language.
+# PinDesk Plantillas: тексты интерфейса (русский).
 
-## The product
-# The working name: the same in every language (see NOMBRE_PRODUCTO).
+## Продукт
 plt-producto = PinDesk Plantillas
 
-## The top bar
-plt-nuevo = New
-plt-abrir = Open
-plt-guardar = Save
-plt-guardar-como = Save as…
-plt-exportar = Export
+## Верхняя панель
+plt-nuevo = Новый
+plt-abrir = Открыть
+plt-guardar = Сохранить
+plt-guardar-como = Сохранить как…
+plt-exportar = Экспорт
 plt-exportar-pdf = PDF
 plt-exportar-png = PNG
 plt-exportar-svg = SVG
-plt-exportar-lienzo = Canvas (.excalidraw)
-plt-enviar-pindesk = Send to PinDesk
-plt-enviada = Sent: it is now in PinDesk Figures
-plt-galeria = Gallery
-plt-deshacer = Undo
-plt-rehacer = Redo
-plt-dia-noche = Day or night
-plt-cerrar = Close
+plt-exportar-lienzo = Холст (.excalidraw)
+plt-enviar-pindesk = Отправить в PinDesk
+plt-enviada = Отправлено: теперь в фигурах PinDesk
+plt-galeria = Галерея
+plt-deshacer = Отменить
+plt-rehacer = Повторить
+plt-dia-noche = День или ночь
+plt-cerrar = Закрыть
 
-## The gallery
-plt-galeria-titulo = Start from a template
-plt-galeria-vacia = Blank
-plt-gal-mensual = Monthly calendar
-plt-gal-diario = Daily journal
-plt-gal-semanal = Weekly planner
-plt-gal-dia = Daily planner
-plt-gal-tareas = To-do list
-plt-gal-habitos = Habit tracker
-plt-gal-cornell = Cornell notes
-plt-gal-reunion = Meeting notes
-plt-gal-puntos = Dot grid notebook
+## Галерея
+plt-galeria-titulo = Начните с шаблона
+plt-galeria-vacia = Пустой
+plt-gal-mensual = Календарь на месяц
+plt-gal-diario = Дневник
+plt-gal-semanal = Планер на неделю
+plt-gal-dia = Планер на день
+plt-gal-tareas = Список дел
+plt-gal-habitos = Трекер привычек
+plt-gal-cornell = Конспект Корнелла
+plt-gal-reunion = Протокол встречи
+plt-gal-puntos = Тетрадь в точку
 
-## Pages
+## Страницы
 plt-paginas = { $n ->
-    [one] { $n } page
-   *[other] { $n } pages
+    [one] { $n } страница
+    [few] { $n } страницы
+   *[other] { $n } страниц
 }
-plt-pagina-de = Page { $n } of { $total }
-plt-anterior = Previous
-plt-siguiente = Next
-plt-zoom-encajar = Fit
+plt-pagina-de = Страница { $n } из { $total }
+plt-anterior = Назад
+plt-siguiente = Вперёд
+plt-zoom-encajar = По размеру
 
-## The panels
-plt-bloques = Blocks
-plt-arrastra = Drag onto the page
-plt-propiedades = Properties
-plt-documento = Document
-plt-sin-seleccion = Pick a block or drag one from the left
-plt-editar-texto = Type and press Enter
-plt-nombre = Name
-plt-sin-titulo = Untitled
-plt-papel = Paper
-plt-horizontal = Landscape
-plt-margenes = Margins (mm)
-plt-tema = Theme
-plt-idioma-fechas = Date language
-plt-repetir = One page per
-plt-desde = From
-plt-hasta = To
-plt-sin-finde = Skip weekends
-plt-duplicar = Duplicate
-plt-borrar = Delete
-plt-subir = Move up
-plt-bajar = Move down
-plt-envolver-fila = Wrap in a row
-plt-envolver-columna = Wrap in a column
+## Панели
+plt-bloques = Блоки
+plt-arrastra = Перетащите на страницу
+plt-propiedades = Свойства
+plt-documento = Документ
+plt-sin-seleccion = Выберите блок или перетащите новый слева
+plt-editar-texto = Введите и нажмите Enter
+plt-nombre = Название
+plt-sin-titulo = Без названия
+plt-papel = Бумага
+plt-horizontal = Альбомная
+plt-margenes = Поля (мм)
+plt-tema = Тема
+plt-idioma-fechas = Язык дат
+plt-repetir = Одна страница на
+plt-desde = С
+plt-hasta = По
+plt-sin-finde = Без выходных
+plt-duplicar = Дублировать
+plt-borrar = Удалить
+plt-subir = Выше
+plt-bajar = Ниже
+plt-envolver-fila = В строку
+plt-envolver-columna = В колонку
 
-## Palette groups
-plt-grupo-estructura = Layout
-plt-grupo-texto = Text and notes
-plt-grupo-listas = Lists and tables
-plt-grupo-fechas = Dates and calendars
-plt-grupo-especiales = Specials
+## Группы палитры
+plt-grupo-estructura = Структура
+plt-grupo-texto = Текст и заметки
+plt-grupo-listas = Списки и таблицы
+plt-grupo-fechas = Даты и календари
+plt-grupo-especiales = Особые
 
-## Blocks
-plt-pieza-fila = Row
-plt-pieza-columna = Column
-plt-pieza-rejilla = Grid
-plt-pieza-seccion = Section
-plt-pieza-pila = Layers
-plt-pieza-encabezado = Heading
-plt-pieza-texto = Text
-plt-pieza-notas = Notes area
-plt-pieza-lineas = Ruled lines
-plt-pieza-puntos = Dots
-plt-pieza-cuadricula = Grid paper
-plt-pieza-divisor = Divider
-plt-pieza-espacio = Spacer
-plt-pieza-imagen = Image
-plt-pieza-vinetas = Bullets
-plt-pieza-casillas = Checkboxes
-plt-pieza-numerada = Numbered list
-plt-pieza-tabla = Table
-plt-pieza-campo = Date field
-plt-pieza-campo_fecha = Date
-plt-pieza-campo_dia_semana = Weekday
-plt-pieza-campo_semana = Week number
-plt-pieza-campo_mes = Month
-plt-pieza-campo_pagina = Page number
-plt-pieza-calendario_mes = Month calendar
-plt-pieza-calendario_mini = Mini calendar
-plt-pieza-calendario_semana = Week
-plt-pieza-horario = Schedule
-plt-pieza-habitos = Habits
-plt-pieza-animo = Mood
-plt-pieza-prioridades = Priorities
-plt-pieza-cornell = Cornell notes
-plt-pieza-reunion = Meeting
+## Блоки
+plt-pieza-fila = Строка
+plt-pieza-columna = Колонка
+plt-pieza-rejilla = Сетка
+plt-pieza-seccion = Раздел
+plt-pieza-pila = Слои
+plt-pieza-encabezado = Заголовок
+plt-pieza-texto = Текст
+plt-pieza-notas = Поле для заметок
+plt-pieza-lineas = Линейки
+plt-pieza-puntos = Точки
+plt-pieza-cuadricula = Клетка
+plt-pieza-divisor = Разделитель
+plt-pieza-espacio = Отступ
+plt-pieza-imagen = Изображение
+plt-pieza-vinetas = Маркированный список
+plt-pieza-casillas = Флажки
+plt-pieza-numerada = Нумерованный список
+plt-pieza-tabla = Таблица
+plt-pieza-campo = Поле даты
+plt-pieza-campo_fecha = Дата
+plt-pieza-campo_dia_semana = День недели
+plt-pieza-campo_semana = Номер недели
+plt-pieza-campo_mes = Месяц
+plt-pieza-campo_pagina = Номер страницы
+plt-pieza-calendario_mes = Календарь месяца
+plt-pieza-calendario_mini = Мини-календарь
+plt-pieza-calendario_semana = Неделя
+plt-pieza-horario = Расписание
+plt-pieza-habitos = Привычки
+plt-pieza-animo = Настроение
+plt-pieza-prioridades = Приоритеты
+plt-pieza-cornell = Конспект Корнелла
+plt-pieza-reunion = Встреча
 
-## Properties
-plt-prop-tam = Size
-plt-prop-tam_mm = Millimetres
-plt-prop-tam_fr = Parts
-plt-prop-hueco = Gap
-plt-prop-columnas = Columns
-plt-prop-titulo = Title
-plt-prop-recuadro = Border
-plt-prop-texto = Text
-plt-prop-nivel = Level
-plt-prop-alineacion = Alignment
-plt-prop-puntos = Font size
-plt-prop-pauta = Ruling
-plt-prop-paso = Step
-plt-prop-items = Items
-plt-prop-vacias = Empty lines
-plt-prop-filas = Rows
-plt-prop-cabeceras = Headers
-plt-prop-trazo = Stroke
-plt-prop-etiqueta = Label
-plt-prop-campo = Value
-plt-prop-formato = Format
-plt-prop-antes = Before
-plt-prop-despues = After
-plt-prop-negrita = Bold
-plt-prop-mes = Fixed month (YYYY-MM)
-plt-prop-mini = Small
-plt-prop-fin_de_semana = Include weekend
-plt-prop-desde = From
-plt-prop-hasta = Until
-plt-prop-dias = Days
-plt-prop-habitos = Habits
-plt-prop-niveles = Levels
-plt-prop-etiquetas = Labels
+## Свойства
+plt-prop-tam = Размер
+plt-prop-tam_mm = Миллиметры
+plt-prop-tam_fr = Доли
+plt-prop-hueco = Промежуток
+plt-prop-columnas = Колонки
+plt-prop-titulo = Заголовок
+plt-prop-recuadro = Рамка
+plt-prop-texto = Текст
+plt-prop-nivel = Уровень
+plt-prop-alineacion = Выравнивание
+plt-prop-puntos = Размер шрифта
+plt-prop-pauta = Разлиновка
+plt-prop-paso = Шаг
+plt-prop-items = Пункты
+plt-prop-vacias = Пустые строки
+plt-prop-filas = Строки
+plt-prop-cabeceras = Заголовки столбцов
+plt-prop-trazo = Линия
+plt-prop-etiqueta = Подпись
+plt-prop-campo = Значение
+plt-prop-formato = Формат
+plt-prop-antes = До
+plt-prop-despues = После
+plt-prop-negrita = Жирный
+plt-prop-mes = Фиксированный месяц (ГГГГ-ММ)
+plt-prop-mini = Маленький
+plt-prop-fin_de_semana = С выходными
+plt-prop-desde = С часа
+plt-prop-hasta = До часа
+plt-prop-dias = Дни
+plt-prop-habitos = Привычки
+plt-prop-niveles = Уровни
+plt-prop-etiquetas = Подписи
 
-## Options
-plt-opcion-auto = Automatic
-plt-opcion-mm = Fixed
-plt-opcion-fr = Share
-plt-opcion-izquierda = Left
-plt-opcion-centro = Centre
-plt-opcion-derecha = Right
-plt-opcion-rayado = Lines
-plt-opcion-puntos = Dots
-plt-opcion-cuadricula = Grid
-plt-opcion-blanco = Blank
-plt-opcion-continuo = Solid
-plt-opcion-discontinuo = Dashed
-plt-opcion-punteado = Dotted
-plt-opcion-acento = Accent
-plt-opcion-fecha = Date
-plt-opcion-dia = Day
-plt-opcion-dia_semana = Weekday
-plt-opcion-semana = Week
-plt-opcion-mes = Month
-plt-opcion-ano = Year
-plt-opcion-pagina = Page
-plt-opcion-corto = Short
-plt-opcion-largo = Long
-plt-opcion-completo = Full
+## Варианты
+plt-opcion-auto = Автоматически
+plt-opcion-mm = Фиксированный
+plt-opcion-fr = Доля
+plt-opcion-izquierda = Слева
+plt-opcion-centro = По центру
+plt-opcion-derecha = Справа
+plt-opcion-rayado = Линейки
+plt-opcion-puntos = Точки
+plt-opcion-cuadricula = Клетка
+plt-opcion-blanco = Пусто
+plt-opcion-continuo = Сплошная
+plt-opcion-discontinuo = Штриховая
+plt-opcion-punteado = Пунктир
+plt-opcion-acento = Акцент
+plt-opcion-fecha = Дата
+plt-opcion-dia = День
+plt-opcion-dia_semana = День недели
+plt-opcion-semana = Неделя
+plt-opcion-mes = Месяц
+plt-opcion-ano = Год
+plt-opcion-pagina = Страница
+plt-opcion-corto = Кратко
+plt-opcion-largo = Длинно
+plt-opcion-completo = Полностью
 plt-opcion-iso = ISO
-plt-opcion-numero = Number
-plt-opcion-abreviado = Abbreviated
-plt-opcion-letra = Initial
+plt-opcion-numero = Число
+plt-opcion-abreviado = Сокращённо
+plt-opcion-letra = Первая буква
 
-## Paper, themes and repetition
+## Бумага, темы и повтор
 plt-papel-a4 = A4
 plt-papel-a5 = A5
 plt-papel-carta = Letter
-plt-papel-tableta = Tablet
-plt-papel-pantalla = Screen 16:9
-plt-papel-medida = Custom
-plt-tema-planificacion = Planning
-plt-tema-academico = Academic
-plt-tema-creativo = Creative
-plt-tema-diario = Journal
-plt-tema-minimo = Minimal
-plt-tema-noche = Night
-plt-tema-propio = Custom
-plt-cada-ninguna = Just one
-plt-cada-dia = Day
-plt-cada-semana = Week
-plt-cada-mes = Month
+plt-papel-tableta = Планшет
+plt-papel-pantalla = Экран 16:9
+plt-papel-medida = Свой размер
+plt-tema-planificacion = Планирование
+plt-tema-academico = Учёба
+plt-tema-creativo = Творчество
+plt-tema-diario = Дневник
+plt-tema-minimo = Минимализм
+plt-tema-noche = Ночь
+plt-tema-propio = Своя
+plt-cada-ninguna = Только одна
+plt-cada-dia = День
+plt-cada-semana = Неделя
+plt-cada-mes = Месяц
 
-## AI
-plt-ia-describir = Describe it
-plt-ia-pista = For example: weekly planner with a 7 to 22 schedule, a to-do list and habits
-plt-ia-crear = Create
-plt-ia-pensando = Thinking…
-plt-ia-vista-previa = AI preview
-plt-ia-aplicar = Apply
-plt-ia-descartar = Discard
-plt-ia-ajustar = Adjust the selection
-plt-ia-ajustar-pista = For example: more rows, put it in two columns
-plt-ia-sugerir = Suggest a fill
-plt-ia-sin-clave = No AI key: made without a model. Add your Claude or DeepSeek key in PinDesk Settings.
-plt-ia-error = The AI could not do it: { $motivo }
+## ИИ
+plt-ia-describir = Опишите
+plt-ia-pista = Например: планер на неделю с расписанием с 7 до 22, списком дел и привычками
+plt-ia-crear = Создать
+plt-ia-pensando = Думаю…
+plt-ia-vista-previa = Предпросмотр ИИ
+plt-ia-aplicar = Применить
+plt-ia-descartar = Отклонить
+plt-ia-ajustar = Изменить выделенное
+plt-ia-ajustar-pista = Например: больше строк, раздели на две колонки
+plt-ia-sugerir = Предложить содержимое
+plt-ia-sin-clave = Нет ключа ИИ: сделано без модели. Добавьте ключ Claude или DeepSeek в настройках PinDesk.
+plt-ia-error = ИИ не справился: { $motivo }
 plt-ia-avisos = { $n ->
-    [one] { $n } thing in the answer was fixed
-   *[other] { $n } things in the answer were fixed
+    [one] В ответе исправлен { $n } момент
+    [few] В ответе исправлено { $n } момента
+   *[other] В ответе исправлено { $n } моментов
 }
 
-## Notices
-plt-guardado = Saved
-plt-exportado = Exported: { $ruta }
-plt-error-abrir = Could not open { $ruta }
-plt-error-guardar = Could not save: { $motivo }
-plt-cambios-sin-guardar = There are unsaved changes. Save them first?
-plt-filtro = PinDesk template
+## Уведомления
+plt-guardado = Сохранено
+plt-exportado = Экспортировано: { $ruta }
+plt-error-abrir = Не удалось открыть { $ruta }
+plt-error-guardar = Не удалось сохранить: { $motivo }
+plt-cambios-sin-guardar = Есть несохранённые изменения. Сохранить сначала?
+plt-filtro = Шаблон PinDesk
 
-## What a new block contains
-plt-def-seccion = Section
-plt-def-titulo = Title
-plt-def-texto = Write here
-plt-def-notas = Notes
-plt-def-imagen = Image
-plt-def-habitos = Water, Read, Exercise, Sleep 8 h
-plt-def-habitos-mas = Meditate, No screens, Walk, Fruit
-plt-def-animo = How do I feel?
-plt-def-prioridades = High, Medium, Low
-plt-def-prioridades-titulo = Priorities
-plt-def-cornell = Cues, Notes, Summary
-plt-def-reunion = Meeting
-plt-def-reunion-rotulos = Date, Attendees, Agenda, Decisions, Action items
-plt-def-tareas = Tasks
-plt-def-metas = Goals
-plt-def-gratitud = I am grateful for
-plt-def-hoy = Today
-plt-def-manana = For tomorrow
-plt-def-semana = Week
-plt-def-importante = Important
-plt-def-cuando = When I can
+## Содержимое нового блока
+plt-def-seccion = Раздел
+plt-def-titulo = Заголовок
+plt-def-texto = Пишите здесь
+plt-def-notas = Заметки
+plt-def-imagen = Изображение
+plt-def-habitos = Вода, Чтение, Спорт, Сон 8 ч
+plt-def-habitos-mas = Медитация, Без экранов, Прогулка, Фрукты
+plt-def-animo = Как я себя чувствую?
+plt-def-prioridades = Высокий, Средний, Низкий
+plt-def-prioridades-titulo = Приоритеты
+plt-def-cornell = Ключевые слова, Заметки, Итог
+plt-def-reunion = Встреча
+plt-def-reunion-rotulos = Дата, Участники, Повестка, Решения, Задачи
+plt-def-tareas = Задачи
+plt-def-metas = Цели
+plt-def-gratitud = Я благодарен за
+plt-def-hoy = Сегодня
+plt-def-manana = На завтра
+plt-def-semana = Неделя
+plt-def-importante = Важно
+plt-def-cuando = Когда будет время
