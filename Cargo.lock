@@ -1564,6 +1564,7 @@ dependencies = [
  "pindesk-pdf",
  "pindesk-pila",
  "pindesk-pin",
+ "pindesk-plantillas",
  "pindesk-proyecto",
  "pindesk-record",
  "pindesk-render",
@@ -1908,6 +1909,23 @@ dependencies = [
  "serde_json",
  "tiny-skia",
  "unic-langid",
+]
+
+[[package]]
+name = "pindesk-plantillas-app"
+version = "0.1.0"
+dependencies = [
+ "embed-resource",
+ "pindesk-capture",
+ "pindesk-geom",
+ "pindesk-ia",
+ "pindesk-plantillas",
+ "pindesk-render",
+ "pindesk-shell",
+ "pindesk-store",
+ "pindesk-ui",
+ "serde_json",
+ "windows",
 ]
 
 [[package]]
