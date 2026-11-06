@@ -2734,6 +2734,11 @@ horario-arrastra = Trascina «{ $asignatura }» nella settimana
 horario-no-guardado = Impossibile salvare l'orario
 tareas-destino-pista = Lista o materia dell'attività
 tareas-sin-asignatura = Nessuna materia (nell'Inbox)
+asignaturas-todas = Tutte
+chat-asignatura-poner = Materia…
+chat-asignatura-quitar = Nessuna materia
+chat-enviar-a-asignatura = Invia a una materia…
+chat-enviado-a-asignatura = Copiato in «{ $chat }» · { $asignatura }
 tareas-apuntar-en-asignatura = Nuova attività di { $asignatura }…
 # El marco para imprimir de los visores (19-oct-2026)
 marco-imprimir-pista = Trascina un riquadro su ciò che vuoi stampare · Invio: tutto · Esc: esci

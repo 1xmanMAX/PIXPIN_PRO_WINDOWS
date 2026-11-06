@@ -93,6 +93,7 @@ impl Estado {
         );
         let mut d = Diario::nuevo(ahora, &proyecto, &nombre, &self.temporal);
         d.nombre_proyecto = nombre_proyecto;
+        d.asignatura = pedido.asignatura.clone();
         // Ya no hay modos (29-oct-2026): se apunta como empezo, para quien
         // lea el diario.
         d.modo = self.modo_del_diario().palabra().to_string();

@@ -33,6 +33,7 @@
 pub mod acta_viva;
 pub mod almacen;
 pub mod anotado;
+pub mod asignatura;
 pub mod avatar;
 pub mod camara_del_movil;
 pub mod capas_del_pdf;

@@ -356,6 +356,11 @@ impl DiscoPc {
         if f.es_asistente() {
             kotlin::poner(&mut p, "asistente", Json::booleano(true));
         }
+        // Y el de las asignaturas (6-nov-2026), igual: el otro aparato lo
+        // reconoce sin mirar el nombre (ver `asignatura`).
+        if f.es_asignaturas() {
+            kotlin::poner(&mut p, crate::asignatura::MARCA_CHAT, Json::booleano(true));
+        }
         // La foto del chat (`avatar`, 25-oct-2026): la verdad es la ficha,
         // tambien con `proyecto.json`. Su imagen nacida aqui sale con ruta
         // portatil, y asi `alcance` la lleva con el proyecto.

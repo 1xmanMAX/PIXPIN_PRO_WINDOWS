@@ -2799,6 +2799,11 @@ horario-arrastra = “{ $asignatura }”을(를) 주간 표로 끌어 놓으세�
 horario-no-guardado = 시간표를 저장할 수 없습니다
 tareas-destino-pista = 작업의 목록 또는 과목
 tareas-sin-asignatura = 과목 없음(받은 편지함으로)
+asignaturas-todas = 전체
+chat-asignatura-poner = 과목…
+chat-asignatura-quitar = 과목 없음
+chat-enviar-a-asignatura = 과목으로 보내기…
+chat-enviado-a-asignatura = “{ $chat }”에 복사했습니다 · { $asignatura }
 tareas-apuntar-en-asignatura = 새 { $asignatura } 작업…
 
 # Viewers: the frame to print (2026-10-19)

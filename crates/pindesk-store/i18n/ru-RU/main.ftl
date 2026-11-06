@@ -2908,6 +2908,11 @@ horario-arrastra = Перетащите «{ $asignatura }» на неделю
 horario-no-guardado = Не удалось сохранить расписание
 tareas-destino-pista = Список или предмет задачи
 tareas-sin-asignatura = Без предмета (во «Входящие»)
+asignaturas-todas = Все
+chat-asignatura-poner = Предмет…
+chat-asignatura-quitar = Без предмета
+chat-enviar-a-asignatura = Отправить в предмет…
+chat-enviado-a-asignatura = Скопировано в «{ $chat }» · { $asignatura }
 tareas-apuntar-en-asignatura = Новая задача по предмету «{ $asignatura }»…
 
 # Viewers: the frame to print (2026-10-19)

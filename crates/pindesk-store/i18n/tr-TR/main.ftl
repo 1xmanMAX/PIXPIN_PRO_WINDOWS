@@ -2838,6 +2838,11 @@ horario-arrastra = “{ $asignatura }” dersini haftanın üzerine sürükleyin
 horario-no-guardado = Program kaydedilemedi
 tareas-destino-pista = Görevin listesi veya dersi
 tareas-sin-asignatura = Ders yok (Gelen kutusuna)
+asignaturas-todas = Tümü
+chat-asignatura-poner = Ders…
+chat-asignatura-quitar = Ders yok
+chat-enviar-a-asignatura = Derse gönder…
+chat-enviado-a-asignatura = “{ $chat }” sohbetine kopyalandı · { $asignatura }
 tareas-apuntar-en-asignatura = Yeni { $asignatura } görevi…
 
 # Viewers: the frame to print (2026-10-19)

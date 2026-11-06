@@ -2734,6 +2734,11 @@ horario-arrastra = Arraste “{ $asignatura }” para a semana
 horario-no-guardado = Não foi possível salvar o horário
 tareas-destino-pista = Lista ou disciplina da tarefa
 tareas-sin-asignatura = Sem disciplina (para o Inbox)
+asignaturas-todas = Todas
+chat-asignatura-poner = Disciplina…
+chat-asignatura-quitar = Sem disciplina
+chat-enviar-a-asignatura = Enviar para disciplina…
+chat-enviado-a-asignatura = Copiado para “{ $chat }” · { $asignatura }
 tareas-apuntar-en-asignatura = Nova tarefa de { $asignatura }…
 # El marco para imprimir de los visores (19-oct-2026)
 marco-imprimir-pista = Arraste um retângulo sobre o que você quer imprimir · Enter: tudo · Esc: sair

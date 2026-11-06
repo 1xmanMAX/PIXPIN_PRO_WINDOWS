@@ -2839,6 +2839,11 @@ horario-arrastra = Faites glisser « { $asignatura } » sur la semaine
 horario-no-guardado = Impossible d’enregistrer l’emploi du temps
 tareas-destino-pista = Liste ou matière de la tâche
 tareas-sin-asignatura = Sans matière (vers la Boîte de réception)
+asignaturas-todas = Toutes
+chat-asignatura-poner = Matière…
+chat-asignatura-quitar = Sans matière
+chat-enviar-a-asignatura = Envoyer à une matière…
+chat-enviado-a-asignatura = Copié dans « { $chat } » · { $asignatura }
 tareas-apuntar-en-asignatura = Nouvelle tâche de { $asignatura }…
 
 # Viewers: the frame to print (2026-10-19)

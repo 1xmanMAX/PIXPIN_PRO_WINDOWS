@@ -183,7 +183,7 @@ pub mod respuesta {
 /// accion desconocida sin esperar al bucle. La aplicacion tiene una prueba
 /// que comprueba que entiende todas (`pedidos.rs`): si una se anade aqui y
 /// no alli, falla.
-pub const ACCIONES: [&str; 40] = [
+pub const ACCIONES: [&str; 41] = [
     "abrir",
     "chat",
     "nota_nueva",
@@ -241,6 +241,9 @@ pub const ACCIONES: [&str; 40] = [
     // 1-nov: la ventana de Tareas en una lista, o en la de una asignatura
     // (`p geometría` de Flow).
     "abrir_lista",
+    // 6-nov: el chat «Asignaturas» con una asignatura elegida en su fila
+    // (`p geometría` de Flow → «Ver en el chat»).
+    "abrir_asignatura",
 ];
 
 /// Mira un pedido por encima: lo justo para contestar en el acto.

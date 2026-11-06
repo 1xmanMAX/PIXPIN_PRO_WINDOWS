@@ -2839,6 +2839,12 @@ horario-arrastra = Drag “{ $asignatura }” onto the week
 horario-no-guardado = The timetable could not be saved
 tareas-destino-pista = Task list or subject
 tareas-sin-asignatura = No subject (to the Inbox)
+# El chat «Asignaturas» (6-nov-2026): la fila de sus chips y el menu del mensaje.
+asignaturas-todas = All
+chat-asignatura-poner = Subject…
+chat-asignatura-quitar = No subject
+chat-enviar-a-asignatura = Send to subject…
+chat-enviado-a-asignatura = Copied to “{ $chat }” · { $asignatura }
 tareas-apuntar-en-asignatura = New { $asignatura } task…
 
 # Viewers: the frame to print (2026-10-19)

@@ -164,6 +164,10 @@ pub struct Diario {
     /// La lista de tareas elegida al preparar, `(proyecto, id)`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub temas_lista: Option<(String, String)>,
+    /// La asignatura de la clase (`crate::asignatura`): la recuperada la
+    /// lleva igual que la guardada. Sin asignatura, no va.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub asignatura: Option<String>,
 }
 
 /// La carpeta de todos los diarios.

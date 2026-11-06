@@ -122,6 +122,9 @@ pub(crate) mod sin_ventana {
 }
 /// «Enviar a Anki» del menu de un mensaje (24-oct-2026).
 mod anki;
+/// El chat «Asignaturas» agrupado por asignatura: su fila de chips, lo que
+/// se pone con uno elegido y «Asignatura…» del menu (6-nov-2026).
+mod asignaturas;
 /// Buscar dentro de todos los chats desde el buscador de la lista.
 mod buscar_en_chats;
 /// Las carpetas de paginas: un cuaderno con nombre dentro del chat, su
@@ -656,6 +659,33 @@ fn tomar_ir_a() -> Option<(String, Option<String>)> {
     IR_A.lock().ok().and_then(|mut g| g.take())
 }
 
+/// La asignatura con que abrir el chat «Asignaturas» (`ir_a_asignatura`):
+/// va con el `IR_A` de ese chat y se recoge con el.
+static ASIGNATURA_PEDIDA: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+/// **Abre el chat «Asignaturas» con la asignatura elegida** en su fila
+/// (6-nov-2026): lo de esa asignatura, y lo que se ponga sera suyo. Lo pide
+/// Flow Launcher (`p geometría` → «Ver en el chat»), por el pedido
+/// `abrir_asignatura`.
+pub(crate) fn ir_a_asignatura(
+    idioma: pindesk_store::Idioma,
+    ubicacion: Ubicacion,
+    opciones: OpcionesLienzo,
+    proyecto: String,
+    asignatura: String,
+) {
+    if let Ok(mut g) = ASIGNATURA_PEDIDA.lock() {
+        *g = Some(asignatura);
+    }
+    // El chat pudo nacer ahora mismo: que la lista lo lea antes de ir.
+    REFRESCAR.store(true, std::sync::atomic::Ordering::SeqCst);
+    ir_a(idioma, ubicacion, opciones, proyecto, None);
+}
+
+fn tomar_asignatura_pedida() -> Option<String> {
+    ASIGNATURA_PEDIDA.lock().ok().and_then(|mut g| g.take())
+}
+
 /// Alguien cambio por fuera lo que el chat tiene a la vista: hay que releer.
 ///
 /// Lo pone la sincronizacion con el movil, que escribe mensajes, proyectos y
@@ -841,6 +871,8 @@ fn releer_lo_abierto(ubicacion: &Ubicacion, a: &mut Abierto) -> bool {
     // Sincronizar puede haber traido hojas nuevas: la galeria tiene que
     // enterarse en la misma vuelta que el cuaderno.
     a.hojas_uid = pindesk_proyecto::almacen::uids_de_hojas(ubicacion.raiz(), &a.ficha.id);
+    // Y el horario: una asignatura nueva o renombrada cambia los chips.
+    a.asignaturas.releer(ubicacion.raiz(), &a.ficha);
     mensajes.sort_by_key(|m| m.cuando);
     a.vistas = mensajes
         .iter()
@@ -1931,6 +1963,7 @@ pub fn abrir(
                                     let primero = indices_visibles(a).first().copied();
                                     a.busqueda = None;
                                     a.por_etiqueta = None;
+                                    a.asignaturas.filtro = None;
                                     if let Some(j) = primero {
                                         a.ir_a = Some(j);
                                         a.resaltado = Some((j, std::time::Instant::now()));
@@ -1979,6 +2012,10 @@ pub fn abrir(
                                     // otra conversacion, y dejar el scroll de
                                     // antes la deja por la mitad.
                                     a.scroll = None;
+                                    Efecto::Nada
+                                }
+                                Zona::Asignatura(i) => {
+                                    asignaturas::pulsado(a, i, &identidad);
                                     Efecto::Nada
                                 }
                                 Zona::Abrir(i) => ejecutar(Accion::Pinear(i), a, &cx),
@@ -4457,6 +4494,10 @@ pub fn abrir(
                         // ver ese mensaje. La hoja se guarda al cerrarse.
                         a.info = None;
                         cerrar_panel(ubicacion, a);
+                        // Con su asignatura elegida, si se pidio una.
+                        if let Some(n) = tomar_asignatura_pedida() {
+                            asignaturas::elegir(a, Some(n), &identidad);
+                        }
                         if let Some(j) = codigo.and_then(|c| indice_de_codigo(&a.mensajes, &c)) {
                             // Lo de dentro de una carpeta, a su tarjeta.
                             let j = buscar_en_chats::adonde_saltar(&a.mensajes, j);
@@ -4471,6 +4512,13 @@ pub fn abrir(
                     tracing::warn!(%proyecto, "el universo pidio un proyecto que no esta en la lista")
                 }
             }
+        }
+        // Lo que se puso en el chat «Asignaturas» con una asignatura elegida
+        // es de ella, entrara por donde entrara (`asignaturas`).
+        if let Some(a) = abierto.as_mut()
+            && asignaturas::etiquetar_lo_nuevo(a)
+        {
+            hay_que_pintar = true;
         }
         // Lo encontrado en todos los chats que se pulso para abrirlo: ya en
         // su chat, se toca su burbuja, que lo abre en su visor.
@@ -4603,7 +4651,7 @@ pub fn abrir(
             && a.letra.is_none()
             && a.colocado.borrow().puestos.len() == cuantas_se_ven(a)
         {
-            if a.busqueda.is_none() && a.por_etiqueta.is_none() {
+            if a.busqueda.is_none() && a.por_etiqueta.is_none() && a.asignaturas.filtro.is_none() {
                 let area = area_del_historial(&disposicion, a, escala);
                 let c = a.colocado.borrow();
                 let ids: Vec<&str> = c
@@ -5510,6 +5558,9 @@ struct Abierto {
     /// queda medio vacia sin que nada diga por que. Un filtro que no se ve
     /// no existe para quien mira.
     por_etiqueta: Option<String>,
+    /// En el chat «Asignaturas»: la asignatura elegida en su fila y las del
+    /// horario (`asignaturas`).
+    asignaturas: asignaturas::Estado,
     /// Lo que ocupa la seccion abierta, que solo se sabe al colocarla.
     alto_info: std::cell::Cell<u32>,
     /// Los codigos unicos de las hojas del `proyecto.json`. Es lo que la
@@ -5716,6 +5767,8 @@ struct Colocado {
     /// busqueda: sin esto, pulsar un chip no rehace la colocacion y las
     /// burbujas se quedan como estaban.
     por_etiqueta: Option<String>,
+    /// Y con que asignatura de la fila del chat «Asignaturas».
+    asignatura: Option<String>,
     puestos: Vec<pindesk_ui::historial::Puesto>,
     /// De que se compone cada burbuja, ya medido, en el mismo orden.
     piezas: Vec<Piezas>,
@@ -6595,6 +6648,11 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
         }
     }
 
+    // La fila de las asignaturas del chat «Asignaturas», debajo de todo eso.
+    if let Some(fila) = asignaturas::fila(d, a, escala) {
+        asignaturas::pintar(p, a, fila, tema, textos, e);
+    }
+
     // El area de los mensajes: entre la cabecera (o el fijado) y la caja.
     let area = area_del_historial(d, a, escala);
     if a.mensajes.is_empty() {
@@ -6624,6 +6682,7 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
             || c.puestos.len() != cuantas_se_ven(a)
             || c.busqueda != aguja
             || c.por_etiqueta != a.por_etiqueta
+            || c.asignatura != a.asignaturas.filtro
             || c.compartidos != generacion
         {
             // Buscando, solo se miden y se colocan las que casan: el movil
@@ -6670,6 +6729,7 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
             // Pegado al final no hace falta: lo de abajo manda.
             if c.busqueda == aguja
                 && c.por_etiqueta == a.por_etiqueta
+                && c.asignatura == a.asignaturas.filtro
                 && let Some(s) = a.scroll.map(|s| s + a.corrimiento.get())
                 && let Some((cual, desde_arriba)) =
                     pindesk_ui::desliz::ancla(&c.puestos, s, area.alto)
@@ -6686,6 +6746,7 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
                 ids,
                 busqueda: aguja.clone(),
                 por_etiqueta: a.por_etiqueta.clone(),
+                asignatura: a.asignaturas.filtro.clone(),
                 puestos,
                 piezas: todas,
                 de_otro,
@@ -6715,7 +6776,7 @@ fn pintar_historial(p: &Pintor, d: &Disposicion, c: &Pinta, a: &Abierto) {
     let scroll = propio.unwrap_or_else(|| h::scroll_maximo(area, a.alto.get()));
     // Donde se queda este chat y lo que hay sin ver debajo (`donde_se_dejo`).
     // Buscando, lo que se ve es otra lista: no se apunta.
-    if a.busqueda.is_none() && a.por_etiqueta.is_none() {
+    if a.busqueda.is_none() && a.por_etiqueta.is_none() && a.asignaturas.filtro.is_none() {
         let ids: Vec<&str> = c
             .visibles
             .iter()
@@ -8162,6 +8223,10 @@ fn se_ve(a: &Abierto, m: &pindesk_proyecto::cuaderno::Mensaje) -> bool {
     {
         return false;
     }
+    // Y la asignatura elegida arriba del chat «Asignaturas».
+    if !asignaturas::pasa(a, m) {
+        return false;
+    }
     match a.por_etiqueta.as_deref() {
         None => true,
         Some(e) => m.emoji.as_deref() == Some(e),
@@ -8221,7 +8286,10 @@ fn hay_barra(a: &Abierto) -> bool {
 
 /// El area de las burbujas, ya descontada la fila de chips si la hay.
 fn area_del_historial(d: &Disposicion, a: &Abierto, escala: u32) -> Rect {
-    d.historial(a.alto_caja.get(), hay_barra(a), chips_de(a).len(), escala)
+    asignaturas::sin_la_fila(
+        d.historial(a.alto_caja.get(), hay_barra(a), chips_de(a).len(), escala),
+        asignaturas::fila(d, a, escala),
+    )
 }
 
 /// La letra del nombre de quien escribe, encima de su tanda.
@@ -8620,7 +8688,7 @@ fn medir_mensaje(
         );
     }
     // Sus chapas, debajo del nombre (`chapas`).
-    let chapas = chapas::medir(p, m, textos, e, ancho_max);
+    let chapas = chapas::medir(p, m, textos, e, ancho_max, a.asignaturas.filtro.is_none());
     if let Some(c) = &chapas {
         sumar(&mut ancho, &mut alto, c.ancho, c.alto);
     }
@@ -9820,6 +9888,7 @@ fn abrir_proyecto(ubicacion: &Ubicacion, ficha: &pindesk_proyecto::almacen::Fich
         vivo: None,
         busqueda: None,
         por_etiqueta: None,
+        asignaturas: asignaturas::Estado::de(ubicacion.raiz(), ficha),
         comentando: None,
         barriendo: false,
         desplegados: Default::default(),
@@ -12213,14 +12282,58 @@ pub(crate) fn terminar_la_clase_para_salir(tope: std::time::Duration) -> bool {
 /// **Graba una clase o una reunion** (24-oct-2026): la ventanita de
 /// [`grabar_clase`], que guarda en el proyecto elegido la nota con sus
 /// capturas y la pasa a texto. Sin proyectos, en «Guardados».
+///
+/// `desde`: el chat abierto al pulsarlo (y la asignatura elegida en su fila,
+/// si es el de las asignaturas); `None` desde la bandeja o un atajo. Con el
+/// horario decide el chat que sale primero y la asignatura de la clase
+/// (`pindesk_proyecto::asignatura::adonde_la_grabacion`, 6-nov-2026).
 pub(crate) fn grabar_clase(
     textos: &Catalogo,
     ubicacion: &Ubicacion,
     idioma: pindesk_store::Idioma,
     aparato: &str,
+    desde: Option<(&pindesk_proyecto::almacen::Ficha, Option<&str>)>,
 ) {
+    use pindesk_proyecto::asignatura::{self as asig, Adonde};
     let raiz = ubicacion.raiz();
     let mut proyectos = crate::captura2::al_chat::proyectos(raiz);
+    let abierto = match desde {
+        None => asig::Abierto::Ninguno,
+        Some((f, filtro)) if f.es_asignaturas() => asig::Abierto::Asignaturas(filtro),
+        Some((f, _)) if f.es_guardados() || f.es_asistente() => asig::Abierto::DeLaApp,
+        Some(_) => asig::Abierto::Otro,
+    };
+    let en_clase = crate::horario::asignaturas::en_clase_ahora(raiz);
+    let (adonde, asignatura) = asig::adonde_la_grabacion(abierto, en_clase.as_deref());
+    let primero = match adonde {
+        Adonde::ElAbierto => desde.map(|(f, _)| f.id.clone()),
+        Adonde::Asignaturas => match crate::horario::asignaturas::asegurar_ficha(raiz, aparato) {
+            Ok(f) => {
+                if !proyectos.iter().any(|(id, _)| *id == f.id) {
+                    proyectos.push((f.id.clone(), f.nombre.clone()));
+                }
+                // En el selector dice de que asignatura: «Asignaturas ·
+                // Geometría».
+                if let Some(n) = &asignatura
+                    && let Some((_, nombre)) = proyectos.iter_mut().find(|(id, _)| *id == f.id)
+                {
+                    *nombre = format!("{nombre} · {n}");
+                }
+                Some(f.id)
+            }
+            Err(e) => {
+                tracing::warn!(?e, "sin el chat «Asignaturas» para la clase");
+                None
+            }
+        },
+        Adonde::ComoSiempre => None,
+    };
+    if let Some(id) = primero
+        && let Some(i) = proyectos.iter().position(|(p, _)| *p == id)
+    {
+        let p = proyectos.remove(i);
+        proyectos.insert(0, p);
+    }
     if proyectos.is_empty() {
         match pindesk_proyecto::almacen::asegurar_guardados(
             raiz,
@@ -12240,6 +12353,7 @@ pub(crate) fn grabar_clase(
             idioma,
             aparato: aparato.to_string(),
             proyectos,
+            asignatura,
         },
         grabar_clase::Rotulos::de(textos),
     );
@@ -15852,6 +15966,9 @@ enum Zona {
     /// Un chip de etiqueta de la fila de buscar, por su sitio en `chips_de`:
     /// filtra por ese emoji, y volver a pulsarlo quita el filtro.
     Chip(usize),
+    /// Un chip de la fila de las asignaturas (`asignaturas::chips`, por su
+    /// sitio); `None` es «Todas».
+    Asignatura(Option<usize>),
     CerrarRespuesta,
     SelCerrar,
     SelCopiar,
@@ -17675,6 +17792,14 @@ enum Accion {
     Ir(usize),
     Reenviar(Vec<usize>),
     ReenviarA(Vec<usize>, String),
+    /// «Enviar a asignatura…» (6-nov-2026): elegir la asignatura, y mandar
+    /// una copia con su etiqueta al chat «Asignaturas».
+    EnviarAAsignatura(Vec<usize>),
+    EnviarAAsignaturaA(Vec<usize>, String),
+    /// «Asignatura…» en el chat «Asignaturas»: elegirla, y ponersela (con
+    /// `""`, quitarla).
+    PonerAsignatura(Vec<usize>),
+    PonerAsignaturaA(Vec<usize>, String),
     /// Dictar al chat: anotar lo propuesto (sin chat, elegirlo antes) y
     /// anotarlo en el chat elegido de la lista.
     Anotar,
@@ -18968,6 +19093,25 @@ fn menu_de_mensaje(a: &Abierto, i: usize, textos: &Catalogo) -> Vec<EntradaMenu>
         .con_tecla(Tecla::Letra('f'))
         .separada(),
     );
+    // **Lo de las asignaturas** (6-nov-2026): en su chat, ponerle o
+    // cambiarle la asignatura; en otro, mandarle una copia al chat
+    // «Asignaturas» con la suya. Solo con alguna asignatura que ofrecer.
+    if !pindesk_proyecto::cuaderno::es_de_sistema(m) && !asignaturas::para_el_menu(a, m).is_empty()
+    {
+        v.push(if a.ficha.es_asignaturas() {
+            entrada(
+                Some(&mi::MENU_BOOK),
+                textos.t("chat-asignatura-poner"),
+                Accion::PonerAsignatura(vec![i]),
+            )
+        } else {
+            entrada(
+                Some(&mi::MENU_BOOK),
+                textos.t("chat-enviar-a-asignatura"),
+                Accion::EnviarAAsignatura(vec![i]),
+            )
+        });
+    }
     v.push(entrada(
         Some(&mi::IOS_SHARE),
         textos.t("chat-compartir"),
@@ -19627,6 +19771,82 @@ fn ejecutar(accion: Accion, a: &mut Abierto, cx: &Contexto) -> Efecto {
             }
             ejecutar(Accion::Anotar, a, cx)
         }
+        Accion::EnviarAAsignatura(indices) => {
+            let Some(m) = indices.first().and_then(|&i| a.mensajes.get(i)) else {
+                return Efecto::Nada;
+            };
+            let v: Vec<EntradaMenu> = asignaturas::para_el_menu(a, m)
+                .into_iter()
+                .map(|n| {
+                    entrada(
+                        Some(&mi::MENU_BOOK),
+                        n.clone(),
+                        Accion::EnviarAAsignaturaA(indices.clone(), n),
+                    )
+                })
+                .collect();
+            Efecto::Menu(v)
+        }
+        Accion::EnviarAAsignaturaA(indices, nombre) => {
+            let destino = match crate::horario::asignaturas::asegurar_ficha(raiz, cx.identidad) {
+                Ok(f) => f,
+                Err(e) => return Efecto::Aviso(e.aviso(cx.textos)),
+            };
+            // Una carpeta (una clase grabada) va con lo suyo.
+            let todo = pindesk_proyecto::asignatura::paquete(&a.mensajes, &indices);
+            match reenviar_con(
+                cx.ubicacion,
+                a,
+                &todo,
+                &destino.id,
+                cx.identidad,
+                Some(&nombre),
+            ) {
+                Ok(_) => {
+                    a.marcados.clear();
+                    // El chat pudo nacer ahora: que la lista lo vea.
+                    refrescar();
+                    let mut args = fluent_bundle::FluentArgs::new();
+                    args.set("asignatura", nombre);
+                    args.set("chat", destino.nombre);
+                    Efecto::Aviso(cx.textos.t_args("chat-enviado-a-asignatura", &args))
+                }
+                Err(e) => fallo(&e),
+            }
+        }
+        Accion::PonerAsignatura(indices) => {
+            let Some(m) = indices.first().and_then(|&i| a.mensajes.get(i)) else {
+                return Efecto::Nada;
+            };
+            let tenia = pindesk_proyecto::asignatura::de(m).is_some();
+            let mut v: Vec<EntradaMenu> = asignaturas::para_el_menu(a, m)
+                .into_iter()
+                .map(|n| {
+                    entrada(
+                        Some(&mi::MENU_BOOK),
+                        n.clone(),
+                        Accion::PonerAsignaturaA(indices.clone(), n),
+                    )
+                })
+                .collect();
+            if tenia {
+                v.push(
+                    entrada(
+                        Some(&mi::CLOSE),
+                        cx.textos.t("chat-asignatura-quitar"),
+                        Accion::PonerAsignaturaA(indices.clone(), String::new()),
+                    )
+                    .separada(),
+                );
+            }
+            Efecto::Menu(v)
+        }
+        Accion::PonerAsignaturaA(indices, nombre) => {
+            match asignaturas::poner_en(a, &indices, &nombre) {
+                Ok(_) => Efecto::Cambio,
+                Err(e) => fallo(&e),
+            }
+        }
         Accion::ReenviarA(indices, destino) => {
             match reenviar(cx.ubicacion, a, &indices, &destino, cx.identidad) {
                 Ok(_) => {
@@ -20191,6 +20411,26 @@ fn reenviar(
     destino: &str,
     aparato: &str,
 ) -> std::io::Result<usize> {
+    reenviar_con(ubicacion, a, indices, destino, aparato, None)
+}
+
+/// [`reenviar`], y con `asignatura` cada copia lleva esa asignatura
+/// (`pindesk_proyecto::asignatura`, «Enviar a asignatura…»). Entonces lo
+/// que ya se mando alli no se copia otra vez: si iba a otra asignatura, se
+/// le cambia.
+///
+/// Los enlaces entre lo que se manda junto (la carpeta de una clase y sus
+/// paginas, la nota y sus capturas) siguen apuntando a lo suyo: cada copia
+/// estrena `id` y los de las demas se cambian en ella
+/// (`asignatura::remapear`).
+fn reenviar_con(
+    ubicacion: &Ubicacion,
+    a: &Abierto,
+    indices: &[usize],
+    destino: &str,
+    aparato: &str,
+    asignatura: Option<&str>,
+) -> std::io::Result<usize> {
     use pindesk_proyecto::{almacen, cuaderno};
     let raiz = ubicacion.raiz();
     let carpeta = almacen::carpeta(raiz, destino);
@@ -20201,23 +20441,40 @@ fn reenviar(
     ordenados.sort_by_key(|&i| a.mensajes.get(i).map(|m| m.cuando));
     let mut hechos = 0;
     let mut ultimo = String::new();
+    let mut copias = Vec::new();
+    let mut ids = std::collections::HashMap::new();
     for (k, &i) in ordenados.iter().enumerate() {
         let Some(m) = a.mensajes.get(i) else {
             continue;
         };
+        if let Some(n) = asignatura
+            && let Some(ya) = pindesk_proyecto::asignatura::ya_esta(&alli.mensajes, m)
+        {
+            // Ya esta alli: no se duplica; con otra asignatura, se cambia.
+            let mut ya = ya.clone();
+            if pindesk_proyecto::asignatura::poner(&mut ya, n) {
+                cuaderno::reemplazar(&carpeta, &ya)?;
+            }
+            hechos += 1;
+            continue;
+        }
         let cuando = ahora + k as i64;
         let mut copia = m.clone();
         copia.id = format!("{cuando}");
+        ids.insert(m.id.clone(), copia.id.clone());
         copia.cuando = cuando;
         copia.numero = numero;
         copia.uid = Some(pindesk_proyecto::codigos::nuevo());
         copia.aparato = Some(aparato.to_string());
         copia.letra = None;
-        copia.origen = m.uid.clone().or_else(|| Some(m.id.clone()));
+        copia.origen = Some(pindesk_proyecto::asignatura::origen_de(m));
         copia.proyecto = Some(destino.to_string());
         copia.fijado = false;
         copia.en_buzon = false;
         copia.responde_a = None;
+        if let Some(n) = asignatura {
+            pindesk_proyecto::asignatura::poner(&mut copia, n);
+        }
         // Reenviada deja de ser version: su original se queda en este chat.
         pindesk_proyecto::versiones::sin_vinculo(&mut copia);
         match ruta_del_mensaje(raiz, &a.ficha.id, m) {
@@ -20250,12 +20507,17 @@ fn reenviar(
                 std::fs::copy(&origen, &destino_lienzo)?;
             }
         }
+        copias.push(copia);
+        numero += 1;
+    }
+    let escritas = !copias.is_empty();
+    for mut copia in copias {
+        pindesk_proyecto::asignatura::remapear(&mut copia, &ids);
         cuaderno::anadir(&carpeta, &copia)?;
         ultimo = copia.resumen();
-        numero += 1;
         hechos += 1;
     }
-    if hechos > 0 {
+    if escritas {
         let mut indice = almacen::Indice::leer(raiz);
         if let Some(f) = indice.proyectos.iter_mut().find(|f| f.id == destino) {
             f.tocado = ahora;

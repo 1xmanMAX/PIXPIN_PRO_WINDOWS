@@ -7,6 +7,11 @@
 //! detras de su nombre es una tarea para ella: `p geometría resolver la hoja
 //! 3` → «Añadir tarea a Geometría» (pedido `anadir_tarea` con `asignatura`).
 //!
+//! **Su chat** (6-nov-2026): detras de la mejor, «Geometría en el chat
+//! «Asignaturas»» abre el chat de todas las asignaturas con ella elegida en
+//! su fila (pedido `abrir_asignatura`): sus clases grabadas, su lista y lo
+//! que se le mando, juntos.
+//!
 //! El plugin no lee `horario.md` (su formato es de la app): la app deja cada
 //! asignatura con sus clases y su lista en `<raiz>/cache/asignaturas.json`
 //! (`horario::asignaturas::para_flow`) cada vez que el horario cambia.
@@ -224,6 +229,26 @@ pub fn resultado(
     r
 }
 
+/// «Geometría en el chat «Asignaturas»»: el chat de las asignaturas con ella
+/// elegida arriba (pedido `abrir_asignatura`).
+pub fn resultado_en_el_chat(a: &Asignatura, ctx: &Contexto) -> Resultado {
+    let mut r = Resultado::nuevo(
+        format!("{} en el chat «Asignaturas»", a.nombre),
+        unir(&[
+            "Sus clases grabadas, su lista y lo que le mandaste",
+            "Intro: abrir el chat",
+        ]),
+        glifo::CHAT,
+        Accion::Pedido(pedido(
+            "abrir_asignatura",
+            json!({ "asignatura": a.nombre }),
+        )),
+    );
+    r.autocompletar = Some(ctx.consulta(&format!("{} ", a.nombre)));
+    r.clave = Some(format!("asignatura-chat/{}", normalizar(&a.nombre)));
+    r
+}
+
 /// «Añadir tarea a Geometría: …»: la tarea va a su lista (la app la busca
 /// por el nombre, y la crea si aun no esta). Flow se queda en la asignatura
 /// para apuntar otra.
@@ -286,9 +311,15 @@ pub fn para_lo_escrito(
         .filter(|(p, _)| *p > 0)
         .collect();
     v.sort_by_key(|x| std::cmp::Reverse(x.0));
-    v.into_iter()
+    let mut r: Vec<Resultado> = v
+        .iter()
         .map(|(_, a)| resultado(a, &listas, proyectos, ctx))
-        .collect()
+        .collect();
+    // Y la mejor, tambien en su chat: justo detras de ella.
+    if let Some((_, a)) = v.first() {
+        r.insert(1, resultado_en_el_chat(a, ctx));
+    }
+    r
 }
 
 /// Las claves (`lista/<chat>/<codigo>`) de las listas de las asignaturas

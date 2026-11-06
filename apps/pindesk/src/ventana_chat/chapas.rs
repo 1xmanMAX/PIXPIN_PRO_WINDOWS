@@ -5,6 +5,11 @@
 //!   movil (`Mensaje.escaneado {app, documento}`, que el PC guarda tal cual
 //!   en su `resto`). Solo dice de donde vino: «Editar en el escaner» es del
 //!   telefono, que es donde esta el escaner.
+//! - **«📘 Geometría»** (6-nov-2026): de que asignatura es
+//!   (`pindesk_proyecto::asignatura`): una clase grabada en su hora, lo que
+//!   se le mando con «Enviar a asignatura…» o se puso en el chat
+//!   «Asignaturas» con su chip elegido. Con ese chip puesto no sale: ya se
+//!   ve que todo es de ella.
 //! - **«Lectura veloz · 47 %»** (27-oct-2026, Android da4acbc7): se esta
 //!   leyendo en la app «Lectura Veloz» y por donde va alli (lo ultimo que
 //!   mando, guardado en este equipo: `crate::lectura_veloz::porcentaje`).
@@ -27,6 +32,7 @@ use pindesk_ui::chat;
 pub(super) enum Que {
     Escaneado,
     LecturaVeloz,
+    Asignatura,
 }
 
 pub(super) struct Chapa {
@@ -72,12 +78,14 @@ pub(super) fn porcentaje(m: &Mensaje) -> Option<u8> {
 }
 
 /// **Las chapas de un mensaje**, medidas; `None` si no lleva ninguna.
+/// `con_asignatura`: si sale la de su asignatura (no con su chip elegido).
 pub(super) fn medir(
     p: &Pintor,
     m: &Mensaje,
     textos: &Catalogo,
     e: f32,
     ancho_max: f32,
+    con_asignatura: bool,
 ) -> Option<Chapas> {
     let mut lista = Vec::new();
     let mut poner = |que, texto: String| {
@@ -93,6 +101,9 @@ pub(super) fn medir(
     }
     if let Some(pct) = porcentaje(m) {
         poner(Que::LecturaVeloz, crate::lectura_veloz::chapa(textos, pct));
+    }
+    if con_asignatura && let Some(a) = pindesk_proyecto::asignatura::de(m) {
+        poner(Que::Asignatura, a.to_string());
     }
     if lista.is_empty() {
         return None;
@@ -111,6 +122,7 @@ fn icono_de(que: Que) -> &'static Icono {
     match que {
         Que::Escaneado => &mi::DOCUMENT_SCANNER,
         Que::LecturaVeloz => &mi::SPEED,
+        Que::Asignatura => &mi::MENU_BOOK,
     }
 }
 

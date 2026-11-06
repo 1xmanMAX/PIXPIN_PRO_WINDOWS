@@ -3640,6 +3640,13 @@ fn una_asignatura_se_busca_por_su_nombre_y_se_le_apuntan_tareas() {
     assert_eq!(p["accion"], "abrir_lista");
     assert_eq!(p["asignatura"], "Cálculo");
     assert_eq!(v[0].autocompletar.as_deref(), Some("pp Cálculo "));
+    // Detras, la misma en el chat de las asignaturas (6-nov-2026).
+    assert_eq!(v[1].titulo, "Cálculo en el chat «Asignaturas»");
+    let Accion::Pedido(p) = &v[1].accion else {
+        panic!("{:?}", v[1].accion)
+    };
+    assert_eq!(p["accion"], "abrir_asignatura");
+    assert_eq!(p["asignatura"], "Cálculo");
     // El nombre y algo detras: apuntarle la tarea, y Flow se queda en ella.
     let v = buscar_en(&r, "calculo repasar integrales", 1000);
     assert_eq!(v[0].titulo, "Añadir tarea a Cálculo: repasar integrales");

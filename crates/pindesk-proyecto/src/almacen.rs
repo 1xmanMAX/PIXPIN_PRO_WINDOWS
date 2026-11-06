@@ -294,6 +294,9 @@ impl Indice {
                 .cmp(&a.es_guardados())
                 // Y el del asistente detras, tambien fijo (13-oct-2026).
                 .then_with(|| b.es_asistente().cmp(&a.es_asistente()))
+                // Y el de las asignaturas, el tercero (6-nov-2026): uno solo
+                // para todas, que se encuentra sin buscarlo.
+                .then_with(|| b.es_asignaturas().cmp(&a.es_asignaturas()))
                 .then_with(|| b.tocado.cmp(&a.tocado))
                 .then_with(|| a.nombre.cmp(&b.nombre))
         });
@@ -1182,6 +1185,14 @@ impl Ficha {
 
 /// Le pone la marca del chat del asistente (el que queda al juntar los de
 /// varios aparatos: `vista::asistente_unico`).
+impl Ficha {
+    /// Si es el chat «Asignaturas», el unico donde va todo lo de las
+    /// asignaturas del horario (ver `asignatura`).
+    pub fn es_asignaturas(&self) -> bool {
+        crate::asignatura::es_el_chat(self)
+    }
+}
+
 pub fn poner_marca_asistente(f: &mut Ficha) {
     f.resto
         .insert(MARCA_ASISTENTE.to_string(), serde_json::Value::Bool(true));

@@ -2799,6 +2799,11 @@ horario-arrastra = 「{ $asignatura }」を週の表にドラッグしてくだ�
 horario-no-guardado = 時間割を保存できませんでした
 tareas-destino-pista = タスクのリストまたは科目
 tareas-sin-asignatura = 科目なし（受信箱へ）
+asignaturas-todas = すべて
+chat-asignatura-poner = 科目…
+chat-asignatura-quitar = 科目なし
+chat-enviar-a-asignatura = 科目に送る…
+chat-enviado-a-asignatura = 「{ $chat }」にコピーしました · { $asignatura }
 tareas-apuntar-en-asignatura = { $asignatura } の新しいタスク…
 
 # Viewers: the frame to print (2026-10-19)

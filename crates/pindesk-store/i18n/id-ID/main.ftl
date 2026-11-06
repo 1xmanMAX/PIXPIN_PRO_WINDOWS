@@ -2805,6 +2805,11 @@ horario-arrastra = Seret “{ $asignatura }” ke minggu
 horario-no-guardado = Jadwal tidak dapat disimpan
 tareas-destino-pista = Daftar atau mata pelajaran tugas
 tareas-sin-asignatura = Tanpa mata pelajaran (ke Kotak masuk)
+asignaturas-todas = Semua
+chat-asignatura-poner = Mata pelajaran…
+chat-asignatura-quitar = Tanpa mata pelajaran
+chat-enviar-a-asignatura = Kirim ke mata pelajaran…
+chat-enviado-a-asignatura = Disalin ke “{ $chat }” · { $asignatura }
 tareas-apuntar-en-asignatura = Tugas { $asignatura } baru…
 
 # Viewers: the frame to print (2026-10-19)

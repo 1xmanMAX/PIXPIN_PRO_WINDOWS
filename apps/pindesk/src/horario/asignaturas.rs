@@ -30,6 +30,17 @@
 //! de Tareas las listas de las asignaturas salen con su color y aunque esten
 //! vacias ([`marcar`]). La lista sigue siendo una lista como las demas: el
 //! movil no necesita saber nada nuevo.
+//!
+//! **Un solo chat para todo lo de las asignaturas** (6-nov-2026, el
+//! usuario: «que se cree un chat en la que se agrupen todas y ahi se vaya
+//! almacenando todo de estas, solo 1 para todos»): con una asignatura en el
+//! horario el chat esta siempre ([`enlazar`] lo asegura), fijo detras del
+//! «Asistente» y con su libro 📘 de foto. Ademas de las listas guarda las
+//! clases grabadas en su hora, lo que se le manda con «Enviar a
+//! asignatura…» y lo que se pone en el con un chip elegido, cada cosa con
+//! su asignatura (`pindesk_proyecto::asignatura`; renombrarla aqui renombra
+//! la etiqueta, [`reetiquetar`]). Ver
+//! `docs/novedades-2026-11-06-un-chat-para-las-asignaturas.md`.
 
 #![forbid(unsafe_code)]
 
@@ -45,12 +56,27 @@ use crate::pedidos::{self, Fallo};
 use crate::tareas::{self, Lista};
 
 /// Como se llama el chat de las asignaturas.
-pub const NOMBRE_CHAT: &str = "Asignaturas";
+pub const NOMBRE_CHAT: &str = pindesk_proyecto::asignatura::NOMBRE_CHAT;
 /// Su marca en el indice.
-const MARCA: &str = "asignaturas";
+const MARCA: &str = pindesk_proyecto::asignatura::MARCA_CHAT;
 
 fn tiene_marca(f: &almacen::Ficha) -> bool {
-    f.resto.get(MARCA).and_then(|v| v.as_bool()) == Some(true)
+    f.es_asignaturas()
+}
+
+/// **Su foto al nacer o al adoptarlo** (6-nov-2026): el libro azul, para
+/// reconocerlo en la lista. Solo si aun no tiene una: la que elija el
+/// usuario manda.
+fn poner_su_foto(f: &mut almacen::Ficha) {
+    use pindesk_proyecto::{asignatura, avatar};
+    if avatar::valor_de(f).is_none() {
+        let a = avatar::Avatar::emoji(
+            asignatura::EMOJI,
+            Some(asignatura::FONDO),
+            pindesk_shell::entorno::ahora_utc_ms(),
+        );
+        f.resto.insert(avatar::CLAVE.into(), a.a_valor());
+    }
 }
 
 /// El chat «Asignaturas», si ya esta.
@@ -68,7 +94,14 @@ pub fn ficha(raiz: &Path) -> Option<almacen::Ficha> {
 /// esta.
 pub fn asegurar_ficha(raiz: &Path, aparato: &str) -> Result<almacen::Ficha, Fallo> {
     let mut indice = almacen::Indice::leer_si_esta(raiz)?;
-    if let Some(f) = indice.proyectos.iter().find(|f| tiene_marca(f)) {
+    if let Some(f) = indice.proyectos.iter_mut().find(|f| tiene_marca(f)) {
+        // Uno de antes del 6-nov, sin foto: el libro, una vez.
+        if pindesk_proyecto::avatar::valor_de(f).is_none() {
+            poner_su_foto(f);
+            let f = f.clone();
+            indice.guardar(raiz)?;
+            return Ok(f);
+        }
         return Ok(f.clone());
     }
     let marca = (MARCA.to_string(), serde_json::Value::Bool(true));
@@ -79,12 +112,14 @@ pub fn asegurar_ficha(raiz: &Path, aparato: &str) -> Result<almacen::Ficha, Fall
     {
         Some(f) => {
             f.resto.insert(marca.0, marca.1);
+            poner_su_foto(f);
             f.clone()
         }
         None => {
             let ahora = pindesk_shell::entorno::ahora_utc_ms();
             let mut f = almacen::Ficha::nueva(NOMBRE_CHAT, ahora, aparato);
             f.resto.insert(marca.0, marca.1);
+            poner_su_foto(&mut f);
             indice.proyectos.push(f.clone());
             f
         }
@@ -191,6 +226,68 @@ pub fn renombrar(raiz: &Path, lista: &Lista, nuevo: &str) -> Result<(), Fallo> {
     pedidos::reescribir(raiz, &lista.proyecto, &m)
 }
 
+/// **La etiqueta de lo de una asignatura renombrada** (6-nov-2026): lo que
+/// llevaba `viejo` en el chat pasa a llevar `nuevo`
+/// (`pindesk_proyecto::asignatura::renombrar`). Cada mensaje se reescribe
+/// en su sitio, con lo demas tal cual. Devuelve cuantos cambiaron.
+pub fn reetiquetar(raiz: &Path, chat: &str, viejo: &str, nuevo: &str) -> Result<usize, Fallo> {
+    let carpeta = almacen::carpeta(raiz, chat);
+    let mut mensajes = match cuaderno::Cuaderno::leer_de(&carpeta) {
+        Ok(c) => c.mensajes,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(0),
+        Err(e) => return Err(e.into()),
+    };
+    let cambiados = pindesk_proyecto::asignatura::renombrar(&mut mensajes, viejo, nuevo);
+    for &i in &cambiados {
+        cuaderno::reemplazar(&carpeta, &mensajes[i])?;
+    }
+    Ok(cambiados.len())
+}
+
+/// **Las asignaturas del horario con su color**, `(nombre, 0xRRGGBB)`, en
+/// su orden: los chips de arriba del chat «Asignaturas».
+pub fn con_su_color(raiz: &Path) -> Vec<(String, u32)> {
+    let ahora = Momento::de_ms_locales(pindesk_shell::entorno::ahora_local_ms());
+    super::de_disco(raiz, ahora)
+        .todas_las_asignaturas()
+        .into_iter()
+        .map(|a| {
+            let c = a
+                .color
+                .unwrap_or_else(|| super::semana::color_por_nombre(&a.nombre));
+            (a.nombre, c)
+        })
+        .collect()
+}
+
+/// **La asignatura de la clase de ahora** (la que esta en marcha o empieza
+/// en unos minutos, `pindesk_proyecto::asignatura::en_clase`): de quien es
+/// una grabacion que se empieza ahora.
+pub fn en_clase_ahora(raiz: &Path) -> Option<String> {
+    let ms = pindesk_shell::entorno::ahora_local_ms();
+    let h = super::de_disco(raiz, Momento::de_ms_locales(ms));
+    let dia = pindesk_ia::fechas::dia_de_la_semana(ms.div_euclid(86_400_000)) as u8;
+    let minuto = (ms.rem_euclid(86_400_000) / 60_000) as u32;
+    let tramos: Vec<pindesk_proyecto::asignatura::Tramo> = h
+        .clases
+        .iter()
+        .map(|c| pindesk_proyecto::asignatura::Tramo {
+            dias: &c.dias,
+            inicio: c.inicio,
+            fin: c.fin,
+            nombre: &c.nombre,
+        })
+        .collect();
+    let n = pindesk_proyecto::asignatura::en_clase(&tramos, dia, minuto)?;
+    // Con el nombre de la lista lateral, si esta escrita distinto.
+    Some(
+        h.todas_las_asignaturas()
+            .into_iter()
+            .find(|a| pindesk_proyecto::asignatura::mismo(&a.nombre, n))
+            .map_or_else(|| n.to_string(), |a| a.nombre),
+    )
+}
+
 /// Lo que hay que hacer para que cada asignatura tenga su lista, ya
 /// decidido ([`plan`]): lo puro de [`enlazar`].
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -259,10 +356,18 @@ pub fn enlazar(raiz: &Path, aparato: &str) -> Result<bool, Fallo> {
     let ahora = Momento::de_ms_locales(pindesk_shell::entorno::ahora_local_ms());
     let h = super::leer(&original, ahora);
     let todas = h.todas_las_asignaturas();
+    // Con una asignatura, el chat esta siempre (6-nov-2026): es donde va
+    // todo lo suyo, aunque sus listas ya existieran.
+    let falta_el_chat = !todas.is_empty()
+        && ficha(raiz)
+            .is_none_or(|f| !tiene_marca(&f) || pindesk_proyecto::avatar::valor_de(&f).is_none());
+    if falta_el_chat {
+        asegurar_ficha(raiz, aparato)?;
+    }
     let solo_en_clases = &todas[h.asignaturas.len()..];
     let mut ls = listas(raiz);
     let pasos = plan(&h.asignaturas, solo_en_clases, &ls);
-    let mut cambio = false;
+    let mut cambio = falta_el_chat;
     let mut enlaces: Vec<(String, String)> = Vec::new();
     for p in &pasos {
         match p {
@@ -275,7 +380,10 @@ pub fn enlazar(raiz: &Path, aparato: &str) -> Result<bool, Fallo> {
             Paso::Renombrar(codigo, nombre) => {
                 if let Some(l) = ls.iter().find(|l| &l.codigo == codigo) {
                     renombrar(raiz, l, nombre)?;
-                    tracing::info!(%nombre, "horario: lista de la asignatura renombrada");
+                    // Y lo suyo del chat la sigue (6-nov-2026): la etiqueta
+                    // de sus clases y de lo que se le mando.
+                    let n = reetiquetar(raiz, &l.proyecto, &l.titulo, nombre)?;
+                    tracing::info!(%nombre, n, "horario: lista de la asignatura renombrada");
                     cambio = true;
                 }
             }
@@ -622,6 +730,51 @@ mod pruebas {
         assert!(
             de(&ls, "Geometría").is_none(),
             "no queda otra con el nombre viejo"
+        );
+        let _ = std::fs::remove_dir_all(&raiz);
+    }
+
+    #[test]
+    fn el_chat_nace_con_su_libro_y_lo_suyo_sigue_a_la_asignatura_renombrada() {
+        use pindesk_proyecto::{asignatura, avatar};
+        let raiz = raiz_de_prueba("chat-unico");
+        let ruta = super::super::ruta(&raiz);
+        std::fs::write(&ruta, "Asignatura Física\n").unwrap();
+        assert!(enlazar(&raiz, "PC01").unwrap());
+        let f = ficha(&raiz).unwrap();
+        assert!(f.es_asignaturas());
+        let a = avatar::de_ficha(&f).unwrap();
+        assert_eq!(a.el_emoji(), Some(asignatura::EMOJI), "con su libro");
+        // Una clase grabada de Física, en el chat.
+        let carpeta = almacen::carpeta(&raiz, &f.id);
+        let mut m = cuaderno::Mensaje::nota(
+            "clase del lunes",
+            &cuaderno::Sello {
+                cuando: 5,
+                numero: 9,
+                aparato: "PC01".into(),
+                proyecto: f.id.clone(),
+            },
+        );
+        asignatura::poner(&mut m, "Física");
+        cuaderno::anadir(&carpeta, &m).unwrap();
+        // Renombrada en el horario: la etiqueta la sigue.
+        let texto = std::fs::read_to_string(&ruta).unwrap();
+        std::fs::write(&ruta, texto.replace("Física", "Física II")).unwrap();
+        assert!(enlazar(&raiz, "PC01").unwrap());
+        let c = cuaderno::Cuaderno::leer_de(&carpeta).unwrap();
+        let clase = c.mensajes.iter().find(|x| x.id == m.id).unwrap();
+        assert_eq!(asignatura::de(clase), Some("Física II"));
+        // La foto que ponga el usuario manda: no se le vuelve a poner.
+        avatar::poner(&raiz, &f.id, &avatar::Avatar::iniciales(None, 7)).unwrap();
+        assert!(!enlazar(&raiz, "PC01").unwrap());
+        let f2 = ficha(&raiz).unwrap();
+        assert_eq!(avatar::de_ficha(&f2).unwrap().el_emoji(), None);
+        // Caso negativo: un solo chat, por muchas vueltas que se den.
+        let indice = almacen::Indice::leer(&raiz);
+        assert_eq!(
+            indice.proyectos.iter().filter(|f| tiene_marca(f)).count(),
+            1
         );
         let _ = std::fs::remove_dir_all(&raiz);
     }

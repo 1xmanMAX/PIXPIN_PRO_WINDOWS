@@ -192,6 +192,11 @@ pub(crate) struct Pedido {
     pub aparato: String,
     /// Donde se puede guardar, `(id, nombre)`: el ultimo usado primero.
     pub proyectos: Vec<(String, String)>,
+    /// **La asignatura de la clase** (6-nov-2026): la del horario a la hora
+    /// de abrir la grabadora, o la elegida en el chat «Asignaturas». Todo lo
+    /// que se guarde la lleva (`pindesk_proyecto::asignatura`), en el chat
+    /// que sea. Ver `asignatura::adonde_la_grabacion`.
+    pub asignatura: Option<String>,
 }
 
 /// Los rotulos, traducidos en el hilo principal (el `Catalogo` no cruza
@@ -1422,9 +1427,15 @@ fn guardar(
     };
     let de = voz.as_ref().map(|v| v.id.clone());
     let carpeta = almacen::carpeta(raiz, proyecto);
+    // Cada pieza, con la asignatura de la clase si la hay.
+    let asignatura = pedido.asignatura.as_deref();
+    let con_asignatura = |m: &mut cuaderno::Mensaje| {
+        asignatura.is_some_and(|a| pindesk_proyecto::asignatura::poner(m, a))
+    };
     // `de_camara`: la foto o el clip salio de la camara (`origen`), y se
     // apunta aunque no haya nota con que enlazarlo.
     let enlazar = |m: &mut cuaderno::Mensaje, ms: i64, de_camara: bool| {
+        let etiquetada = con_asignatura(m);
         if de_camara {
             presencial::marcar_de_camara(&mut m.resto);
         }
@@ -1434,7 +1445,7 @@ fn guardar(
                 serde_json::json!({ "de": de, "ms": ms }),
             );
         }
-        if (de.is_some() || de_camara)
+        if (de.is_some() || de_camara || etiquetada)
             && let Err(e) = cuaderno::reemplazar(&carpeta, m)
         {
             tracing::warn!(?e, "un adjunto de la clase quedo sin enlazar");
@@ -1525,6 +1536,7 @@ fn guardar(
                 if !c.de_pantalla {
                     presencial::marcar_de_camara(&mut m.resto);
                 }
+                con_asignatura(&mut m);
                 if let Some(de) = &de {
                     m.resto.insert(
                         "enGrabacion".into(),
@@ -1565,6 +1577,7 @@ fn guardar(
                 .insert("video".into(), serde_json::json!({ "id": id }));
         }
         presencial::poner_clips(&mut voz.resto, &clips_dentro);
+        con_asignatura(voz);
         if let Err(e) = cuaderno::reemplazar(&carpeta, voz) {
             // La nota y sus adjuntos ya estan dentro; solo falta el enlace.
             tracing::warn!(?e, "la nota de la clase quedo sin sus enlaces");
@@ -1582,7 +1595,7 @@ fn guardar(
     let mut carpeta_id = None;
     if !grabacion_en_carpeta.is_empty() {
         let cuando = super::descripcion::hora_sin_repetir();
-        let m = pindesk_proyecto::carpeta_de_paginas::mensaje_de_grabacion(
+        let mut m = pindesk_proyecto::carpeta_de_paginas::mensaje_de_grabacion(
             &nombre,
             &grabacion_en_carpeta,
             &cuaderno::Sello {
@@ -1592,6 +1605,7 @@ fn guardar(
                 proyecto: proyecto.clone(),
             },
         );
+        con_asignatura(&mut m);
         match cuaderno::anadir(&carpeta, &m) {
             Ok(()) => {
                 carpeta_id = Some(m.id.clone());

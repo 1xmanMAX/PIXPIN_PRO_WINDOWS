@@ -913,7 +913,7 @@ pub enum Seguridad {
 /// las tres ultimas: marcar una tarea, posponer un recordatorio y conservar
 /// una captura (que la app solo hace con una ruta de su carpeta de capturas,
 /// `pedidos::captura_de`; una de red sigue sin pasar).
-pub const SEGURAS: [&str; 19] = [
+pub const SEGURAS: [&str; 20] = [
     "abrir",
     "chat",
     "nota_nueva",
@@ -941,6 +941,9 @@ pub const SEGURAS: [&str; 19] = [
     // asignatura). Solo abre una ventana; si la asignatura no tiene lista,
     // le crea una vacia, como `lista_nueva`.
     "abrir_lista",
+    // 6-nov: abrir el chat «Asignaturas» en una asignatura. Solo abre una
+    // ventana (y crea el chat si aun no esta, como `abrir_lista`).
+    "abrir_asignatura",
 ];
 
 /// **Cuanto se fia uno de un pedido llegado por enlace.** Se mira el pedido

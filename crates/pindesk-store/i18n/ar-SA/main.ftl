@@ -3002,6 +3002,11 @@ horario-arrastra = اسحب «{ $asignatura }» إلى الأسبوع
 horario-no-guardado = تعذّر حفظ الجدول
 tareas-destino-pista = قائمة المهمة أو مادتها
 tareas-sin-asignatura = بلا مادة (إلى الوارد)
+asignaturas-todas = الكل
+chat-asignatura-poner = المادة…
+chat-asignatura-quitar = بلا مادة
+chat-enviar-a-asignatura = إرسال إلى مادة…
+chat-enviado-a-asignatura = نُسخ إلى «{ $chat }» · { $asignatura }
 tareas-apuntar-en-asignatura = مهمة جديدة في { $asignatura }…
 
 # Viewers: the frame to print (2026-10-19)

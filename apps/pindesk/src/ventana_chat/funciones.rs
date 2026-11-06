@@ -387,7 +387,15 @@ pub(super) struct Para<'a> {
 pub(super) fn hacer(f: Funcion, cx: &Para, abierto: Option<&mut Abierto>) {
     let (idioma, ubicacion) = (cx.idioma, cx.ubicacion);
     match f {
-        Funcion::Grabar => super::grabar_clase(cx.textos, ubicacion, idioma, cx.aparato),
+        Funcion::Grabar => super::grabar_clase(
+            cx.textos,
+            ubicacion,
+            idioma,
+            cx.aparato,
+            abierto
+                .as_deref()
+                .map(|a| (&a.ficha, a.asignaturas.filtro.as_deref())),
+        ),
         Funcion::Lienzo => nuevo_lienzo(ubicacion, abierto, cx.aparato, cx.lienzo),
         Funcion::Tareas => crate::tareas::abrir(idioma, ubicacion.clone(), cx.aparato),
         // Con las lecciones dentro, en su pestana.

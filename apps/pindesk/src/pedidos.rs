@@ -123,6 +123,13 @@ pub enum Pedido {
         proyecto: Option<String>,
         codigo: Option<String>,
     },
+    /// **El chat «Asignaturas» en una asignatura** (6-nov-2026): con ella
+    /// elegida en su fila, lo suyo a la vista (lista, clases, lo mandado).
+    /// Sin `asignatura`, el chat con todas.
+    AbrirAsignatura {
+        #[serde(default)]
+        asignatura: Option<String>,
+    },
     MarcarTarea {
         proyecto: Option<String>,
         codigo: String,
@@ -702,6 +709,7 @@ pub fn atender(json: &str, cx: &Contexto) -> Hecho {
                 | Pedido::PinearUltima { .. }
                 | Pedido::Ventana { .. }
                 | Pedido::AbrirLista { .. }
+                | Pedido::AbrirAsignatura { .. }
                 | Pedido::CarpetaPaginas { .. }
                 | Pedido::LeccionNueva { .. }
                 | Pedido::Lecciones { .. }
@@ -1237,6 +1245,30 @@ fn hacer(p: Pedido, cx: &Contexto) -> Result<Hecho, Fallo> {
             match clave {
                 Some(k) => crate::tareas::abrir_en(cx.idioma, cx.ubicacion.clone(), cx.aparato, k),
                 None => crate::tareas::abrir(cx.idioma, cx.ubicacion.clone(), cx.aparato),
+            }
+        }
+        Pedido::AbrirAsignatura { asignatura } => {
+            let f = crate::horario::asignaturas::asegurar_ficha(raiz, cx.aparato)?;
+            match asignatura
+                .as_deref()
+                .map(str::trim)
+                .filter(|a| !a.is_empty())
+            {
+                // Con el nombre del horario si esta (asi el chip sale puesto).
+                Some(a) => {
+                    let nombre = crate::horario::asignaturas::nombres(raiz)
+                        .into_iter()
+                        .find(|n| pindesk_proyecto::asignatura::mismo(n, a))
+                        .unwrap_or_else(|| a.to_string());
+                    crate::ventana_chat::ir_a_asignatura(
+                        cx.idioma,
+                        cx.ubicacion.clone(),
+                        cx.opciones,
+                        f.id,
+                        nombre,
+                    );
+                }
+                None => ir_al_chat(f.id, None),
             }
         }
         // Las mismas entradas que la bandeja: su ventana es la respuesta.
@@ -2596,7 +2628,7 @@ mod pruebas {
 
     /// Un ejemplo de cada accion, con lo minimo que pide la tabla del
     /// protocolo.
-    const EJEMPLOS: [(&str, &str); 40] = [
+    const EJEMPLOS: [(&str, &str); 41] = [
         (
             "pines",
             r#"{"pindesk":1,"accion":"pines","operacion":"ocultar_mostrar"}"#,
@@ -2732,6 +2764,10 @@ mod pruebas {
         (
             "abrir_lista",
             r#"{"pindesk":1,"accion":"abrir_lista","asignatura":"Geometría"}"#,
+        ),
+        (
+            "abrir_asignatura",
+            r#"{"pindesk":1,"accion":"abrir_asignatura","asignatura":"Geometría"}"#,
         ),
     ];
 

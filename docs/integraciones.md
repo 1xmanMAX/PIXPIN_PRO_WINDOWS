@@ -169,7 +169,7 @@ Un enlace lo puede lanzar cualquier página web (el navegador pregunta antes, pe
 
 | | Qué | Cómo |
 |---|---|---|
-| **Directa** | `abrir` (proyecto, mensaje, hoja, nota), `chat`, `nota_nueva`, `lienzo_nuevo`, `lista_nueva`, `anadir_tarea`, `abrir_lista`, `ventana_principal`, `ventana`, `capturar`, `lecciones`, `leccion_nueva`, `soltar`, `pinear` de un mensaje del chat, `pinear_ultima`, `marcar_tarea`, `posponer`, `conservar_captura` (los botones de los avisos), `asistente` sin pedido (abre su chat) | Se hace sin preguntar |
+| **Directa** | `abrir` (proyecto, mensaje, hoja, nota), `chat`, `nota_nueva`, `lienzo_nuevo`, `lista_nueva`, `anadir_tarea`, `abrir_lista`, `abrir_asignatura`, `ventana_principal`, `ventana`, `capturar`, `lecciones`, `leccion_nueva`, `soltar`, `pinear` de un mensaje del chat, `pinear_ultima`, `marcar_tarea`, `posponer`, `conservar_captura` (los botones de los avisos), `asistente` sin pedido (abre su chat) | Se hace sin preguntar |
 | **Pregunta** | Todo lo que lleva una ruta del disco (`abrir` un fichero, `pinear` una ruta, imágenes…), `asistente` con un pedido (puede hacer cosas), `grabar` (el micrófono), `sincronizar` y `enviar_al_movil`, `automatizacion` (activar, apagar, correr, borrar), lo que borra o quita, y cualquier acción que no esté en la lista | Un cuadro por encima de todo con lo que se pide, por qué pregunta y «No» por defecto |
 | **Nunca** | Una ruta que no es de una unidad de este equipo (`\\servidor\…`, `//…`, `\\?\…`, `file:`, relativa): Windows le daría las credenciales del usuario al servidor solo por mirarla. Crear una automatización | Un cuadro que dice que no se hizo nada (6) |
 

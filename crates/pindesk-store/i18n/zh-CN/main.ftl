@@ -2799,6 +2799,11 @@ horario-arrastra = 将“{ $asignatura }”拖到周视图中
 horario-no-guardado = 无法保存课程表
 tareas-destino-pista = 任务的清单或科目
 tareas-sin-asignatura = 无科目（放入收件箱）
+asignaturas-todas = 全部
+chat-asignatura-poner = 科目…
+chat-asignatura-quitar = 无科目
+chat-enviar-a-asignatura = 发送到科目…
+chat-enviado-a-asignatura = 已复制到“{ $chat }” · { $asignatura }
 tareas-apuntar-en-asignatura = 新建 { $asignatura } 任务…
 
 # Viewers: the frame to print (2026-10-19)

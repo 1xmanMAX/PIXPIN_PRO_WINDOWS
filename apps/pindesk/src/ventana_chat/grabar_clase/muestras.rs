@@ -94,6 +94,7 @@ fn muestras_de_la_grabacion() {
         idioma: Idioma::Espanol,
         aparato: "PC".into(),
         proyectos: vec![("calculo".into(), "Cálculo II".into())],
+        asignatura: None,
     };
     let textos = Catalogo::nuevo(Idioma::Espanol);
     let r = Rotulos::de(&textos);

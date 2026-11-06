@@ -1263,7 +1263,7 @@ fn arrancar(
             _ if comando == Some(comandos::Comando::GrabarClase) => {
                 // Su propio hilo, como el microfono flotante; si ya hay una
                 // clase grabandose no abre otra.
-                ventana_chat::grabar_clase(&textos, &ubicacion, lengua, &identidad_equipo);
+                ventana_chat::grabar_clase(&textos, &ubicacion, lengua, &identidad_equipo, None);
                 Continuar::Si
             }
             _ if comando == Some(comandos::Comando::Sincronizar) => {

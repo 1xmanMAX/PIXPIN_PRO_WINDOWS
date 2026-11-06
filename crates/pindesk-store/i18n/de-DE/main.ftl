@@ -2839,6 +2839,11 @@ horario-arrastra = Ziehen Sie „{ $asignatura }“ in die Woche
 horario-no-guardado = Der Stundenplan konnte nicht gespeichert werden
 tareas-destino-pista = Liste oder Fach der Aufgabe
 tareas-sin-asignatura = Kein Fach (in den Eingang)
+asignaturas-todas = Alle
+chat-asignatura-poner = Fach…
+chat-asignatura-quitar = Kein Fach
+chat-enviar-a-asignatura = An Fach senden…
+chat-enviado-a-asignatura = Nach „{ $chat }“ kopiert · { $asignatura }
 tareas-apuntar-en-asignatura = Neue Aufgabe für { $asignatura }…
 
 # Viewers: the frame to print (2026-10-19)

@@ -2839,6 +2839,11 @@ horario-arrastra = “{ $asignatura }” को सप्ताह पर खी
 horario-no-guardado = समय-सारिणी सहेजी नहीं जा सकी
 tareas-destino-pista = कार्य की सूची या विषय
 tareas-sin-asignatura = कोई विषय नहीं (इनबॉक्स में)
+asignaturas-todas = सभी
+chat-asignatura-poner = विषय…
+chat-asignatura-quitar = कोई विषय नहीं
+chat-enviar-a-asignatura = विषय में भेजें…
+chat-enviado-a-asignatura = “{ $chat }” में कॉपी किया गया · { $asignatura }
 tareas-apuntar-en-asignatura = नया { $asignatura } कार्य…
 
 # Viewers: the frame to print (2026-10-19)

@@ -109,6 +109,7 @@ pub(crate) fn al_arrancar(
                     idioma,
                     aparato: aparato.clone(),
                     proyectos: vec![(d.proyecto.clone(), d.nombre_proyecto.clone())],
+                    asignatura: d.asignatura.clone(),
                 };
                 preguntar(&pedido, &textos, &dir, &d);
             }
@@ -118,6 +119,7 @@ pub(crate) fn al_arrancar(
                 idioma,
                 aparato: aparato.clone(),
                 proyectos: Vec::new(),
+                asignatura: None,
             };
             super::cola_de_texto::retomar(&pedido, sin_texto);
         });

@@ -2842,6 +2842,12 @@ horario-arrastra = Arrastra «{ $asignatura }» a la semana
 horario-no-guardado = No se pudo guardar el horario
 tareas-destino-pista = Lista o asignatura de la tarea
 tareas-sin-asignatura = Sin asignatura (al Inbox)
+# El chat «Asignaturas» (6-nov-2026): la fila de sus chips y el menu del mensaje.
+asignaturas-todas = Todas
+chat-asignatura-poner = Asignatura…
+chat-asignatura-quitar = Sin asignatura
+chat-enviar-a-asignatura = Enviar a asignatura…
+chat-enviado-a-asignatura = Copiado a «{ $chat }» · { $asignatura }
 tareas-apuntar-en-asignatura = Nueva tarea de { $asignatura }…
 
 # El marco para imprimir de los visores (19-oct-2026)
