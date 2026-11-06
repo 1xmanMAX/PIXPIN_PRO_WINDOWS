@@ -1358,6 +1358,8 @@ figuras-todas = Tümü
 figuras-vacia = Henüz şekil yok. Bir tuvalde bir şey seçip “Şekil olarak kaydet”i kullanın.
 figuras-borrar = Şekli sil
 figuras-borrar-seguro = Silmek için yeniden basın
+# El boton de una figura que vino de PinDesk Plantillas; $app es su nombre.
+figuras-abrir-en-plantillas = { $app } ile aç
 figuras-elegir-para = “{ $chat }” için bir şekil seçin
 figuras-adjuntar-a = “{ $chat }” sohbetine ekle
 figuras-adjuntar-pista = Veya şekle çift tıklayın ya da Enter'a basın.

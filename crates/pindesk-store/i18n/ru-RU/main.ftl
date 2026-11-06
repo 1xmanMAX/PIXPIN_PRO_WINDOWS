@@ -1378,6 +1378,8 @@ figuras-todas = Все
 figuras-vacia = Фигур пока нет. На холсте выделите что-нибудь и выберите «Сохранить как фигуру».
 figuras-borrar = Удалить фигуру
 figuras-borrar-seguro = Нажмите ещё раз, чтобы удалить
+# El boton de una figura que vino de PinDesk Plantillas; $app es su nombre.
+figuras-abrir-en-plantillas = Открыть в { $app }
 figuras-elegir-para = Выберите фигуру для «{ $chat }»
 figuras-adjuntar-a = Вложить в «{ $chat }»
 figuras-adjuntar-pista = Или дважды щёлкните фигуру, или нажмите Enter.

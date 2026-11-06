@@ -147,6 +147,68 @@ fn avisar(ruta: &Path) {
     }
 }
 
+/// La raiz de los datos de este PC, sin tocar nada.
+fn raiz_de_datos() -> PathBuf {
+    let dir_exe = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(Path::to_path_buf))
+        .unwrap_or_default();
+    let appdata = std::env::var_os("APPDATA")
+        .map(PathBuf::from)
+        .unwrap_or_default();
+    pindesk_store::resolver(&dir_exe, &appdata)
+        .raiz()
+        .to_path_buf()
+}
+
+/// **La carpeta de PinDesk Plantillas** (`<raiz>/plantillas`): lo que la
+/// app de Plantillas «manda a PinDesk» (docs/plantillas.md).
+pub fn carpeta_de_plantillas() -> PathBuf {
+    pindesk_plantillas::carpeta::en(&raiz_de_datos())
+}
+
+/// **Las plantillas de esa carpeta como figuras** («Plantillas · …», con
+/// su primera pagina dibujada para hoy). No viajan en `figuras.json`: se
+/// leen cada vez de su carpeta, que es la que manda.
+pub fn de_plantillas() -> Vec<pindesk_motor2d::biblioteca::FiguraGuardada> {
+    let dias = pindesk_shell::entorno::ahora_utc_ms().max(0) / 86_400_000;
+    let hoy = pindesk_plantillas::Fecha::de_dias(dias);
+    pindesk_plantillas::carpeta::figuras_de(&carpeta_de_plantillas(), hoy)
+}
+
+/// La hora de la ultima vez que cambio la carpeta de Plantillas (para
+/// releer Figuras cuando llega una).
+pub fn plantillas_cambiadas() -> Option<std::time::SystemTime> {
+    std::fs::metadata(carpeta_de_plantillas())
+        .and_then(|m| m.modified())
+        .ok()
+}
+
+/// **Abre PinDesk Plantillas** (`pindesk-plantillas.exe`, junto a este) con
+/// esos argumentos. `false` si no esta instalada o no arranca.
+pub fn lanzar_plantillas(args: &[&str]) -> bool {
+    let Some(exe) = std::env::current_exe()
+        .ok()
+        .map(|p| p.with_file_name(format!("{}.exe", pindesk_plantillas::EJECUTABLE)))
+    else {
+        return false;
+    };
+    if !exe.is_file() {
+        tracing::warn!(?exe, "plantillas: no esta junto a PinDesk");
+        return false;
+    }
+    std::process::Command::new(exe).args(args).spawn().is_ok()
+}
+
+/// «Abrir en Plantillas» de una figura que vino de alli.
+pub fn abrir_en_plantillas(id: &str) -> bool {
+    let url = format!(
+        "pindesk://plantilla?figura={}",
+        pindesk_plantillas::enlace::codificar(id)
+    );
+    lanzar_plantillas(&["--url", &url])
+}
+
 /// **Si los paneles de figuras van de noche** (el interruptor ☀/☾, uno para
 /// el del lienzo y el del chat; `pindesk_motor2d::figuras_de_serie::segun_el_modo`).
 /// Se recuerda en `estado.toml`; sin tocar, de dia, como el movil.

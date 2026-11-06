@@ -16,6 +16,10 @@ lo que hace falta para seguir trabajando.
 - **Comentario avanzado** (rama `comentario-avanzado`, 3-nov-2026): la pegatina de comentario
   con su minichat en el lienzo, el PDF/Office, el lector de Word y libros, las hojas y el plano
   CAD. Formato y lo que falta (pines, HTML y notas): [comentarios.md](comentarios.md).
+- **PinDesk Plantillas** (6-nov-2026, nombre provisional): app nueva y aparte para diseñar
+  plantillas por bloques (diarios, planificadores, calendarios) con IA, conectada con Figuras.
+  Núcleo portable en `crates/pindesk-plantillas`, app en `apps/pindesk-plantillas`; solo
+  compilada para Windows desde Linux, falta abrirla de verdad: [plantillas.md](plantillas.md).
 - **Pruebas que ya fallaban** (no son regresiones; pendientes de arreglar):
   - `compartir::pruebas::cada_mensaje_solo_ofrece_sus_formatos_y_su_original`
   - `compartir::ventana::pruebas::la_hoja_se_pinta_entera_y_dice_cuanto_pesa`
@@ -27,6 +31,7 @@ lo que hace falta para seguir trabajando.
 | `apps/pindesk` | La app (`pindesk.exe`). |
 | `apps/pindesk-lanzador` | El plugin `p` de Flow Launcher (`plugin/` lleva su `plugin.json` e icono). |
 | `apps/pindesk-mcp`, `apps/pindesk-puente`, `apps/pindesk-aligerar` | Servidor MCP, puente con el navegador y el ayudante de aligerar. |
+| `apps/pindesk-plantillas` | PinDesk Plantillas (`pindesk-plantillas.exe`), con su núcleo en `crates/pindesk-plantillas` ([plantillas.md](plantillas.md)). |
 | `crates/` | Las bibliotecas (`pindesk-*`): motor del lienzo, documentos, CAD/BIM, sincronizar, IA… |
 | `apple/` | La versión de Mac/iPad/iPhone en curso, con su propio espacio de trabajo ([apple/README.md](../apple/README.md)). |
 | `herramientas/` | Scripts: `instalar.ps1`, la página del lector de notas (`lector-md/`), idiomas, etc. |

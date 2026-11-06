@@ -1348,6 +1348,8 @@ figuras-todas = Semua
 figuras-vacia = Belum ada bentuk. Di kanvas, pilih sesuatu lalu “Simpan sebagai bentuk”.
 figuras-borrar = Hapus bentuk
 figuras-borrar-seguro = Tekan lagi untuk menghapus
+# El boton de una figura que vino de PinDesk Plantillas; $app es su nombre.
+figuras-abrir-en-plantillas = Buka di { $app }
 figuras-elegir-para = Pilih bentuk untuk “{ $chat }”
 figuras-adjuntar-a = Lampirkan ke “{ $chat }”
 figuras-adjuntar-pista = Atau klik dua kali bentuknya, atau tekan Enter.

@@ -1359,6 +1359,8 @@ figuras-todas = सभी
 figuras-vacia = अभी कोई आकृति नहीं। किसी कैनवस पर कुछ चुनें और “आकृति के रूप में सहेजें” दबाएँ।
 figuras-borrar = आकृति हटाएँ
 figuras-borrar-seguro = हटाने के लिए फिर से दबाएँ
+# El boton de una figura que vino de PinDesk Plantillas; $app es su nombre.
+figuras-abrir-en-plantillas = { $app } में खोलें
 figuras-elegir-para = “{ $chat }” के लिए एक आकृति चुनें
 figuras-adjuntar-a = “{ $chat }” में संलग्न करें
 figuras-adjuntar-pista = या आकृति पर डबल-क्लिक करें, या Enter दबाएँ।

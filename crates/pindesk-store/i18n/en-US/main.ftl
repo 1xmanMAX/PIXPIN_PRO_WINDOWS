@@ -1359,6 +1359,8 @@ figuras-todas = All
 figuras-vacia = No shapes yet. On a canvas, select something and “Save as a shape”.
 figuras-borrar = Delete the shape
 figuras-borrar-seguro = Press again to delete
+# El boton de una figura que vino de PinDesk Plantillas; $app es su nombre.
+figuras-abrir-en-plantillas = Open in { $app }
 figuras-elegir-para = Pick a shape for “{ $chat }”
 figuras-adjuntar-a = Attach to “{ $chat }”
 figuras-adjuntar-pista = Or double-click the shape, or press Enter.

@@ -1,0 +1,24 @@
+[package]
+name = "pindesk-plantillas"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+# Nucleo PORTABLE de PinDesk Plantillas (docs/plantillas.md): nada de
+# Windows, para que Android y Apple lo usen tal cual. La app de Windows esta
+# en apps/pindesk-plantillas. Solo depende de pindesk-motor2d (Rust puro) para
+# hablar el formato de las figuras y del lienzo de PinDesk; el dia que se
+# separe a su repositorio, es la unica dependencia de la casa.
+[dependencies]
+pindesk-motor2d = { path = "../pindesk-motor2d" }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+# Los textos de la interfaz (i18n/<idioma>/main.ftl), como pindesk-store.
+fluent-bundle = "0.16.0"
+unic-langid = "0.9.6"
+# PNG sin GPU ni sistema: rasterizar las primitivas y las letras.
+tiny-skia = "0.11.4"
+ab_glyph = "0.2.29"
+# Comprimir los flujos del PDF. Ya esta en el arbol (pindesk-pdf).
+flate2 = "1.1"

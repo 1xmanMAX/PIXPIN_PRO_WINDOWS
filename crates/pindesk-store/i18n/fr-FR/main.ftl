@@ -1359,6 +1359,8 @@ figuras-todas = Toutes
 figuras-vacia = Aucune forme pour l’instant. Sur un canevas, sélectionnez quelque chose puis « Enregistrer comme forme ».
 figuras-borrar = Supprimer la forme
 figuras-borrar-seguro = Appuyez à nouveau pour supprimer
+# El boton de una figura que vino de PinDesk Plantillas; $app es su nombre.
+figuras-abrir-en-plantillas = Ouvrir dans { $app }
 figuras-elegir-para = Choisissez une forme pour « { $chat } »
 figuras-adjuntar-a = Joindre à « { $chat } »
 figuras-adjuntar-pista = Ou double-cliquez sur la forme, ou appuyez sur Entrée.

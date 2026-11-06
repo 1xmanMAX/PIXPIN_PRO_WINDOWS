@@ -25,13 +25,15 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Compilar (release)
-        run: cargo build --release -p pindesk -p pindesk-aligerar -p pindesk-lanzador -p pindesk-puente -p pindesk-mcp
+        # pindesk-plantillas-app es PinDesk Plantillas (pindesk-plantillas.exe,
+        # docs/plantillas.md): va en el mismo ZIP y no toca la app de siempre.
+        run: cargo build --release -p pindesk -p pindesk-aligerar -p pindesk-lanzador -p pindesk-puente -p pindesk-mcp -p pindesk-plantillas-app
       - name: Empaquetar
         shell: pwsh
         run: |
           $dir = "PinDesk"
           New-Item -ItemType Directory $dir | Out-Null
-          foreach ($exe in 'pindesk','pindesk-aligerar','pindesk-lanzador','pindesk-puente','pindesk-mcp') {
+          foreach ($exe in 'pindesk','pindesk-aligerar','pindesk-lanzador','pindesk-puente','pindesk-mcp','pindesk-plantillas') {
             Copy-Item "target\release\$exe.exe" $dir
           }
           # Instalar.cmd: copia todo a %LOCALAPPDATA%\Programs\PinDesk (el
@@ -54,7 +56,7 @@ jobs:
           set "VIEJO=%LOCALAPPDATA%\Programs\PixPinMax"
           set "RUN=HKCU\Software\Microsoft\Windows\CurrentVersion\Run"
           set "INICIO=%APPDATA%\Microsoft\Windows\Start Menu\Programs"
-          for %%e in (pindesk pixpinmax pindesk-aligerar pixpin-aligerar pindesk-lanzador pixpin-lanzador pindesk-puente pixpin-puente) do (
+          for %%e in (pindesk pixpinmax pindesk-aligerar pixpin-aligerar pindesk-lanzador pixpin-lanzador pindesk-puente pixpin-puente pindesk-plantillas) do (
             taskkill /im %%e.exe /f >nul 2>&1
           )
           if not exist "%DEST%" mkdir "%DEST%"
@@ -85,6 +87,8 @@ jobs:
           :acceso
           if exist "%INICIO%\PixPin Max.lnk" del /f /q "%INICIO%\PixPin Max.lnk" >nul 2>&1
           powershell -NoProfile -ExecutionPolicy Bypass -Command "$s = (New-Object -ComObject WScript.Shell).CreateShortcut($env:INICIO + '\PinDesk.lnk'); $s.TargetPath = $env:DEST + '\pindesk.exe'; $s.WorkingDirectory = $env:DEST; $s.IconLocation = $env:DEST + '\pindesk.exe,0'; $s.Description = 'PinDesk: capturas, pines, chat y lienzo'; $s.Save()" >nul 2>&1
+          rem PinDesk Plantillas (nombre provisional, el de nucleo::NOMBRE_PRODUCTO).
+          if exist "%DEST%\pindesk-plantillas.exe" powershell -NoProfile -ExecutionPolicy Bypass -Command "$s = (New-Object -ComObject WScript.Shell).CreateShortcut($env:INICIO + '\PinDesk Plantillas.lnk'); $s.TargetPath = $env:DEST + '\pindesk-plantillas.exe'; $s.WorkingDirectory = $env:DEST; $s.IconLocation = $env:DEST + '\pindesk-plantillas.exe,0'; $s.Description = 'PinDesk Plantillas: diarios, planificadores y calendarios por bloques'; $s.Save()" >nul 2>&1
           start "" "%DEST%\pindesk.exe"
           echo PinDesk instalado en %DEST%
           '@ | Set-Content -Encoding ascii "$dir\Instalar.cmd"

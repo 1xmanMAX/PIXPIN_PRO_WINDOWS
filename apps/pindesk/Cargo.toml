@@ -74,6 +74,10 @@ pindesk-typesafe = { version = "0.1.0", path = "../../crates/pindesk-typesafe" }
 # mismo modulo que lee el plugin, asi el formato es uno solo. Solo serde y
 # `windows`, que ya estan; el plugin no depende de nada de PixPin.
 pindesk-lanzador = { version = "0.1.0", path = "../pindesk-lanzador" }
+# PinDesk Plantillas (docs/plantillas.md): su nucleo portable, para enseñar
+# en Figuras las plantillas que manda y entender sus enlaces. La app de
+# Plantillas no depende de esta; esta solo de su nucleo.
+pindesk-plantillas = { version = "0.1.0", path = "../../crates/pindesk-plantillas" }
 # La huella de los PDF ya aligerados (ver src/aligerar.rs). Ya esta en el
 # arbol. pdfsqueeze NO va aqui: vive en su ejecutable, pindesk-aligerar.
 sha2 = "0.10"

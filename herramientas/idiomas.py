@@ -3,13 +3,20 @@
 
 Uso (desde la raiz del repositorio; solo la biblioteca estandar de Python 3):
 
-    python3 herramientas/idiomas.py                 # estado de cada idioma
+    python3 herramientas/idiomas.py                 # estado de cada idioma (PinDesk y Plantillas)
     python3 herramientas/idiomas.py faltan fr-FR    # las claves que le faltan
     python3 herramientas/idiomas.py faltan fr-FR --ftl > faltan.ftl
                                                     # lo que falta, en ingles, listo para traducir
     python3 herramientas/idiomas.py apple           # rehace los catalogos de apple/
     python3 herramientas/idiomas.py apple --comprobar
                                                     # falla si la copia de apple/ no esta al dia
+    python3 herramientas/idiomas.py --plantillas faltan fr-FR
+                                                    # lo mismo con los de PinDesk Plantillas
+
+Hay dos juegos de catalogos: los de PinDesk (`crates/pindesk-store/i18n`) y
+los de PinDesk Plantillas (`crates/pindesk-plantillas/i18n`, claves `plt-…`;
+van aparte para que la app se lleve sus textos el dia que se separe, ver
+`docs/plantillas.md`). `estado` ensena los dos.
 
 La referencia es en-US: cada idioma puede tener menos claves (lo que falta se
 ve en ingles), pero no claves que en-US no tenga ("sobran", se quedaron de
@@ -28,6 +35,7 @@ from pathlib import Path
 RAIZ = Path(__file__).resolve().parent.parent
 CRATES = RAIZ / "crates" / "pindesk-store" / "i18n"
 APPLE = RAIZ / "apple" / "nucleo" / "pindesk-store" / "i18n"
+PLANTILLAS = RAIZ / "crates" / "pindesk-plantillas" / "i18n"
 
 # El mismo orden que `Idioma::TODOS` y `build.rs`.
 ETIQUETAS = [
@@ -106,7 +114,23 @@ def revisar(referencia: dict[str, Entrada], propio: dict[str, Entrada]):
 
 
 def orden_estado(args) -> int:
-    raiz = APPLE if args.apple else CRATES
+    if args.apple:
+        juegos = [("Apple", APPLE)]
+    elif args.plantillas:
+        juegos = [("PinDesk Plantillas", PLANTILLAS)]
+    else:
+        juegos = [("PinDesk", CRATES), ("PinDesk Plantillas", PLANTILLAS)]
+    malos = 0
+    for i, (nombre, raiz) in enumerate(juegos):
+        if len(juegos) > 1:
+            print(("\n" if i else "") + f"## {nombre} ({raiz.relative_to(RAIZ).as_posix()})")
+        malos += estado_de(raiz)
+    if args.estricto and malos:
+        return 1
+    return 0
+
+
+def estado_de(raiz: Path) -> int:
     en, _ = leer(catalogo(raiz, "en-US"))
     malos = 0
     print(f"{'idioma':8} {'hechas':>7} {'faltan':>7} {'sobran':>7} {'vars':>5}  cobertura")
@@ -127,13 +151,11 @@ def orden_estado(args) -> int:
             print(f"    sobra «{c}» (no esta en en-US)")
         for c, propias, de_en in variables:
             print(f"    «{c}» usa {propias} y en-US {de_en}")
-    if args.estricto and malos:
-        return 1
-    return 0
+    return malos
 
 
 def orden_faltan(args) -> int:
-    raiz = APPLE if args.apple else CRATES
+    raiz = APPLE if args.apple else PLANTILLAS if args.plantillas else CRATES
     en, orden = leer(catalogo(raiz, "en-US"))
     propio, _ = leer(catalogo(raiz, args.etiqueta))
     faltan, sobran, _ = revisar(en, propio)
@@ -241,6 +263,7 @@ def orden_apple(args) -> int:
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--apple", action="store_true", help="mirar los catalogos de apple/ en vez de crates/")
+    p.add_argument("--plantillas", action="store_true", help="solo los de PinDesk Plantillas")
     sub = p.add_subparsers(dest="orden")
     e = sub.add_parser("estado", help="cuanto tiene cada idioma (lo de por defecto)")
     e.add_argument("--estricto", action="store_true", help="salir con 1 si algo sobra o cambia de variables")

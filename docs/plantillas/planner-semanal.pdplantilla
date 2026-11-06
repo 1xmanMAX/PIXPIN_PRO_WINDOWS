@@ -1,0 +1,89 @@
+{
+  "formato": "pindesk-plantilla",
+  "version": 1,
+  "nombre": "Planner semanal",
+  "pagina": {
+    "tamano": "a4",
+    "horizontal": true
+  },
+  "tema": "planificacion",
+  "repeticion": {
+    "cada": "semana",
+    "desde": "2027-01-04",
+    "hasta": "2027-12-26"
+  },
+  "raiz": {
+    "tipo": "columna",
+    "hijos": [
+      {
+        "tipo": "fila",
+        "hijos": [
+          {
+            "tipo": "encabezado",
+            "texto": "Semana {semana}",
+            "nivel": 1,
+            "tam": "2fr"
+          },
+          {
+            "tipo": "campo",
+            "campo": "mes",
+            "formato": "largo",
+            "alineacion": "derecha",
+            "puntos": 12
+          }
+        ]
+      },
+      {
+        "tipo": "fila",
+        "tam": "1fr",
+        "hijos": [
+          {
+            "tipo": "horario",
+            "desde": 7,
+            "hasta": 22,
+            "paso": 60,
+            "dias": 7,
+            "tam": "2.6fr"
+          },
+          {
+            "tipo": "columna",
+            "hijos": [
+              {
+                "tipo": "seccion",
+                "titulo": "Tareas",
+                "hijos": [
+                  {
+                    "tipo": "casillas",
+                    "items": [],
+                    "vacias": 9
+                  }
+                ]
+              },
+              {
+                "tipo": "seccion",
+                "titulo": "Hábitos",
+                "hijos": [
+                  {
+                    "tipo": "habitos",
+                    "habitos": [
+                      "Agua",
+                      "Leer 20 min",
+                      "Ejercicio",
+                      "Dormir 8 h",
+                      "Sin pantallas"
+                    ],
+                    "dias": 7
+                  }
+                ]
+              },
+              {
+                "tipo": "notas",
+                "titulo": "Notas"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

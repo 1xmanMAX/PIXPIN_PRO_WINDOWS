@@ -85,7 +85,7 @@ jobs:
         pindesk-geom pindesk-nivel pindesk-lecciones pindesk-sistema
         pindesk-motor2d pindesk-tinta pindesk-timeline pindesk-docs pindesk-hojas
         pindesk-office pindesk-sincro pdfsqueeze-core pindesk-ui pindesk-store
-        pindesk-proyecto
+        pindesk-proyecto pindesk-plantillas
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable

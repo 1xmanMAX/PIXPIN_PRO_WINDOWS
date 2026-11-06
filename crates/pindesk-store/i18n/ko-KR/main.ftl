@@ -1348,6 +1348,8 @@ figuras-todas = 모두
 figuras-vacia = 아직 도형이 없습니다. 캔버스에서 무언가를 선택하고 “도형으로 저장”을 누르세요.
 figuras-borrar = 도형 삭제
 figuras-borrar-seguro = 삭제하려면 다시 누르세요
+# El boton de una figura que vino de PinDesk Plantillas; $app es su nombre.
+figuras-abrir-en-plantillas = { $app }에서 열기
 figuras-elegir-para = “{ $chat }”에 넣을 도형 선택
 figuras-adjuntar-a = “{ $chat }”에 첨부
 figuras-adjuntar-pista = 또는 도형을 두 번 클릭하거나 Enter를 누르세요.

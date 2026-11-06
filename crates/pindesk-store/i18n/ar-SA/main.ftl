@@ -1403,6 +1403,8 @@ figuras-todas = الكل
 figuras-vacia = لا توجد أشكال بعد. في لوحة، حدّد شيئًا ثم «حفظ كشكل».
 figuras-borrar = حذف الشكل
 figuras-borrar-seguro = اضغط مجددًا للحذف
+# El boton de una figura que vino de PinDesk Plantillas; $app es su nombre.
+figuras-abrir-en-plantillas = فتح في { $app }
 figuras-elegir-para = اختر شكلًا لـ«{ $chat }»
 figuras-adjuntar-a = إرفاق بـ«{ $chat }»
 figuras-adjuntar-pista = أو انقر الشكل نقرًا مزدوجًا، أو اضغط Enter.

@@ -1,0 +1,35 @@
+[package]
+name = "pindesk-plantillas-app"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+# La app de Windows de PinDesk Plantillas (docs/plantillas.md). NO depende de
+# apps/pindesk: solo de los crates compartidos. Todo lo que no es ventana
+# (modelo, maquetar, exportar, IA, galeria) esta en crates/pindesk-plantillas.
+# El paquete se llama `-app` para no chocar con el nucleo; el ejecutable es
+# `pindesk-plantillas.exe` (nucleo::EJECUTABLE).
+[[bin]]
+name = "pindesk-plantillas"
+path = "src/main.rs"
+
+[dependencies]
+nucleo = { package = "pindesk-plantillas", path = "../../crates/pindesk-plantillas" }
+pindesk-geom = { path = "../../crates/pindesk-geom" }
+pindesk-render = { path = "../../crates/pindesk-render" }
+pindesk-shell = { path = "../../crates/pindesk-shell" }
+# El dispositivo de Direct3D (con su caida a WARP) y los monitores.
+pindesk-capture = { path = "../../crates/pindesk-capture" }
+# Redimensionar la ventana por sus bordes y los gestos del panel tactil.
+pindesk-ui = { path = "../../crates/pindesk-ui" }
+# Claude o DeepSeek con la clave y el modelo de PinDesk.
+pindesk-ia = { path = "../../crates/pindesk-ia" }
+# Donde estan los datos de PinDesk y su idioma.
+pindesk-store = { path = "../../crates/pindesk-store" }
+serde_json = "1.0"
+# Solo el tipo `HWND` para los dialogos de pindesk-shell.
+windows = { version = "0.62.2", features = ["Win32_Foundation"] }
+
+[build-dependencies]
+embed-resource = "3.0.11"
