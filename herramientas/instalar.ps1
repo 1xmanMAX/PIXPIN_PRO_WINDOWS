@@ -227,8 +227,16 @@ function Instalar-PluginFlow {
     }
 }
 
+# PinDesk Plantillas (apps/pindesk-plantillas, docs/plantillas.md): si se
+# compilo en la misma carpeta (`cargo build --release -p pindesk-plantillas-app`),
+# va junto a pindesk.exe con su acceso en el menu Inicio. Si no, no pasa nada.
+$plantillas = 'pindesk-plantillas.exe'
+$origenPlantillas = Join-Path $origenDir $plantillas
+if (-not (Test-Path $origenPlantillas)) { $origenPlantillas = $null }
+
 # Pares origen -> destino que hay que copiar.
 $ficheros = @(@{ De = $Origen; A = $destino })
+if ($origenPlantillas) { $ficheros += @{ De = $origenPlantillas; A = (Join-Path $destinoDir $plantillas) } }
 if ($origenCompresor) { $ficheros += @{ De = $origenCompresor; A = (Join-Path $destinoDir $compresor) } }
 if ($origenPuente) { $ficheros += @{ De = $origenPuente; A = (Join-Path $destinoDir $puente) } }
 
@@ -277,6 +285,12 @@ function Cerrar-Compresor {
         Start-Sleep -Milliseconds 200
     }
     Get-Process pindesk-aligerar, pixpin-aligerar -ErrorAction SilentlyContinue | Stop-Process -Force
+    # PinDesk Plantillas abierta no deja sustituir su .exe: se cierra (lo que
+    # tuviera sin guardar se pierde; avisa al instalar a mano).
+    if (Get-Process pindesk-plantillas -ErrorAction SilentlyContinue) {
+        Write-Warning 'Se cierra PinDesk Plantillas para ponerla al dia'
+        Get-Process pindesk-plantillas -ErrorAction SilentlyContinue | Stop-Process -Force
+    }
 }
 
 function Crear-Acceso {
@@ -297,6 +311,20 @@ function Crear-Acceso {
         Write-Host "En el menu Inicio: $lnk"
     } catch {
         Write-Warning "No se pudo crear el acceso del menu Inicio: $_"
+    }
+    # PinDesk Plantillas (nombre provisional: nucleo::NOMBRE_PRODUCTO).
+    $exePlantillas = Join-Path $destinoDir $plantillas
+    if (Test-Path $exePlantillas) {
+        try {
+            $s = (New-Object -ComObject WScript.Shell).CreateShortcut((Join-Path $programas 'PinDesk Plantillas.lnk'))
+            $s.TargetPath = $exePlantillas
+            $s.WorkingDirectory = $destinoDir
+            $s.IconLocation = "$exePlantillas,0"
+            $s.Description = 'PinDesk Plantillas: diarios, planificadores y calendarios por bloques'
+            $s.Save()
+        } catch {
+            Write-Warning "No se pudo crear el acceso de PinDesk Plantillas: $_"
+        }
     }
 }
 
