@@ -268,6 +268,21 @@ pub fn marco_del_pdf(raiz: &Path, pdf: &Path, i: u32) -> Option<PathBuf> {
     Some(DiscoPc::nuevo(raiz).ruta(&x.chat, &a::rel(&a::de_pagina(&x.uid, i), a::HOJA)))
 }
 
+/// **La revision de urgencia de una lista de tareas** (4-nov-2026, Android
+/// v0.161.0): `pins/draw/anot-<uid>.urgencia.json` del chat de `ficha`, con
+/// el codigo unico del mensaje de la lista. Lo que se escribe aqui es lo que
+/// viaja (`pindesk_sincro::urgencias`). `None` si el proyecto no esta en el
+/// almacen.
+pub fn urgencia_de_la_lista(raiz: &Path, ficha: &str, uid: &str) -> Option<PathBuf> {
+    let chat = vista::chat_de_ficha(raiz, ficha)?;
+    Some(DiscoPc::nuevo(raiz).ruta(&chat, &urgencia_rel(uid)))
+}
+
+/// La ruta portatil de la revision de urgencia de la lista `uid`.
+pub fn urgencia_rel(uid: &str) -> String {
+    a::rel(&format!("{}{uid}", a::PREFIJO), a::URGENCIA)
+}
+
 /// **Los adjuntos de un chat**: el codigo de cada mensaje que senala un
 /// fichero y donde esta ese fichero en este equipo (exista o no aun).
 pub fn adjuntos_del_chat(raiz: &Path, chat: &str, ficha: &str) -> Vec<(Adjunto, PathBuf)> {

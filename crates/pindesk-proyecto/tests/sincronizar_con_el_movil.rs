@@ -3433,3 +3433,83 @@ fn un_chat_nacido_en_el_movil_despues_de_elegir_llega_al_pc_sin_preguntar() {
         "lo desmarcado sigue fuera"
     );
 }
+
+/// **La revision de urgencia de una lista de tareas** (4-nov-2026, Android
+/// v0.161.0): lo que dijo Jev de las tareas de una lista del PC viaja al
+/// movil con su mensaje (que no es adjunto ni nota), y si los dos revisan
+/// otra tarea a la vez, se juntan tarea a tarea y quedan iguales.
+#[test]
+fn la_urgencia_de_una_lista_del_pc_viaja_y_se_junta_con_la_del_movil() {
+    use pindesk_sincro::urgencias::{self, Guardada, Tareas};
+    let p = montar("urgencia-lista");
+    let g = p.guardados();
+    let carpeta = almacen::carpeta(&p.raiz(), &g.id);
+    let numero = Cuaderno::leer_de(&carpeta)
+        .map(|c| c.mensajes.iter().map(|m| m.numero).max().unwrap_or(0))
+        .unwrap_or(0)
+        + 1;
+    let mut lista = Mensaje::nota(
+        "# Obra\n- [ ] Mandar la cotización\n- [ ] Pedir cemento\n",
+        &Sello {
+            cuando: p.reloj.tic(),
+            numero,
+            aparato: p.aparato_pc(),
+            proyecto: g.id.clone(),
+        },
+    );
+    lista.clase = Some(Clase::MiniApp);
+    cuaderno::anadir(&carpeta, &lista).unwrap();
+    let uid = lista.codigo_unico();
+    let en_pc = pindesk_proyecto::anotado::urgencia_de_la_lista(&p.raiz(), &g.id, &uid).unwrap();
+    let rel = pindesk_proyecto::anotado::urgencia_rel(&uid);
+    let s = |cuando, aparato: &str| Guardada {
+        consecuencia: vec![0.05, 0.15, 0.5, 0.3],
+        confianza: 0.6,
+        bloquea: 0.8,
+        plazo_ajeno: 0.9,
+        piden_ya: Some(0.2),
+        cuando,
+        aparato: aparato.into(),
+    };
+    let una = |t: &str, x| Tareas::from([(t.to_string(), x)]);
+    assert!(urgencias::anadir(&en_pc, &una("Mandar la cotización", s(5, "pc1"))).unwrap());
+    p.vuelta_desde_pc();
+    let en_movil = p.movil.raiz().join(&rel);
+    assert!(
+        urgencias::leer(&en_movil).contains_key("Mandar la cotización"),
+        "llega al movil"
+    );
+    assert_eq!(
+        leer_movil(&p, &rel),
+        std::fs::read_to_string(&en_pc).ok(),
+        "tal cual"
+    );
+
+    // Los dos revisan otra tarea a la vez; lo del movil, mas nuevo.
+    urgencias::anadir(&en_pc, &una("Pedir cemento", s(7, "pc1"))).unwrap();
+    urgencias::anadir(&en_movil, &una("Llamar al cliente", s(8, "MOVI"))).unwrap();
+    adelantar(&en_movil);
+    p.vuelta_desde_pc();
+    p.vuelta_desde_pc();
+    let esperado = ["Llamar al cliente", "Mandar la cotización", "Pedir cemento"];
+    for f in [&en_pc, &en_movil] {
+        assert_eq!(
+            urgencias::leer(f).into_keys().collect::<Vec<_>>(),
+            esperado,
+            "en {}",
+            f.display()
+        );
+    }
+    assert_eq!(
+        std::fs::read(&en_pc).unwrap(),
+        std::fs::read(&en_movil).unwrap()
+    );
+    p.quieto(GENERAL);
+
+    // Y cuando dirige el movil, igual: otra del PC llega y no se pierde nada.
+    urgencias::anadir(&en_pc, &una("Revisar planos", s(9, "pc1"))).unwrap();
+    adelantar(&en_pc);
+    p.desde_movil(&[GENERAL]);
+    assert!(urgencias::leer(&en_movil).contains_key("Revisar planos"));
+    assert_eq!(urgencias::leer(&en_movil).len(), 4);
+}

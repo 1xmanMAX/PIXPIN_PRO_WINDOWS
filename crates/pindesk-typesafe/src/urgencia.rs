@@ -120,6 +120,29 @@ impl Senales {
             },
         })
     }
+
+    /// **De lo guardado** (`pins/draw/anot-<uid>.urgencia.json`, que viaja
+    /// con la lista): la probabilidad de cada nivel de la consecuencia, su
+    /// confianza y el Noul de lo demas. El valor es el esperado, Σ i·p, como
+    /// lo rehace `UrgenciasGuardadas` de Android.
+    pub fn de_partes(
+        niveles: Vec<f64>,
+        confianza: f64,
+        bloquea: f64,
+        plazo_ajeno: f64,
+        piden_ya: Option<f64>,
+    ) -> Senales {
+        Senales {
+            consecuencia: Escala {
+                valor: niveles.iter().enumerate().map(|(i, p)| i as f64 * p).sum(),
+                confianza,
+                niveles,
+            },
+            bloquea,
+            plazo_ajeno,
+            piden_ya,
+        }
+    }
 }
 
 /// Los puntos de lo que falta para su hora (dias desde hoy; negativo, ya
@@ -298,6 +321,19 @@ mod pruebas {
     }
 
     const GRAVE: [f64; 4] = [0.0, 0.05, 0.15, 0.8];
+
+    /// Lo que viene de un fichero guardado vale lo mismo que lo que dijo
+    /// Jev: el valor es el esperado.
+    #[test]
+    fn de_partes_rehace_el_valor_esperado() {
+        let x = Senales::de_partes(GRAVE.to_vec(), 0.6, 0.2, 0.0, Some(0.9));
+        assert_eq!(x, s(GRAVE, 0.2, 0.0, Some(0.9)));
+        assert!((x.consecuencia.valor - (0.05 + 0.3 + 2.4)).abs() < 1e-12);
+        // Caso negativo: sin niveles, valor 0 y nada mas probable que el 0.
+        let vacia = Senales::de_partes(Vec::new(), 0.6, 0.0, 0.0, None);
+        assert_eq!(vacia.consecuencia.valor, 0.0);
+        assert_eq!(vacia.consecuencia.mas_probable(), 0);
+    }
     const MEDIA: [f64; 4] = [0.05, 0.2, 0.65, 0.1];
     const LEVE: [f64; 4] = [0.6, 0.35, 0.05, 0.0];
 
