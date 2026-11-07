@@ -135,3 +135,27 @@ jobs:
         run: |
           $tag = if ("${{ inputs.version }}") { "${{ inputs.version }}" } else { "${{ github.ref_name }}" }
           gh release create $tag $env:ZIP --target "${{ github.sha }}" --title "PinDesk $tag" --notes "Descomprime el ZIP y ejecuta Instalar.cmd (o pindesk.exe directamente). Si tenias PixPin Max, Instalar.cmd la sustituye y conserva tus datos."
+      # La descarga publica: el codigo es privado, asi que la version tambien
+      # se publica en el repositorio publico 1xmanMAX/PinDesk (wiki + descargas,
+      # docs/distribucion.md) con un nombre fijo, para que la web enlace siempre
+      # a https://github.com/1xmanMAX/PinDesk/releases/latest/download/PinDesk-Windows-x64.zip
+      # Necesita el secreto PINDESK_PUBLICO_TOKEN (token de grano fino con
+      # «Contents: Read and write» solo en 1xmanMAX/PinDesk); sin el, se salta.
+      - name: Publicar en el repositorio publico (1xmanMAX/PinDesk)
+        if: (startsWith(github.ref, 'refs/tags/v') || inputs.version != '') && env.TOKEN_PUBLICO != ''
+        shell: pwsh
+        env:
+          TOKEN_PUBLICO: ${{ secrets.PINDESK_PUBLICO_TOKEN }}
+        run: |
+          $env:GH_TOKEN = $env:TOKEN_PUBLICO
+          $tag = if ("${{ inputs.version }}") { "${{ inputs.version }}" } else { "${{ github.ref_name }}" }
+          if (-not $tag.StartsWith("v")) { $tag = "v$tag" }
+          $fijo = "PinDesk-Windows-x64.zip"
+          Copy-Item $env:ZIP $fijo
+          $notas = "PinDesk para Windows $tag.`n`n1. Descarga **$fijo**.`n2. Clic derecho > Extraer todo.`n3. Abre **Instalar.cmd** de la carpeta extraida.`n`nGuia: https://github.com/1xmanMAX/PinDesk/blob/main/docs/instalar.md"
+          gh release view $tag --repo 1xmanMAX/PinDesk *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $tag $fijo --repo 1xmanMAX/PinDesk --clobber
+          } else {
+            gh release create $tag $fijo --repo 1xmanMAX/PinDesk --title "PinDesk $tag" --notes $notas --latest
+          }

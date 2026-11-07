@@ -8,9 +8,9 @@ exclude = ["apple"]
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.85"
-license = "MIT"
+license = "LicenseRef-PinDesk-Propietaria"
 authors = ["Max Anthony Mamani Maquera"]
-repository = "https://github.com/1xmanMAX/pixpin-max"
+repository = "https://github.com/1xmanMAX/PinDesk"
 
 [workspace.dependencies]
 # Internas

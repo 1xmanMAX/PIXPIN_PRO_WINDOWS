@@ -31,7 +31,7 @@ use serde::{Deserialize, Serialize};
 
 /// La politica publicada (la misma que se pone en la ficha de la tienda).
 pub const URL_POLITICA: &str =
-    "https://github.com/1xmanMAX/PIXPIN_PRO_WINDOWS/blob/main/docs/privacidad.md";
+    "https://github.com/1xmanMAX/PinDesk/blob/main/docs/privacidad.md";
 
 /// A quien se escribe: dudas de privacidad y los reportes de la IA (el del
 /// movil, `Privacidad.CORREO_CONTACTO`).
