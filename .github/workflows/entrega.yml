@@ -52,6 +52,26 @@ jobs:
           @'
           @echo off
           setlocal
+          rem Abierto desde dentro del ZIP (Explorador, WinRAR, 7-Zip): solo
+          rem este .cmd sale a una carpeta temporal y los .exe no estan a su
+          rem lado. Entonces busca el ZIP mas reciente de PinDesk en Descargas,
+          rem Escritorio o Documentos, lo descomprime en %TEMP% y sigue desde alli.
+          if exist "%~dp0pindesk.exe" goto tengo
+          echo Instalar.cmd se abrio desde dentro del ZIP. Buscando el ZIP para descomprimirlo...
+          set "TMPPD=%TEMP%\PinDesk-instalar"
+          powershell -NoProfile -ExecutionPolicy Bypass -Command "$c = @($env:USERPROFILE+'\Downloads', $env:USERPROFILE+'\Desktop', $env:USERPROFILE+'\Documents', $env:USERPROFILE+'\OneDrive\Escritorio', $env:USERPROFILE+'\OneDrive\Desktop', $env:USERPROFILE+'\OneDrive\Documentos') | Where-Object { Test-Path $_ }; $z = Get-ChildItem -Path $c -Filter 'PinDesk*.zip' -File -Recurse -Depth 2 -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1; if (-not $z) { exit 1 }; Remove-Item -Recurse -Force $env:TMPPD -ErrorAction SilentlyContinue; Expand-Archive -LiteralPath $z.FullName -DestinationPath $env:TMPPD -Force; Write-Host ('Usando ' + $z.FullName)"
+          if errorlevel 1 goto sin_zip
+          if not exist "%TMPPD%\pindesk.exe" goto sin_zip
+          call "%TMPPD%\Instalar.cmd"
+          exit /b
+          :sin_zip
+          echo.
+          echo No encuentro pindesk.exe junto a Instalar.cmd.
+          echo Descomprime primero el ZIP: clic derecho en el ZIP ^> Extraer todo,
+          echo y abre Instalar.cmd desde la carpeta descomprimida.
+          pause
+          exit /b 1
+          :tengo
           set "DEST=%LOCALAPPDATA%\Programs\PinDesk"
           set "VIEJO=%LOCALAPPDATA%\Programs\PixPinMax"
           set "RUN=HKCU\Software\Microsoft\Windows\CurrentVersion\Run"
@@ -61,6 +81,13 @@ jobs:
           )
           if not exist "%DEST%" mkdir "%DEST%"
           copy /y "%~dp0*.exe" "%DEST%\" >nul
+          if exist "%DEST%\pindesk.exe" goto copiado
+          echo.
+          echo No se pudo copiar PinDesk a %DEST%.
+          echo Cierra PinDesk si sigue abierto y vuelve a ejecutar Instalar.cmd.
+          pause
+          exit /b 1
+          :copiado
           for %%e in (pixpin-aligerar pixpin-lanzador pixpin-puente) do (
             if exist "%DEST%\%%e.exe" del /f /q "%DEST%\%%e.exe" >nul 2>&1
           )
